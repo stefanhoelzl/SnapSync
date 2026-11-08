@@ -152,7 +152,7 @@ class RigHooks(
             },
             // A `false` is only interpretable alongside the grant: measured, the OS answers `false` for a
             // live record while access is NOT_DETERMINED.
-            grantDependent = enabled == false && grant != "GRANTED",
+            grantDependent = enabled == false && grant != RigGrant.GRANTED,
         )
     }
 

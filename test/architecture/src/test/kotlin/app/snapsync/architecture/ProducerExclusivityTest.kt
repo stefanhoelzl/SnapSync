@@ -3,7 +3,7 @@ package app.snapsync.architecture
 import app.snapsync.application.EntryPointCall
 import app.snapsync.application.upload.ReconcileUploader
 import app.snapsync.data.gallery.GrantRead
-import app.snapsync.data.gallery.photoAccess
+import app.snapsync.data.gallery.PhotoGrants
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
@@ -256,7 +256,7 @@ class ProducerExclusivityTest {
 /** Whether the extension may be registered for [supported], [grant] and [pin] — the domain's verdict, as the app reads it. */
 private fun registrable(supported: Boolean, grant: LibraryGrant, pin: UploaderPin?): Boolean = OsUploaderAdmission.of(
     if (supported) OsSupport.CARRIED else OsSupport.NOT_CARRIED,
-    grant.photoAccess(),
+    PhotoGrants.of(grant).access,
     if (pin?.extension == false) ExtensionSwitch.OFF else ExtensionSwitch.ON,
 ) == OsUploaderAdmission.REGISTRABLE
 

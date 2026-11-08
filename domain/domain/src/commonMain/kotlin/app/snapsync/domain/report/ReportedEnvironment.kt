@@ -1,6 +1,7 @@
 package app.snapsync.domain.report
 
 import app.snapsync.domain.process.MemoryFootprint
+import app.snapsync.domain.sharing.PhotoGrant
 
 /**
  * The build, OS and device a bug report's state section names — every one a constant of the running build, read from
@@ -32,12 +33,6 @@ class ReportedEnvironment(
     )
 }
 
-/**
- * The photo-library grant as a bug report names it (`photo_permission`): not asked yet, refused, a partial grant —
- * the member's selection decides — or the whole library.
- */
-enum class GrantStanding { NOT_DETERMINED, DENIED, LIMITED, FULL }
-
 /** The bug report's readings of facts only the app holds — what each says, decided here, not where it is read. */
 object ReportFacts {
     /**
@@ -45,8 +40,8 @@ object ReportFacts {
      * partial grant has a selection; under any other the fact is unsupported and the report leaves it out. A selection
      * not read yet is failed, never zero: an empty selection and an unread one are different reports.
      */
-    fun selectionPhotos(grant: GrantStanding, selected: Int?): Fact<Int> = when {
-        grant != GrantStanding.LIMITED -> Fact.Unsupported
+    fun selectionPhotos(grant: PhotoGrant, selected: Int?): Fact<Int> = when {
+        grant != PhotoGrant.LIMITED -> Fact.Unsupported
         selected == null -> Fact.Failed("the selection has not been read yet")
         else -> Fact.Known(selected)
     }

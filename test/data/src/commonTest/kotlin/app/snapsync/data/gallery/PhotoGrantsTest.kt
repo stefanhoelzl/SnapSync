@@ -16,7 +16,7 @@ class PhotoGrantsTest {
     fun `each grant the platform reports is read as the domain's`() {
         assertEquals(
             listOf(PhotoGrant.UNDECIDED, PhotoGrant.REFUSED, PhotoGrant.LIMITED, PhotoGrant.FULL),
-            LibraryGrant.entries.map { it.photoGrant() },
+            LibraryGrant.entries.map(PhotoGrants::of),
         )
     }
 

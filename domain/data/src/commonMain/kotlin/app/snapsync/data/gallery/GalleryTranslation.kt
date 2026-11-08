@@ -6,10 +6,8 @@ import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.MediaKind
 import app.snapsync.domain.asset.PixelArea
 import app.snapsync.domain.asset.ResourceRole
-import app.snapsync.domain.sharing.PhotoAccess
 import app.snapsync.format.AssetIdText
 import app.snapsync.ports.GalleryAsset
-import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 
@@ -29,13 +27,6 @@ fun GalleryAsset.facts(): AssetFacts = AssetFacts(
     isEdited = isEdited,
     pixelArea = PixelArea.of(pixelArea),
 )
-
-/** The grant as the selection reads it: refused and undecided both leave nothing to read. */
-fun LibraryGrant.photoAccess(): PhotoAccess = when (this) {
-    LibraryGrant.GRANTED -> PhotoAccess.FULL
-    LibraryGrant.LIMITED -> PhotoAccess.LIMITED
-    LibraryGrant.DENIED, LibraryGrant.NOT_DETERMINED -> PhotoAccess.NONE
-}
 
 /** The place a resource of this kind takes in its asset: a still or a video is its primary, motion is live. */
 fun ResourceKind.role(): ResourceRole = when (this) {

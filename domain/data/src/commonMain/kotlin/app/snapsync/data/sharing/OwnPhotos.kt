@@ -1,6 +1,6 @@
 package app.snapsync.data.sharing
 
-import app.snapsync.data.gallery.photoAccess
+import app.snapsync.data.gallery.PhotoGrants
 import app.snapsync.data.receiving.HandlesRead
 import app.snapsync.data.receiving.ReceivedPhotosRead
 import app.snapsync.data.time.WallClock
@@ -122,7 +122,7 @@ class OwnPhotos(
         }
 
     /** The plan the grant allows now — what a contribution reads under, and what the app's uploader is admitted by. */
-    fun plan(): ReadPlan<SelectionState.Read> = ReadPlan.of(gallery.access().photoAccess(), selection.read)
+    fun plan(): ReadPlan<SelectionState.Read> = ReadPlan.of(PhotoGrants.of(gallery.access()).access, selection.read)
 
     private fun walked(read: WalkRead): Candidates = when (read) {
         is WalkRead.Walked -> Candidates(CandidateSet.Walked(read.assets, read.takenAt), read.resources)

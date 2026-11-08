@@ -74,7 +74,7 @@ class GalleryTranslationTest {
                 LibraryGrant.DENIED to PhotoAccess.NONE,
                 LibraryGrant.NOT_DETERMINED to PhotoAccess.NONE,
             ),
-            LibraryGrant.entries.associateWith { it.photoAccess() },
+            LibraryGrant.entries.associateWith { PhotoGrants.of(it).access },
         )
     }
 

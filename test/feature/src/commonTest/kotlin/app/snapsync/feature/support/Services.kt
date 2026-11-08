@@ -37,11 +37,9 @@ import app.snapsync.ports.FileLocation
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.FileTail
 import app.snapsync.ports.Files
-import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.OpenDatabase
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -222,12 +220,6 @@ fun unreadableIdentity(): MintingDeviceIdentity =
         inMemorySecureStore(unavailable = true),
         PlatformDeviceId { "unread" },
     )
-
-/** What the photo-library grant means, over the permission port's in-memory mock and the test's own [grant] cell. */
-fun galleryAccess(
-    grant: MutableStateFlow<LibraryGrant> = MutableStateFlow(LibraryGrant.GRANTED),
-): GalleryAccessState =
-    GalleryAccessState(grant)
 
 /** The event a [TestLedger]'s rows belong to unless a test says otherwise. */
 const val LEDGER_EVENT: String = "E-ledger"

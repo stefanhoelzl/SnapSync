@@ -1,6 +1,7 @@
 package app.snapsync.domain.report
 
 import app.snapsync.domain.process.MemoryFootprint
+import app.snapsync.domain.sharing.PhotoGrant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -44,20 +45,20 @@ class ReportFactsTest {
 
     @Test
     fun `a partial grant counts the selected photos`() {
-        assertEquals(Fact.Known(2), ReportFacts.selectionPhotos(GrantStanding.LIMITED, 2))
+        assertEquals(Fact.Known(2), ReportFacts.selectionPhotos(PhotoGrant.LIMITED, 2))
     }
 
     @Test
     fun `an unread selection is failed and never zero`() {
-        val unread = ReportFacts.selectionPhotos(GrantStanding.LIMITED, null)
+        val unread = ReportFacts.selectionPhotos(PhotoGrant.LIMITED, null)
         assertEquals(Fact.Failed("the selection has not been read yet"), unread)
-        assertEquals(Fact.Known(0), ReportFacts.selectionPhotos(GrantStanding.LIMITED, 0))
+        assertEquals(Fact.Known(0), ReportFacts.selectionPhotos(PhotoGrant.LIMITED, 0))
     }
 
     @Test
     fun `any grant but a partial one has no selection to count`() {
-        assertEquals(Fact.Unsupported, ReportFacts.selectionPhotos(GrantStanding.FULL, null))
-        assertEquals(Fact.Unsupported, ReportFacts.selectionPhotos(GrantStanding.DENIED, 0))
+        assertEquals(Fact.Unsupported, ReportFacts.selectionPhotos(PhotoGrant.FULL, null))
+        assertEquals(Fact.Unsupported, ReportFacts.selectionPhotos(PhotoGrant.REFUSED, 0))
     }
 
     @Test

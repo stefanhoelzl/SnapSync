@@ -134,7 +134,7 @@ private fun photoKitGalleryReader(core: () -> AppCore): suspend (String?, Boolea
     { cutoff, resources, includesUpload ->
         val reader = GalleryReport(
             photos = core().ownPhotos,
-            grant = { core().photoPermission.value.name },
+            grant = { RigGrant.name(core().photoGrant.state.value) },
             census = ::photoKitCensus,
         )
         reader.read(cutoff, resources, includesUpload)

@@ -25,8 +25,8 @@ import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.ReceivingVerdict
 import app.snapsync.domain.receiving.UnionTrigger
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.upload.UploaderChange
-import app.snapsync.model.GalleryAccess
 import app.snapsync.query.membership.MembershipQuery
 import app.snapsync.scheduling.AskedSequence
 import app.snapsync.scheduling.BackgroundEntryPoint
@@ -241,9 +241,9 @@ class OnGrantChanged(
     private val uploaders: OnUploaderChange,
     private val recognition: Recognition,
     private val count: CountOwnPhotos,
-) : BackgroundEntryPoint<GalleryAccess>(runtime) {
+) : BackgroundEntryPoint<PhotoGrant>(runtime) {
     @OptIn(EntryPointCall::class)
-    override suspend fun run(arg: GalleryAccess, on: Run) = on.steps {
+    override suspend fun run(arg: PhotoGrant, on: Run) = on.steps {
         isolated("uploads") { uploaders.deliver(UploaderChange.GRANT_CHANGED) }
         run(recognition, UnionTrigger.GRANT)
         isolated("total") { count() }
