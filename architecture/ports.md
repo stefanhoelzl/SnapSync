@@ -24,6 +24,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Background` | `:domain:inbound` | `:domain:scheduling` BackgroundEntryPoint; `:test:contracts` BackgroundProxy | no |
 | `BackgroundTime` | `:domain:ports` | `:adapter:android` AndroidBackgroundTime; `:adapter:generic:mock` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime; `:domain:scheduling` FakeBackgroundTime; `:test:contracts` BackgroundTimeProxy; `:test:feature` NoTime | yes |
 | `BackgroundTimeHold` | `:domain:ports` | `:adapter:android` Hold; `:adapter:generic:mock` Hold; `:adapter:ios:app-only` Held, Refused; `:domain:scheduling` Hold; `:test:contracts` HoldProxy | no |
+| `BeforePublish` | `:domain:data` | `:domain:entrypoints` SelectionRecognition; `:test:data` NothingWithheld; `:test:feature` NothingWithheld; `:test:rig` NothingWithheld | yes |
 | `Branch` | `:domain:entrypoints` | `:domain:entrypoints` Omitted | no |
 | `Branch` | `:domain:ports` | `:domain:entrypoints` Omitted | no |
 | `BuildInfo` | `:domain:ports` | `:adapter:android` AndroidBuildInfo; `:adapter:generic:mock` Face; `:adapter:ios:ext-safe` IosBuildInfo; `:test:contracts` BuildInfoProxy | no |
@@ -75,6 +76,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EnterResult` | `:domain:data` | `:domain:data` AlreadyJoined, Entered, Failed, JoinedElsewhere | no |
 | `EntryEvent` | `:domain:ports` | `:domain:ports` Answered, Delivered, Done | no |
 | `EntryEvents` | `:domain:ports` | `:adapter:generic:app` NoEntryEvents; `:adapter:generic:mock` TellingEntryEvents; `:domain:scheduling` RecordingEntryEvents; `:test:contracts` EntryEventsProxy | no |
+| `EnvironmentRead` | `:domain:data` | `:domain:data` BuildEnvironment | no |
 | `EventLookupFact` | `:domain:domain` | `:domain:domain` Found, NotFound, Unanswered | no |
 | `EventNameVerdict` | `:domain:domain` | `:domain:domain` Blank, Ok, TooLong | no |
 | `EventPort` | `:domain:ports` | — | no |
@@ -106,7 +108,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `HeartbeatVerdict` | `:domain:domain` | `:domain:domain` Arm, None | no |
 | `HeldPosition` | `:domain:domain` | `:domain:domain` Holds, Lacks, ReceivesNothing | no |
 | `Hmac` | `:domain:format` | `:domain:data` CryptoHmac; `:domain:format` Recording | no |
-| `HostAssembly` | `:domain:entrypoints` | `:domain:host` HostFirst | no |
+| `HostAssembly` | `:domain:entrypoints` | `:domain:entrypoints` AssembleHost | no |
 | `HttpResult` | `:domain:ports` | `:domain:ports` Response, Unreachable | no |
 | `HttpTransport` | `:domain:ports` | `:adapter:generic:app` KtorHttpTransport; `:adapter:generic:mock` BackendRouter; `:test:architecture` Probe; `:test:contracts` HttpTransportProxy; `:test:data` FakeClient, ScriptedTransport | yes |
 | `ImportAlbumVerdict` | `:domain:domain` | `:domain:domain` CameraFolder, Into | no |
@@ -114,7 +116,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ImportReadiness` | `:domain:application` | `:domain:application` NotReady, Ready | no |
 | `ImportReport` | `:domain:domain` | `:domain:domain` Failed, Imported | no |
 | `ImportVerdict` | `:domain:domain` | `:domain:domain` Deferred, Imported, Unimportable | no |
-| `Inbound` | `:domain:inbound` | `:domain:host` LiveScreen, ScreenIntents; `:domain:scheduling` InboundEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
+| `Inbound` | `:domain:inbound` | `:domain:entrypoints` HostIntents, HostScreen; `:domain:scheduling` InboundEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
 | `IntentRunner` | `:domain:presentation` | `:domain:presentation` GateRunner | no |
 | `InterruptedImportVerdict` | `:domain:domain` | `:domain:domain` Clear, Leave, Settle | no |
 | `InviteLinkVerdict` | `:domain:domain` | `:domain:domain` Invite, KeyUnreadable, NotAnInvite | no |
@@ -292,7 +294,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `TransferSource` | `:domain:ports` | `:domain:ports` File, Resource | no |
 | `TransferStart` | `:domain:domain` | `:domain:domain` At, NotNow | no |
 | `TransferVerdict` | `:domain:domain` | `:domain:domain` Reject, Stage | no |
-| `Ui` | `:domain:ports` | `:adapter:android` AndroidUi; `:adapter:generic:mock` Face; `:adapter:ios:ui` IosUi; `:test:contracts` UiProxy; `:test:rig` RigUi | yes |
+| `Ui` | `:domain:ports` | `:adapter:android` AndroidUi; `:adapter:generic:mock` Face; `:adapter:ios:ui` IosUi; `:domain:scheduling` Shown; `:test:contracts` UiProxy; `:test:rig` RigUi | yes |
 | `UnionRead` | `:domain:data` | `:domain:data` Ok, Unavailable | no |
 | `UnionReadPlan` | `:domain:domain` | `:domain:domain` AlreadyRead, Since, Whole | no |
 | `UpdateResult` | `:domain:data` | `:domain:data` Failed, Superseded, Updated | no |

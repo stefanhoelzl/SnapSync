@@ -63,6 +63,7 @@ dependencies {
     testImplementation(project(":adapter:generic:mock"))
     // The composition layer's bundles `PortBundleTest` reads by reflection.
     testImplementation(project(":domain:composition:process"))
+    testImplementation(project(":domain:composition:app"))
     testImplementation(project(":domain:composition:extension"))
     // LeverFacesTest holds every migrated operator face to its typed interface, through the interfaces' descriptors.
     testImplementation(project(":test:levers"))

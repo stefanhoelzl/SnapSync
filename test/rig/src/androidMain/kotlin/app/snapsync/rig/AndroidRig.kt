@@ -5,8 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import app.snapsync.android.link.AndroidLinks
 import app.snapsync.android.scene.AndroidLifecycle
-import app.snapsync.compose.AppCore
-import app.snapsync.compose.AppDevicePorts
+import app.snapsync.composition.app.AppDevicePorts
+import app.snapsync.composition.app.AppGraph
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.domain.upload.OsSupport
 import app.snapsync.format.UploadersCarriedText
@@ -149,7 +149,7 @@ private fun adapterVerbs(launch: AndroidRigLaunch): AdapterVerbs =
  * the bound port is published, and a real library is seeded through its media store.
  */
 fun AndroidRigLaunch.start(
-    core: () -> AppCore,
+    core: () -> AppGraph,
     host: () -> StatusContainerHost,
     lifecycle: AndroidLifecycle,
     links: AndroidLinks,
@@ -161,7 +161,7 @@ fun AndroidRigLaunch.start(
 }
 
 private fun AndroidRigLaunch.hooks(
-    core: () -> AppCore,
+    core: () -> AppGraph,
     host: () -> StatusContainerHost,
     lifecycle: AndroidLifecycle,
     links: AndroidLinks,
@@ -177,7 +177,7 @@ private fun AndroidRigLaunch.hooks(
         world.servedServices(
             androidHostServices(world, lifecycle, links),
             hooks.world.acts,
-            reconcileUploads = { core().reconcileUploaders() },
+            reconcileUploads = { core().uploaderPinMoved.followed() },
         ) + world.servedHostServices(hostServices(hooks, core, host, context), hooks.world.acts)
     },
     publishBoundPort = { bound ->
@@ -246,7 +246,7 @@ private fun androidRefusals(world: MockWorld, host: HostServices): Map<String, S
  */
 private fun AndroidRigLaunch.hostServices(
     hooks: RigHooks,
-    core: () -> AppCore,
+    core: () -> AppGraph,
     host: () -> StatusContainerHost,
     context: Context,
 ): List<HostService<*>> = listOf(

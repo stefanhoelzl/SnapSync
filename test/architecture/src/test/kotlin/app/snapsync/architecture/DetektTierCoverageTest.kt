@@ -50,7 +50,7 @@ class DetektTierCoverageTest {
      * is every `*.gradle.kts` in the build. They still need a config and a registered task, which
      * is what the tests below assert about them.
      */
-    private val pathScopedTiers = setOf("compose", "buildscripts")
+    private val pathScopedTiers = setOf("buildscripts")
 
     /** The `TIER_OF` block, isolated so a stray `"a" to "b"` elsewhere cannot feed the parse. */
     private fun tierMapBlock(): String {

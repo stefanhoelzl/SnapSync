@@ -17,8 +17,9 @@ import kotlin.test.assertTrue
  *  - **graph classes** (`*Graph`) hold only `val`s built by constructor calls: no member function, no lambda — no brace
  *    inside the class body at all;
  *  - **the composing functions are listed**: each module has exactly the top-level functions below — the one ordered
- *    act per process ([PROCESS]'s `startProcess`, the extension's `composeExtension`) — and the one root-side bundle
- *    with a function, `ExtensionDevicePorts.extensionPorts`, which turns a root's lazily-built adapters into ports.
+ *    act per process ([PROCESS]'s `startProcess`, the extension's `composeExtension`, the app's `composeApp`) — and the
+ *    root-side bundles with a function, `ExtensionDevicePorts.extensionPorts` and `AppDevicePorts.appPorts`, which turn
+ *    a root's lazily-built adapters into ports.
  *
  * Companion factories (`UploadHost.of`), collection builders (`listOfNotNull`) and property reads are wiring: none
  * branches. The scan reads source with comments and string literals blanked.
@@ -82,6 +83,7 @@ class CompositionIsWiringTest {
             mapOf(
                 PROCESS to sortedSetOf("startProcess"),
                 EXTENSION to sortedSetOf("composeExtension", "ExtensionDevicePorts.extensionPorts"),
+                APP to sortedSetOf("composeApp", "AppDevicePorts.appPorts"),
             ),
             declared,
             "a composition module declares a function beyond its one ordered act. Wiring is a graph of vals; a step " +
@@ -128,7 +130,8 @@ class CompositionIsWiringTest {
     private companion object {
         const val PROCESS = "composition/process"
         const val EXTENSION = "composition/extension"
-        val ZONES = listOf(PROCESS, EXTENSION)
+        const val APP = "composition/app"
+        val ZONES = listOf(PROCESS, EXTENSION, APP)
 
         val FORBIDDEN = listOf(
             "an `if`" to Regex("""\bif\s*\("""),

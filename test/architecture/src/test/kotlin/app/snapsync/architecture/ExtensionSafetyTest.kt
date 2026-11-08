@@ -190,7 +190,8 @@ class ExtensionSafetyTest {
 
     @Test
     fun `the app-only scan sees an opt-in`() {
-        val app = File(repoRoot, "domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppServices.kt")
+        val app =
+            File(repoRoot, "domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ServicesGraph.kt")
         assertTrue(
             APP_PROCESS_ONLY_OPT_IN.containsMatchIn(app.readText()),
             "the app's services opt into @AppProcessOnly, and the scan does not see it — the pattern is broken",

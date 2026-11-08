@@ -25,16 +25,31 @@ class OptInPinsTest {
 
     /** Production file → marker → how many `@OptIn(…)` of it the file holds, and why. */
     private val pins: Map<String, Map<String, Pin>> = mapOf(
+        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ComposedApp.kt" to mapOf(
+            "CompositionOnly" to Pin(1, "the app's one composing function: its subscriptions and every event port's registration"),
+        ),
+        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/AppGraph.kt" to mapOf(
+            "AppProcessOnly" to Pin(1, "the app's own photos behind the app's walk memo"),
+            "CompositionOnly" to Pin(1, "the app's push handler bundle"),
+        ),
+        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ServicesGraph.kt" to mapOf(
+            "AppProcessOnly" to Pin(1, "the app's device identity, the one that may mint"),
+        ),
+        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/BackendGraph.kt" to mapOf(
+            "AppProcessOnly" to Pin(1, "the app's credential, the one that attests"),
+        ),
+        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/AlbumGraph.kt" to mapOf(
+            "AppProcessOnly" to Pin(2, "the app's album ensure and gather, the one creator — the extension only places"),
+        ),
+        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ReceivingGraph.kt" to mapOf(
+            "AppProcessOnly" to Pin(1, "the app's download store: its read-write file, the one writer and migrator"),
+        ),
+        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/HostEntryPoints.kt" to mapOf(
+            "CompositionOnly" to Pin(1, "host assembly: the subscriptions only a person's start installs"),
+            "InboundImplementation" to Pin(2, "the screen's live state, and its intents: the user's door for every tap"),
+        ),
         "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/EntryPoints.kt" to mapOf(
             "InboundImplementation" to Pin(4, "the four entry-point bases, each implementing its inbound kind"),
-        ),
-        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt" to mapOf(
-            "CompositionOnly" to Pin(
-                2,
-                "the app's composition: its handler bundles and the selection it follows, and the UI launch's follow of " +
-                    "the photo grant for the event album",
-            ),
-            "AppProcessOnly" to Pin(1, "the app's own photos walk behind the memo; the extension walks afresh"),
         ),
         "/domain/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt" to mapOf(
             "CompositionOnly" to Pin(1, "every process's first act: its start, then its metrics handlers registered"),
@@ -54,12 +69,6 @@ class OptInPinsTest {
         ),
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/membership/MembershipEnds.kt" to mapOf(
             "MintsLeftMembership" to Pin(1, "the one transaction that ends a membership"),
-        ),
-        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppServices.kt" to mapOf(
-            "AppProcessOnly" to Pin(1, "the app's device identity, the one that may mint"),
-        ),
-        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/BackendComposition.kt" to mapOf(
-            "AppProcessOnly" to Pin(1, "the app's credential, the one that attests"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
@@ -90,12 +99,6 @@ class OptInPinsTest {
         ),
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/receiving/ImportedReleases.kt" to mapOf(
             "MintsImportedAsset" to Pin(1, "the one mint of an imported photo (`importedAsset`), every import's"),
-        ),
-        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AlbumComposition.kt" to mapOf(
-            "AppProcessOnly" to Pin(1, "the app's album ensure, the one creator — the extension only places"),
-        ),
-        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ReceivingComposition.kt" to mapOf(
-            "AppProcessOnly" to Pin(2, "the app's download store: its read-write file, the one writer and migrator"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/TapEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(2, "the create's and the bug report's runs: the event minted, the dump collected and sent"),
@@ -175,13 +178,6 @@ class OptInPinsTest {
         "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/sharing/Settling.kt" to mapOf(
             "MintsSettledShare" to Pin(1, "the one verdict that settles a share, on a look since the range ended"),
         ),
-        "/domain/host/src/commonMain/kotlin/app/snapsync/host/ComposedApp.kt" to mapOf(
-            "CompositionOnly" to Pin(1, "the host's registration"),
-            "InboundImplementation" to Pin(
-                2,
-                "the screen's live state, and its intents (`ScreenIntents`): the user's door for every tap",
-            ),
-        ),
         "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt" to mapOf(
             "InternalCoroutinesApi" to Pin(
                 3,
@@ -194,6 +190,9 @@ class OptInPinsTest {
         ),
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/gallery/PhotoGrants.kt" to mapOf(
             "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "the platform's grant read as the domain's `PhotoGrant`, one-to-one"),
+        ),
+        "/domain/query/src/commonMain/kotlin/app/snapsync/query/encryption/EventKeyQuery.kt" to mapOf(
+            "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "the key's presence, read when asked and never as the query is built"),
         ),
         "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/ios/qos/ThreadQos.kt" to mapOf(
             "DelicateCoroutinesApi" to Pin(1, "each lane's thread is never closed: it lives as long as the process"),

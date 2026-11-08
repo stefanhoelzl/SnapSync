@@ -40,7 +40,7 @@ kotlin {
         iosMain.dependencies {
             if (rigEnabled) {
                 implementation(project(":test:contracts"))
-                implementation(project(":domain:compose"))
+                implementation(project(":domain:composition:app"))
             }
         }
         commonMain.dependencies {
@@ -62,7 +62,7 @@ kotlin {
             // The contract bindings of this module's adapters (`docs/architecture.md`): the photo-library
             // contracts over the grant-aware composition production calls.
             implementation(project(":test:contracts"))
-            implementation(project(":domain:compose"))
+            implementation(project(":domain:composition:app"))
             // The transfer contracts record into the real ledger, which is a service over the `Databases` adapter.
         }
     }

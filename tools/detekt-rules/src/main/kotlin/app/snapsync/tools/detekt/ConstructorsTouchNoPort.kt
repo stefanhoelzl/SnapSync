@@ -8,6 +8,7 @@ import io.gitlab.arturbosch.detekt.api.Issue
 import io.gitlab.arturbosch.detekt.api.Rule
 import io.gitlab.arturbosch.detekt.api.Severity
 import org.jetbrains.kotlin.psi.KtAnonymousInitializer
+import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtExpression
@@ -29,8 +30,10 @@ import org.jetbrains.kotlin.psi.psiUtil.parents
  *
  * A constructor parameter whose type this file imports from `app.snapsync.ports` — a port, read or called — reached
  * through `.` or `?.` while the object is built is reported. Syntax only: a port reached through another object is the
- * review's. Handing a parameter to another constructor, or using it inside a lambda or an object expression (which run
- * later), passes; so does a delegated property (`by lazy`), whose initializer runs on first use.
+ * review's. So is reading any constructor parameter's state as it is built — a `.value` reached through one (a
+ * repository's state opens its store on first read) — and starting a flow at once (`stateIn`/`shareIn` with
+ * `SharingStarted.Eagerly`). Handing a parameter to another constructor, or using it inside a lambda or an object
+ * expression (which run later), passes; so does a delegated property (`by lazy`), whose initializer runs on first use.
  */
 class ConstructorsTouchNoPort(config: Config = Config.empty) : Rule(config) {
     override val issue = Issue(
@@ -55,23 +58,39 @@ class ConstructorsTouchNoPort(config: Config = Config.empty) : Rule(config) {
 
     private fun report(owner: KtClass, built: KtExpression) {
         val ports = portTypes(owner.containingKtFile)
-        val parameters = owner.primaryConstructorParameters
+        val all = owner.primaryConstructorParameters.mapNotNull { it.name }.toSet()
+        val portParameters = owner.primaryConstructorParameters
             .filter { it.typeReference?.text?.removeSuffix("?") in ports }
             .mapNotNull { it.name }
             .toSet()
-        (listOf(built).filterIsInstance<KtQualifiedExpression>() + built.collectDescendantsOfType<KtQualifiedExpression>())
+        val qualified = (listOf(built) + built.collectDescendantsOfType<KtQualifiedExpression>())
+            .filterIsInstance<KtQualifiedExpression>()
             .distinct()
             .filterNot { it.deferred(built) }
-            .filter { (it.receiverExpression as? KtNameReferenceExpression)?.getReferencedName() in parameters }
-            .forEach {
-                report(
-                    CodeSmell(
-                        issue,
-                        Entity.from(it),
-                        "`${it.text}` reaches a constructor parameter while the object is built: do it on first use.",
-                    ),
-                )
-            }
+        qualified.filter { it.receiverName() in portParameters }
+            .forEach { smell(it, "reaches a port") }
+        qualified.filter { it.rootName() in all && it.selectorExpression?.text == "value" }
+            .forEach { smell(it, "reads a constructor parameter's state") }
+        (listOf(built) + built.collectDescendantsOfType<KtCallExpression>())
+            .filterIsInstance<KtCallExpression>()
+            .filterNot { it.deferred(built) }
+            .filter { it.calleeExpression?.text in STARTS && it.valueArguments.any { a -> "Eagerly" in a.text } }
+            .forEach { smell(it, "starts a flow at once") }
+    }
+
+    private fun smell(at: KtElement, what: String) = report(
+        CodeSmell(issue, Entity.from(at), "`${at.text}` $what while the object is built: do it on first use."),
+    )
+
+    /** The name [this] is reached through directly: `a` for `a.b`, none for `a.b.c`'s outer call. */
+    private fun KtQualifiedExpression.receiverName(): String? =
+        (receiverExpression as? KtNameReferenceExpression)?.getReferencedName()
+
+    /** The name a chain of `.`/`?.` starts from: `a` for `a.b.c()`. */
+    private fun KtQualifiedExpression.rootName(): String? = when (val receiver = receiverExpression) {
+        is KtNameReferenceExpression -> receiver.getReferencedName()
+        is KtQualifiedExpression -> receiver.rootName()
+        else -> null
     }
 
     /** The simple names this file imports from the ports — what its constructor parameters may be typed as. */
@@ -88,3 +107,6 @@ class ConstructorsTouchNoPort(config: Config = Config.empty) : Rule(config) {
 }
 
 private const val PORTS = "app.snapsync.ports."
+
+/** The flow operators that start collecting as they are called, given `SharingStarted.Eagerly`. */
+private val STARTS = setOf("stateIn", "shareIn")

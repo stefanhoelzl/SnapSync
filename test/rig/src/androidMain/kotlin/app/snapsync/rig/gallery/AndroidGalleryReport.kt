@@ -3,7 +3,7 @@ package app.snapsync.rig.gallery
 import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
-import app.snapsync.compose.AppCore
+import app.snapsync.composition.app.AppGraph
 import app.snapsync.levers.CensusView
 import app.snapsync.levers.GalleryView
 import app.snapsync.rig.RigGrant
@@ -14,7 +14,7 @@ import app.snapsync.rig.RigGrant
  * straight off MediaStore with no policy at all, as the iOS census fetches with no predicate — so an exclusion the
  * policy makes is visible as the difference.
  */
-fun androidGalleryReader(core: () -> AppCore, context: Context): suspend (String?, Boolean, Boolean) -> GalleryView =
+fun androidGalleryReader(core: () -> AppGraph, context: Context): suspend (String?, Boolean, Boolean) -> GalleryView =
     { cutoff, resources, includesUpload ->
         val report = GalleryReport(
             photos = core().ownPhotos,

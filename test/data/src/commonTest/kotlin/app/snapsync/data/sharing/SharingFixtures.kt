@@ -116,7 +116,7 @@ internal class Library(
 
     /** The member picks [photos] — the selection the observer reads under a partial grant. */
     suspend fun select(vararg photos: GalleryAssetResources) {
-        selection.published(flowOf(SelectionSnapshot(photos.toList())), beforePublish = {}).collect()
+        selection.published(flowOf(SelectionSnapshot(photos.toList())), beforePublish = NothingWithheld).collect()
     }
 
     /** The reads that were of the library's albums. */
@@ -150,4 +150,9 @@ internal class Received(
     override suspend fun handles(): HandlesRead = handles
 
     override suspend fun recognition(event: EventId): RecognitionRead = recognition
+}
+
+/** A publication nothing is withheld before. */
+internal object NothingWithheld : BeforePublish {
+    override suspend fun before(selection: SelectionState.Read) = Unit
 }

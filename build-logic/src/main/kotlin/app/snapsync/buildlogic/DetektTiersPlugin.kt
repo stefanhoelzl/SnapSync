@@ -74,11 +74,7 @@ class DetektTiersPlugin : Plugin<Project> {
 
         root.registerTier("detektShellTier", "shell", srcDirs("shell")) { exclude(excludeTests) }
         root.registerTier("detektUiTier", "ui", srcDirs("ui")) { exclude(excludeTests) }
-        root.registerTier("detektCoreTier", "core", srcDirs("core")) {
-            exclude(excludeTests)
-            // `compose/` is carved out into its own tier below — a zone that carries a written decision-free law.
-            exclude("**/app/snapsync/compose/**")
-        }
+        root.registerTier("detektCoreTier", "core", srcDirs("core")) { exclude(excludeTests) }
         // The layers whose numbers are a CLAIM, not debt (`config/detekt/entrypoints.yml`, `scheduling.yml`,
         // `domain.yml`).
         root.registerTier("detektEntryPointsTier", "entrypoints", srcDirs("entrypoints")) { exclude(excludeTests) }
@@ -93,11 +89,6 @@ class DetektTiersPlugin : Plugin<Project> {
             exclude(excludeTests)
             // Shell source contributed into `:app:ios`, owned by `detektAppShell` at threshold 2.
             exclude("**/test/rig/src/hook/**", "**/test/rig/src/ext-hook/**")
-        }
-        // A path sub-scope of the core, carved out of `core` ("The composition layer").
-        root.registerTier("detektComposeTier", "compose", srcDirs("core")) {
-            include("**/app/snapsync/compose/**")
-            exclude(excludeTests)
         }
         // Every module's test source sets, plus the modules that are nothing but tests.
         root.registerTier(
@@ -187,10 +178,6 @@ class DetektTiersPlugin : Plugin<Project> {
         val APP_SHELL_SOURCES = listOf(
             "app/ios/src",
             "app/ios/extension/src",
-            // The shared host composition (`snapSyncHost`): wiring every root calls, holding no decision.
-            "domain/host/src",
-            // The app's composition (`snapSyncApp`): it constructs and connects.
-            "domain/compose/src",
             // The JVM root (`JvmApp`): the same composition as the iOS root, for the JVM test equipment.
             "app/jvm/src",
             // Compiled INTO `:app:ios` under `-Psnapsync.rig=true`, so it is shell source for gate purposes even
@@ -216,7 +203,6 @@ class DetektTiersPlugin : Plugin<Project> {
             // naming); their DECISIONS are the shell proof's business, at threshold 2.
             ":app:ios" to "shell",
             ":app:ios:extension" to "shell",
-            ":domain:host" to "shell",
             ":app:jvm" to "shell",
             ":app:android" to "shell",
 
@@ -225,7 +211,6 @@ class DetektTiersPlugin : Plugin<Project> {
             ":domain:wire" to "core",
             ":domain:format" to "core",
             ":domain:ports" to "core",
-            ":domain:compose" to "core",
             ":adapter:generic:app" to "core",
             ":adapter:generic:mock" to "core",
             ":adapter:generic:motionphoto" to "core",
@@ -248,6 +233,7 @@ class DetektTiersPlugin : Plugin<Project> {
             // The composition layer: wiring only, so its decision measures are a claim too (`config/detekt/composition.yml`).
             ":domain:composition:process" to "composition",
             ":domain:composition:extension" to "composition",
+            ":domain:composition:app" to "composition",
 
             // Compose. Its own tier because Compose inflates cyclomatic complexity and function length
             // STRUCTURALLY — a screen that renders six states has six branches by construction.

@@ -42,4 +42,20 @@ class ConstructorsTouchNoPortTest {
         )
         assertEquals(0, findings.size, findings.map { it.message }.toString())
     }
+
+    @Test
+    fun `reading a parameter's state or starting a flow at once as the object is built is reported`() {
+        val findings = ConstructorsTouchNoPort().lint(
+            """
+            class Query(private val membership: Repository, keys: Store, scope: CoroutineScope) {
+                private val seeded = membership.state.value
+                val presence = combine(membership.state, keys.state, ::of).stateIn(scope, SharingStarted.Eagerly, null)
+                val later = combine(membership.state, keys.state, ::of)
+                    .stateIn(scope, SharingStarted.WhileSubscribed(), null)
+                fun now() = membership.state.value
+            }
+            """.trimIndent(),
+        )
+        assertEquals(2, findings.size, findings.map { it.message }.toString())
+    }
 }

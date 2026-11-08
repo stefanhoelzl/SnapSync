@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
  *  - nothing else a shipped root links — the closure of their main project dependencies, rig lines excluded — reaches
  *    any of them;
  *  - no production Kotlin imports a mock's package: the types a production root composes over, `AppDevicePorts`
- *    (`:domain:compose`'s) and `ExtensionDevicePorts` (the composition layer's), reach no mock by construction.
+ *    and `ExtensionDevicePorts` (both the composition layer's), reach no mock by construction.
  *
  * The rig's own hook directories live under `test/` and are compiled into the roots only under the same switch.
  */

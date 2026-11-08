@@ -88,7 +88,7 @@ kotlin {
             // The photo-library contracts bind the grant-aware composition production calls over the
             // PhotoKit adapters (`docs/architecture.md`, "A live binding binds the composition
             // production calls").
-            implementation(project(":domain:compose"))
+            implementation(project(":domain:composition:app"))
             // The storage services' SQLite behaviour on this target, measured over the real `IosDatabases`
             // (`docs/architecture.md`): a `:domain:*` build file names no module, so those tests live here.
             // The device identity's never-mint invariant, end to end through the real adapters.

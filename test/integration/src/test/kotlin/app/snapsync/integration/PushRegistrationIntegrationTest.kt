@@ -39,7 +39,7 @@ class PushRegistrationIntegrationTest {
     }
 
     /**
-     * **The credential arm of `AppCore.installCompositionSubscriptions` is wired**.
+     * **The credential arm of `AppGraph.installCompositionSubscriptions` is wired**.
      *
      * THE JOIN THIS PINS. The app publishes a delivered APNs token only when it differs from the last
      * registration the backend accepted. A registration refused because the backend rejected the credential

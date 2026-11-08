@@ -42,17 +42,19 @@ class SelectionSnapshotsTest {
 
     @Test
     fun `each selection is seen before it is published, and an empty emission is skipped`() = runTest {
-        val selection = SelectionSnapshots()
+        val snapshots = SelectionSnapshots()
         val before = mutableListOf<Pair<List<AssetId>?, List<AssetId>?>>()
         val published = mutableListOf<List<AssetId>?>()
 
-        selection.published(
+        snapshots.published(
             flowOf(null, SelectionSnapshot(listOf(a, b)), null, SelectionSnapshot(listOf(c))),
-            beforePublish = { read ->
-                yield() // the withholding step may suspend
-                before += read.ids() to selection.state.value.ids()
+            beforePublish = object : BeforePublish {
+                override suspend fun before(selection: SelectionState.Read) {
+                    yield() // the withholding step may suspend
+                    before += selection.ids() to snapshots.state.value.ids()
+                }
             },
-        ).collect { published += selection.state.value.ids() }
+        ).collect { published += snapshots.state.value.ids() }
 
         assertEquals<List<Pair<List<AssetId>?, List<AssetId>?>>>(
             listOf(ids("A", "B") to null, ids("C") to ids("A", "B")),
@@ -64,7 +66,7 @@ class SelectionSnapshotsTest {
             published,
             "one emission per selection; a null is none",
         )
-        assertEquals(ids("C"), selection.read?.ids(), "the latest selection is the one read")
+        assertEquals(ids("C"), snapshots.read?.ids(), "the latest selection is the one read")
     }
 
     @Test
@@ -78,7 +80,7 @@ class SelectionSnapshotsTest {
         runCurrent()
         assertFalse(read, "nothing has been read yet")
 
-        selection.published(flowOf(SelectionSnapshot(emptyList())), beforePublish = {}).collect()
+        selection.published(flowOf(SelectionSnapshot(emptyList())), beforePublish = NothingWithheld).collect()
         runCurrent()
         assertTrue(read)
         assertEquals(emptyList(), assertIs<SelectionState.Read>(selection.state.value).facts())
@@ -98,7 +100,7 @@ class SelectionSnapshotsTest {
         runCurrent()
         assertFalse(answered, "a partial grant waits for its selection")
 
-        selection.published(flowOf(SelectionSnapshot(listOf(a, b))), beforePublish = {}).collect()
+        selection.published(flowOf(SelectionSnapshot(listOf(a, b))), beforePublish = NothingWithheld).collect()
         runCurrent()
         assertTrue(answered)
         assertEquals(2, selection.selectedPhotos)
@@ -112,7 +114,7 @@ class SelectionSnapshotsTest {
         launch { selection.answerableOnce(PhotoAccess.LIMITED).collect { answered++ } }
         runCurrent()
         assertEquals(0, answered, "a partial grant waits for its selection")
-        selection.published(flowOf(SelectionSnapshot(listOf(a))), beforePublish = {}).collect()
+        selection.published(flowOf(SelectionSnapshot(listOf(a))), beforePublish = NothingWithheld).collect()
         runCurrent()
         assertEquals(1, answered)
     }

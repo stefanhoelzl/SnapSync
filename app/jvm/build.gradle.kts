@@ -1,6 +1,6 @@
 // `:app:jvm` (`docs/architecture.md`, `docs/testing.md` "The JVM root"): the JVM composition root — what `:app:ios`
 // is to the phone, for the JVM test equipment. It composes the app exactly as the iOS root does — `startProcess`,
-// then `snapSyncHost` — over the adapters its CALLER chooses (the mocks, real JVM storage, the real `api/`), and
+// then `composeApp` — over the adapters its CALLER chooses (the mocks, real JVM storage, the real `api/`), and
 // models process death as `relaunch()`: the per-process faces are rebuilt over the same durable state.
 //
 // Wiring only, and gated as a shell (`detektAppShell`): no levers, no test DSL, no decision. The levers are the
@@ -17,8 +17,7 @@ kotlin {
 
 dependencies {
     // What a caller names: the composed app and its status host, and the mocks it chooses from.
-    api(project(":domain:host"))
-    api(project(":domain:compose"))
+    api(project(":domain:composition:app"))
     api(project(":domain:composition:process"))
     api(project(":domain:composition:extension"))
     api(project(":domain:presentation"))

@@ -55,12 +55,12 @@ import kotlin.test.assertTrue
  */
 class CompositionSeamTest {
 
-    /** The composition bundles (law "The composition layer") → the file declaring each, in `compose/` or the layer. */
+    /** The composition bundles (law "The composition layer") → the file declaring each. */
     private val bundles = mapOf(
-        "AppPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt",
+        "AppPorts" to "$APP/AppPorts.kt",
         "ExtensionPorts" to "$EXTENSION/ExtensionPorts.kt",
         "ProcessPorts" to "$PROCESS/ProcessPorts.kt",
-        "AppDevicePorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/DevicePorts.kt",
+        "AppDevicePorts" to "$APP/AppPorts.kt",
         "ExtensionDevicePorts" to "$EXTENSION/ExtensionPorts.kt",
     )
 
@@ -336,11 +336,13 @@ class CompositionSeamTest {
     }
 
     private companion object {
-        /** Where the composition is built: the app's (`compose/`, until phase 5) and the composition layer's. */
-        val COMPOSITIONS = listOf("compose", "composition/process", "composition/extension")
+        /** Where the composition is built: the composition layer. */
+        val COMPOSITIONS = listOf("composition/app", "composition/process", "composition/extension")
 
         const val PROCESS = "domain/composition/process/src/commonMain/kotlin/app/snapsync/composition/process"
 
         const val EXTENSION = "domain/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension"
+
+        const val APP = "domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app"
     }
 }

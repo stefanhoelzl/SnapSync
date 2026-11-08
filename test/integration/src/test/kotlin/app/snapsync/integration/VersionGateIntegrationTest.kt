@@ -16,7 +16,7 @@ import kotlin.test.assertNotNull
  * The version gate end to end, over the REAL composed core, driven through the control protocol.
  *
  * Nothing here is simulated between the backend port and the screen. The backend mock answers a genuine `426`, as the
- * real backend does; the REAL authenticated backend composed in `AppCore` hands it to the
+ * real backend does; the REAL authenticated backend composed in `AppGraph` hands it to the
  * REAL `AppVersionGate`, which records it; and the REAL container reduces it into `UiState`. What each of those steps
  * proves separately is asserted separately — `CredentialedBackendTest` for the branch, `BackendContract` for the
  * refusal — and what only this can prove is

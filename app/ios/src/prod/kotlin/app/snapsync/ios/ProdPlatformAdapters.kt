@@ -1,7 +1,7 @@
 package app.snapsync.ios
 
 import app.snapsync.background.IosWake
-import app.snapsync.compose.AppDevicePorts
+import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.dev.InertDevControls
 import app.snapsync.entry.NoEntryEvents
 import co.touchlab.kermit.Logger

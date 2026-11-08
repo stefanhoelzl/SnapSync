@@ -46,7 +46,7 @@ class RigHooks(
      * support.
      */
     private val transferBinding: String,
-    /** The device logs' tail, supplied by the shell because `AppCore` does not expose its ports. */
+    /** The device logs' tail, supplied by the shell because `AppGraph` does not expose its ports. */
     val deviceLog: suspend (process: LoggingProcess, maxBytes: Int) -> String?,
     /**
      * The OS's view of the upload-job extension registration, or `null` where the OS has no such selector.

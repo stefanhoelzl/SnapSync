@@ -1,6 +1,6 @@
 package app.snapsync.rig
 
-import app.snapsync.compose.AppCore
+import app.snapsync.composition.app.AppGraph
 import app.snapsync.format.TimestampText
 import app.snapsync.levers.DownloadView
 import app.snapsync.levers.Readiness
@@ -16,7 +16,7 @@ import app.snapsync.ui.state.UiState
  * the counts in [UiState] move then and stand still while the app is away. A caller that needs what landed with the
  * app away reads the backend. The counts themselves are not reported.
  */
-internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: RigHooks): RigState {
+internal suspend fun readState(core: AppGraph, host: StatusContainerHost, hooks: RigHooks): RigState {
     val progress = core.downloadProgress.value
     // The invite URL and the inline create error live INSIDE the UI state, so the rig
     // reports exactly what the screen is rendering. The membership's own facts — its direction and capture range —

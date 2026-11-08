@@ -29,7 +29,7 @@ plugins {
 // TWO HOSTS, ONE PROTOCOL (`docs/testing.md`, "One control protocol, served by two hosts").
 // `commonMain` is the server, the routes, the state projection, the closed verb vocabulary and every command
 // table both hosts share. `iosMain` + `src/hook/` are the app host (above). `jvmMain` is the JVM host: the
-// app the JVM root (`:app:jvm`) composes over the mocks — the same `snapSyncHost` the iOS root calls — handed
+// app the JVM root (`:app:jvm`) composes over the mocks — the same `composeApp` the iOS root calls — handed
 // to the unchanged server through its own hook, with the operating system played through the mocks'
 // operator faces. The JVM target links into no shipped-format binary; only test
 // equipment consumes it (`docs/architecture.md`, "The module set withholds; packages organize").
@@ -62,7 +62,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            // The rig is written against `:domain` types only (AppCore, the read-model StateFlows) plus
+            // The rig is written against `:domain` types only (AppGraph, the read-model StateFlows) plus
             // the presentation read-model it serializes. Platform-bound verbs arrive as injected lambdas
             // the host shell builds — the same shape `flow/` uses for port touches — so this module names
             // no platform API and an Android target would be a build-file edit, not a rewrite.
@@ -89,7 +89,9 @@ kotlin {
             implementation(project(":domain:inbound"))
             // `BackendReach` speaks the device API as `api/openapi.yaml` declares it: the generated routes and DTOs.
             implementation(project(":domain:wire"))
-            implementation(project(":domain:compose"))
+            implementation(project(":domain:composition:app"))
+            // What the rig drives through the app's graph — the uploader pin's follow — is an entry point's.
+            implementation(project(":domain:entrypoints"))
             implementation(project(":domain:composition:process"))
             implementation(project(":domain:composition:extension"))
             // The device-log writer the rig re-points at the extension's log for an invoked cycle.

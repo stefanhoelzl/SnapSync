@@ -10,13 +10,11 @@ import kotlin.test.assertTrue
  * tells the core is always one of the composition's entry points — never a callback some root or adapter wired up
  * for itself:
  *
- *  - a `*Handlers` bundle is constructed only in the compositions (production source), whose handlers are the entry
- *    points — and in the host zone for the handlers that need the status host to exist first (`UiHandlers`: an intent is
- *    the container's);
- *  - `inbound` is called only from `compose/`'s registration (`AppCore.inbound`, which the host calls once it is
- *    assembled) and the host zone, once per adapter — and from `startProcess` for the per-process event port
- *    (`ProcessMetrics`), which every root sets up before it composes anything, and from
- *    `composeExtension` for the upload extension's `ExtensionHost`: that process has no host zone at all.
+ *  - a `*Handlers` bundle is constructed only in the composition layer (production source), whose handlers are the
+ *    entry points;
+ *  - `inbound` is called only from a composing function, once per adapter — `composeApp` for the app's event ports,
+ *    `startProcess` for the per-process event port (`ProcessMetrics`), which every root sets up before it composes
+ *    anything, and `composeExtension` for the upload extension's `ExtensionHost`.
  *
  * Both are pinned exact-in-set and non-vacuous: a gate that finds no construction site or no registration would be
  * passing on nothing. Test equipment (contract bindings, the rig, the world) is not production and registers its
@@ -34,34 +32,31 @@ class ListenDoorTest {
         production.filter { pattern.containsMatchIn(ZoneGates.stripComments(it.text)) }.mapTo(sortedSetOf()) { it.path }
 
     @Test
-    fun `handlers are built only in the composition and host zones`() {
+    fun `handlers are built only in the composition layer`() {
         val sites = filesMatching(Regex("""(?<!class )\b[A-Z]\w*Handlers\("""))
         assertTrue(sites.isNotEmpty(), "no handler bundle is built anywhere — the scan is broken")
         assertEquals(
             setOf(
-                // The app's entry points, each the handler of the delivery it is named for.
-                "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppInbound.kt",
+                // The app's entry points, each the handler of the delivery it is named for, the push's among them.
+                "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ComposedApp.kt",
+                "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/AppGraph.kt",
                 "/domain/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension/" +
                     "ExtensionComposition.kt",
                 "/domain/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt",
-                // The UI handlers: they reach the status host, which only the host zone may build.
-                "/domain/host/src/commonMain/kotlin/app/snapsync/host/ComposedApp.kt",
             ),
             sites,
-            "a `*Handlers` bundle built outside `compose/` and the host zone is a callback wired past the " +
-                "composition's door",
+            "a `*Handlers` bundle built outside the composition layer is a callback wired past its door",
         )
     }
 
     @Test
-    fun `inbound is called only from the composition and host zones`() {
+    fun `inbound is called only from the composition layer`() {
         val sites = filesMatching(Regex("""\.(inbound|listen)\("""))
         assertTrue(sites.isNotEmpty(), "no event port is registered anywhere — the scan is broken")
         assertEquals(
             setOf(
-                // The app's event ports, registered once the host is assembled (`AppCore.inbound`, the host's call).
-                "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppInbound.kt",
-                "/domain/host/src/commonMain/kotlin/app/snapsync/host/ComposedApp.kt",
+                // The app's event ports, each registered once by its one composing function (`composeApp`).
+                "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ComposedApp.kt",
                 // The per-process event ports: set up by every root before any composition (the extension has no host).
                 "/domain/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt",
                 // The upload extension's one entry port, registered by its own composition — it has no host zone.

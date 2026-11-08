@@ -126,7 +126,7 @@ class OwnLibrary(
 
     /** The member's partial selection becomes [assets], read as the selection observer reads it. */
     suspend fun select(assets: List<GalleryAssetResources>) {
-        selection.published(flowOf(SelectionSnapshot(assets))) {}.collect()
+        selection.published(flowOf(SelectionSnapshot(assets)), NothingWithheld).collect()
     }
 
     /** [id] is filed in another app's album titled [title]. */
@@ -141,4 +141,9 @@ class OwnLibrary(
         this.received.handles = received
         return photos.contribution(direction, range)
     }
+}
+
+/** A publication nothing is withheld before. */
+object NothingWithheld : app.snapsync.data.sharing.BeforePublish {
+    override suspend fun before(selection: app.snapsync.data.sharing.SelectionState.Read) = Unit
 }

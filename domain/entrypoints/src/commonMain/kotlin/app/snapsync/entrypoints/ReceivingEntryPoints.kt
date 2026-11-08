@@ -20,6 +20,7 @@ import app.snapsync.application.receiving.SettleInterruptedImports
 import app.snapsync.application.receiving.SweepUnclaimedStaging
 import app.snapsync.application.receiving.WithholdRecognition
 import app.snapsync.application.sharing.CountOwnPhotos
+import app.snapsync.data.sharing.BeforePublish
 import app.snapsync.data.sharing.SelectionState
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
@@ -225,9 +226,14 @@ class ReceivedPositionReport(
  * A selection the gallery is about to publish: when it holds marked photos the store does not record, the membership's
  * recognition is withheld BEFORE any reader sees the snapshot ([WithholdRecognition]).
  */
-class SelectionRecognition(private val membership: MembershipQuery, private val withhold: WithholdRecognition) {
+class SelectionRecognition(
+    private val membership: MembershipQuery,
+    private val withhold: WithholdRecognition,
+) : BeforePublish {
     @OptIn(EntryPointCall::class)
-    suspend fun before(selection: SelectionState.Read) = withhold(membership.state.value, selection)
+    override suspend fun before(selection: SelectionState.Read) {
+        withhold(membership.state.value, selection)
+    }
 }
 
 /**

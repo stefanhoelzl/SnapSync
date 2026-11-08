@@ -6,6 +6,7 @@ import app.snapsync.data.logs.LoggingProcess
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.ReceivingCounts
+import app.snapsync.data.report.EnvironmentRead
 import app.snapsync.data.trust.PresentedCertificate
 import app.snapsync.data.trust.PresentedChain
 import app.snapsync.data.trust.RefusalFacts
@@ -20,7 +21,6 @@ import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.report.DiagnosticDump
 import app.snapsync.domain.report.Fact
 import app.snapsync.domain.report.ReportContext
-import app.snapsync.domain.report.ReportedEnvironment
 import app.snapsync.domain.upload.AssetProgress
 import app.snapsync.format.PhotoGrantText
 import app.snapsync.format.TimestampText
@@ -34,7 +34,7 @@ private fun MembershipRepository.joined(): Membership? = (state.value as? Member
  * reach neither the ledger nor a log line, so this is the only place they appear.
  */
 class ReportState(
-    private val environment: ReportedEnvironment,
+    private val environment: EnvironmentRead,
     private val membership: MembershipRepository,
     private val grant: GrantRead,
     /** The upload facts: whether the extension is registrable, and the app uploader's admission (both may run). */
@@ -46,7 +46,7 @@ class ReportState(
     fun section(context: ReportContext): Map<String, String> = buildMap {
         put("screen", context.screen)
         putAll(context.shown)
-        putAll(environment.fields())
+        putAll(environment.environment().fields())
         put("extension_registrable", osUploader.admission().name)
         put("app_admission", appAdmission.admission().name)
         putAll(verification(context.verification))

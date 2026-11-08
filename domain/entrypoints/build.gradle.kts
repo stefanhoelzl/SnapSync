@@ -23,6 +23,11 @@ kotlin {
             // invocation (`OnProcess`, built by the extension's own composition).
             implementation(project(":domain:application"))
             implementation(project(":domain:data"))
+            // Host assembly — a person reached the app — builds the status host and shows its states (`AssembleHost`).
+            implementation(project(":domain:presentation"))
+            implementation(project(":ui:state"))
+            // `StatusContainerHost` is an Orbit `ContainerHost`; presentation does not export Orbit.
+            implementation(libs.orbit.core)
             implementation(libs.kermit)
         }
     }

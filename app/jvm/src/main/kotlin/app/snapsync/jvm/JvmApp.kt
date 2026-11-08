@@ -1,12 +1,12 @@
 package app.snapsync.jvm
 
-import app.snapsync.compose.AppDevicePorts
+import app.snapsync.composition.app.AppDevicePorts
+import app.snapsync.composition.app.ComposedApp
+import app.snapsync.composition.app.composeApp
 import app.snapsync.composition.extension.ExtensionDevicePorts
 import app.snapsync.composition.extension.composeExtension
 import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.dates.JvmDateFormatting
-import app.snapsync.host.ComposedApp
-import app.snapsync.host.snapSyncHost
 import app.snapsync.identity.NoPlatformDeviceId
 import app.snapsync.metrics.NoProcessMetrics
 import app.snapsync.ports.CrashReporter
@@ -23,7 +23,7 @@ import kotlinx.coroutines.cancelAndJoin
 
 /**
  * **The JVM root** (`docs/testing.md`, "The JVM root"): the app composed on the JVM exactly as `SnapSyncRoot` composes
- * it on the phone — the shared host composition (`snapSyncHost`, whose first act is the process's) over ports and
+ * it on the phone — the shared host composition (`composeApp`, whose first act is the process's) over ports and
  * nothing else — and the upload extension composed beside it exactly as its own root composes it
  * (`composeExtension`), over the adapters [adapters] builds from [durable] for each launch.
  *
@@ -129,7 +129,7 @@ class JvmApp<D>(
             http = lazyOf(ports.systems.http),
         )
 
-        val composed: ComposedApp = snapSyncHost(
+        val composed: ComposedApp = composeApp(
             appScope,
             lanes.composition,
             lanes.reduction,

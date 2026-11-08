@@ -1,6 +1,6 @@
 package app.snapsync.rig
 
-import app.snapsync.compose.AppCore
+import app.snapsync.composition.app.AppGraph
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.CONTRACT_TIMEOUT
 import app.snapsync.contracts.InAppContract
@@ -75,7 +75,7 @@ private fun <T : Any> uncomposedRefusals(service: LeverService<T>, uncomposed: S
  */
 fun hostService(
     hooks: RigHooks,
-    core: () -> AppCore,
+    core: () -> AppGraph,
     host: () -> StatusContainerHost,
     relaunch: Verb<suspend (scene: Boolean) -> Unit>,
     reinstall: Verb<suspend () -> Unit>,

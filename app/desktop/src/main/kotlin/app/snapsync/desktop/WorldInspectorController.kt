@@ -67,7 +67,7 @@ import kotlin.time.Duration.Companion.seconds
  * The single mutation path for the full-stack world harness (test equipment — no tests): every inspector control
  * goes through a named method here, never an inline mutation in a composable.
  *
- * The app is the one the JVM root composes (`:app:jvm`'s [JvmApp] — the same `snapSyncHost` the iOS root calls) over
+ * The app is the one the JVM root composes (`:app:jvm`'s [JvmApp] — the same `composeApp` the iOS root calls) over
  * the device as mocks ([JvmMocks]). The phone pane shows what the app showed on its `Ui` port — [shown] — and hands
  * the screen's taps back to it as intents ([tap]): it builds no status host of its own. Every control plays a mock's
  * operator face — the person holding the phone, the operating system, the backend, another member — and every

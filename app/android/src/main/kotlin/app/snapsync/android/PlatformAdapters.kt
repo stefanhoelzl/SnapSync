@@ -1,6 +1,6 @@
 package app.snapsync.android
 
-import app.snapsync.compose.AppDevicePorts
+import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.Ui
