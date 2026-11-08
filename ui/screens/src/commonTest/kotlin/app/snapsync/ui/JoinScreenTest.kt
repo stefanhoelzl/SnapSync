@@ -42,6 +42,7 @@ import app.snapsync.ui.resources.access_range_title
 import app.snapsync.ui.resources.access_shared_title
 import app.snapsync.ui.resources.album_folder_nothing
 import app.snapsync.ui.resources.album_none
+import app.snapsync.ui.resources.album_receive
 import app.snapsync.ui.resources.album_share
 import app.snapsync.ui.resources.album_toggle
 import app.snapsync.ui.resources.cancel
@@ -783,6 +784,11 @@ class JoinScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "The album is offered on by default and declinable in one tap",
+        scenario = "On Android the explanation names received photos only",
+    )
     fun `a phone with folder albums offers the album — collecting only what is received`() = runComposeUiTest {
         // Capability `event-album`: on Android the album is the folder received photos are saved into, so the note
         // never names the member's own photos, which stay in the camera folder.
@@ -796,6 +802,11 @@ class JoinScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "The album is offered on by default and declinable in one tap",
+        scenario = "On Android without receiving the album collects nothing",
+    )
     fun `a phone with folder albums says the album collects nothing without receiving`() = runComposeUiTest {
         setScreen {
             TestStatusScreen(
@@ -826,6 +837,20 @@ class JoinScreenTest {
 
         setScreen { TestStatusScreen(note(shareOn = true, receiveOn = false)) }
         onNodeWithText(str(Res.string.album_share)).assertExists()
+    }
+
+    @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "The album is offered on by default and declinable in one tap",
+        scenario = "The explanation follows the switches",
+    )
+    fun `an iPhone with sharing off says the album collects what is received`() = runComposeUiTest {
+        setScreen {
+            TestStatusScreen(joining(ready(), form = Choices(shareOn = false, receiveOn = true, saveToAlbum = true)))
+        }
+        onNodeWithText(str(Res.string.album_toggle)).performScrollTo().assertToggle(ToggleableState.On)
+        onNodeWithText(str(Res.string.album_receive)).assertExists()
     }
 
     @Test

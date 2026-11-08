@@ -78,6 +78,7 @@ edge :adapter:generic:app :domain:ports
 edge :adapter:generic:app :domain:services
 edge :adapter:generic:app :test:contracts
 edge :adapter:generic:app :test:edge
+edge :adapter:generic:app :test:verifies
 edge :adapter:generic:mock :domain:compose
 edge :adapter:generic:mock :domain:composition:extension
 edge :adapter:generic:mock :domain:composition:process
@@ -327,6 +328,7 @@ edge :test:data :domain:ports
 edge :test:data :domain:query
 edge :test:data :domain:wire
 edge :test:data :test:contracts
+edge :test:data :test:verifies
 edge :test:edge :adapter:generic:app
 edge :test:edge :test:contracts
 edge :test:feature :adapter:generic:mock

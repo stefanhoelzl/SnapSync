@@ -259,6 +259,31 @@ Deno.test("PATCH /events/:id → 200, and ONLY the name changes", async () => {
   db.close();
 });
 
+// @Verifies(spec = "manage-membership", requirement = "Any member renames the event for everyone until its photos are deleted", scenario = "A guest fixes a typo in the name")
+// The api's part: a member who did not create the event renames it, and what every other member reads is the new
+// name. The guest's screen and the other members' apps are `MembershipChangesIntegrationTest`'s.
+Deno.test("PATCH /events/:id → a guest's rename is what every member reads", async () => {
+  const db = await store();
+  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const created = await app.request("/api/v2/events", {
+    method: "POST",
+    body: JSON.stringify({ name: "Ana's 3oth", startsAt: STARTS_AT }),
+  });
+  assertEquals(created.status, 201, "the host's device creates it");
+  const { eventId } = await created.json() as { eventId: string };
+  const renamed = await app.request(`/api/v2/events/${eventId}`, {
+    method: "PATCH",
+    headers: await as(D2),
+    body: JSON.stringify({ name: "Ana's 30th" }),
+  });
+  assertEquals(renamed.status, 200, "a guest's device renames it");
+  for (const reader of [D, D2]) {
+    const read = await app.request(`/api/v2/events/${eventId}`, { headers: await as(reader) });
+    assertEquals((await read.json() as Record<string, unknown>).name, "Ana's 30th", reader);
+  }
+  db.close();
+});
+
 Deno.test("PATCH /events/:id → 404 when absent; 400 on a bad name or id", async () => {
   const empty = await store();
   const db = await storeWithEvent();

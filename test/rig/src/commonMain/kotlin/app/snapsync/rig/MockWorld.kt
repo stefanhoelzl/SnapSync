@@ -22,6 +22,7 @@ import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreRead
+import app.snapsync.wire.api.ChangeEventReply
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.DeviceFilesReply
 import app.snapsync.wire.api.EventFilesReply
@@ -35,6 +36,7 @@ import app.snapsync.wire.api.PublishManifestReply
 import app.snapsync.wire.api.Reply
 import app.snapsync.wire.api.ReportReceivedReply
 import app.snapsync.wire.api.Routes
+import app.snapsync.wire.models.EventChange
 import app.snapsync.wire.models.EventCreate
 import app.snapsync.wire.models.Manifest
 import app.snapsync.wire.models.ManifestAsset
@@ -182,6 +184,12 @@ class BackendReach(
         if (reply != LeaveEventReply.Left) refused("leave $deviceId from $eventId", reply)
     }
 
+    /** [deviceId] renames [eventId] to [name], as any member's rename reaches the backend. */
+    suspend fun rename(eventId: String, deviceId: String, name: String) {
+        val reply = send(Routes.ChangeEvent.request(eventId, EventChange(name = name)), by = deviceId)
+        if (reply !is ChangeEventReply.Changed) refused("$deviceId's rename of $eventId", reply)
+    }
+
     /**
      * [deviceId] reports it holds every photo of the others up to the position the union of [eventId] stands at now —
      * what a current build says once its downloads are all in its library.
@@ -228,11 +236,12 @@ class BackendReach(
 
     /**
      * [request], sent as the gateway sends it: the declared version and the token of the device its path names — or, on
-     * a route a token is optional on, none ([anonymous]), so the backend reads it as nobody's.
+     * a route a token is optional on, none ([anonymous]), so the backend reads it as nobody's. A path that names no device
+     * is sent by [by], or by the reach's own device.
      */
-    private suspend fun <R : Reply> send(request: GatedRequest<R>, anonymous: Boolean = false): R {
+    private suspend fun <R : Reply> send(request: GatedRequest<R>, anonymous: Boolean = false, by: String? = null): R {
         val wire = request.wire
-        val acting = DEVICE_IN_PATH.find(wire.path)?.groupValues?.get(1) ?: REACH_DEVICE
+        val acting = DEVICE_IN_PATH.find(wire.path)?.groupValues?.get(1) ?: by ?: REACH_DEVICE
         val credential = if (anonymous) emptyMap() else authorization(acting)
         val sent = HttpRequest(wire.method, base + wire.path, wire.headers + versionHeaders() + credential, wire.body)
         return when (val result = transport.send(sent)) {

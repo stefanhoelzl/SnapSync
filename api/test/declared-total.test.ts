@@ -81,6 +81,9 @@ const read = async (db: Db, query = "") => {
   };
 };
 
+// @Verifies(spec = "sync-status", requirement = "The joined screen counts the photos shared and received", scenario = "The receiver's total matches the sharer's")
+// The api's part: the total a receiver counts from is everything the sharer declared, landed or not. What each app
+// counts and declares is `DeclaredPhotosIntegrationTest`'s.
 Deno.test("declared → every declared asset counts, landed or not", async () => {
   const { db, declare, land } = await twoMembers();
   await declare(D2, ["A", "B", "C"]);

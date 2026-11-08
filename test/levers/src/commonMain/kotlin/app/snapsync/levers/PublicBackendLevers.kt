@@ -50,6 +50,9 @@ interface PublicBackendLevers {
     /** A fellow member leaving [event], as any build's leave reaches the backend. */
     suspend fun foreignDeviceLeave(device: String, @JoinedEvent event: String? = null)
 
+    /** A fellow member renaming [event] to [name], as any build's rename reaches the backend. */
+    suspend fun foreignDeviceRename(device: String, name: String, @JoinedEvent event: String? = null)
+
     /**
      * A fellow member saying it holds every photo of the others up to where [event]'s union stands now — what a current
      * build reports once its downloads are in its library.

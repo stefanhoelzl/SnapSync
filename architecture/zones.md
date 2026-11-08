@@ -72,6 +72,7 @@ flowchart LR
   adapter_generic_app --> domain_services
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
+  adapter_generic_app --> test_verifies
   adapter_generic_mock --> domain_compose
   adapter_generic_mock --> domain_composition_extension
   adapter_generic_mock --> domain_composition_process

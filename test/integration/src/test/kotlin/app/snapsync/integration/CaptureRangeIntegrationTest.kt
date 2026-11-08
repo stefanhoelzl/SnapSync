@@ -13,6 +13,7 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
+import kotlin.time.Instant
 
 /**
  * **Only photos inside the range the member chose are shared** (`openspec/specs/photo-sharing/spec.md`), the scenarios
@@ -121,6 +122,39 @@ class CaptureRangeIntegrationTest {
         ).joinToString("&")
     }
 
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "The capture range stays on the device",
+        scenario = "Joining sends no range",
+    )
+    fun joining_with_a_chosen_range_and_sharing_inside_it_sends_neither_end() = behaviour {
+        // The ends are odd minutes no event date or photo shares, so a request that carried one would show it — as an
+        // instant, a local time in the host's zone or an epoch count. The photo the range keeps private proves the
+        // range was the one joined with.
+        given {
+            extensionUploadsOnly()
+            photoTaken("INSIDE", date = INSIDE_THE_ODD_RANGE)
+            photoTaken("EARLY", date = BEFORE_THE_MEMBERS_START)
+            createdEvent()
+        }
+
+        whenever {
+            confirmJoin(Choices(cutoff = ODD_START, until = ODD_END))
+            uploadAll()
+        }
+        then {
+            screen<Layer.Joined>()
+            sharedAlone("INSIDE", kept = listOf("EARLY"))
+            never<WorldEvent.BackendReceived> { request -> RANGE_TRACES.any { request.carries(it) } }
+            settled { true }
+        }
+    }
+
+    /** Whether [trace] is anywhere in this request as the service received it: its address, a header or its body. */
+    private fun WorldEvent.BackendReceived.carries(trace: String): Boolean =
+        url.orEmpty().contains(trace) || headers.values.any { trace in it } || body.orEmpty().contains(trace)
+
     /** [shared]'s bytes are stored, and none of [kept] is uploaded or declared to the event. */
     private fun Expectations.sharedAlone(shared: String, kept: List<String>) {
         event<WorldEvent.BytesStored> { it.asset == shared }
@@ -141,6 +175,17 @@ class CaptureRangeIntegrationTest {
         const val INSIDE_BOTH = "2026-05-28T10:00:00Z"
         const val BEFORE_THE_MEMBERS_START = "2026-05-20T10:00:00Z"
         const val AFTER_THE_MEMBERS_END = "2026-06-01T10:00:00Z"
+
+        /** A range at odd minutes, inside the event's dates: ends no request has a reason to carry. */
+        const val ODD_START = "2026-05-23T07:35:00Z"
+        const val ODD_END = "2026-05-29T19:25:00Z"
+        const val INSIDE_THE_ODD_RANGE = "2026-05-27T10:00:00Z"
+
+        /** Each end as a request could carry it: to the minute (the host's zone is UTC), and in seconds and millis. */
+        val RANGE_TRACES = listOf(ODD_START, ODD_END).flatMap {
+            val at = Instant.parse(it)
+            listOf(it.substringBeforeLast(':'), "${at.epochSeconds}", "${at.toEpochMilliseconds()}")
+        }
 
         /** Two weeks before the event's start: outside its dates, inside the range a link may carry. */
         const val BEFORE_THE_EVENT = "2026-05-01T10:00:00Z"

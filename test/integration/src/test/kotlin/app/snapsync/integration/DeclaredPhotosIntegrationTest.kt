@@ -37,7 +37,15 @@ class DeclaredPhotosIntegrationTest {
         requirement = "Progress counts only what this membership shares",
         scenario = "Photos still uploading count toward what there is to receive",
     )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen counts the photos shared and received",
+        scenario = "The receiver's total matches the sharer's",
+    )
     fun photos_still_uploading_elsewhere_are_counted_and_waited_for_until_they_land() = behaviour {
+        // For "The receiver's total matches the sharer's", the receiver's part: what there is to receive is everything
+        // the sharer declared, landed or not — 7 of 10. The sharer's part is the test below; the service's total is
+        // `declared-total.test.ts`'s.
         val all = (1..10).map { "P$it" }
         given {
             joinedEvent()
@@ -69,6 +77,39 @@ class DeclaredPhotosIntegrationTest {
                 it.health == SyncHealth.InSync && it.received == DirectionCount.Progress(done = 10, total = 10)
             }
         }
+    }
+
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen counts the photos shared and received",
+        scenario = "The receiver's total matches the sharer's",
+    )
+    fun a_sharer_counts_what_it_declared_and_declares_it_all_before_it_is_shared() = behaviour {
+        // The sharer's part: its own total is every photo it shares, and it declares every one of them to the event
+        // before their bytes land — the declaration the receiver's total is counted from (the test above).
+        val all = (1..4).map { "S$it" } // the app session's live transfers at once
+        given {
+            step("only the app uploads", act = { devControls.pin(app = true, extension = false) }, until = {})
+            joinedEvent()
+        }
+
+        whenever {
+            all.forEach { takePhoto(it) }
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.ManifestPublished> { it.added.containsAll(all) }
+            times(all.size) { event<WorldEvent.SessionTransferCreated>() }
+            settled { true }
+        }
+
+        whenever {
+            uploadSession.complete(primaryKey("S1"))
+            uploadSession.complete(primaryKey("S2"))
+            advance(SCREEN_REREAD)
+        }
+        then { screen<Layer.Joined> { it.counts?.shared == DirectionCount.Progress(done = 2, total = 4) } }
     }
 
     @Test

@@ -38,7 +38,7 @@ class AndroidPhotoPermission(
     context: Context,
     private val foreground: ForegroundActivity,
     private val log: Logger = Logger.withTag("photoPermission"),
-) {
+) : PhotoGrants {
 
     private val appContext = context.applicationContext
     private val record = appContext.getSharedPreferences(RECORD, Context.MODE_PRIVATE)
@@ -46,27 +46,27 @@ class AndroidPhotoPermission(
     private val requests = AtomicInteger()
 
     /** The grant as last read — every read here publishes it; a resumed activity reads it again. */
-    val grant: StateFlow<LibraryGrant> = state
+    override val grant: StateFlow<LibraryGrant> = state
 
     init {
         foreground.onResumed { refresh() }
     }
 
     /** The grant as it stands now. Cheap, synchronous, never raises anything. */
-    fun current(): LibraryGrant = read().also { state.value = it }
+    override fun current(): LibraryGrant = read().also { state.value = it }
 
     /**
      * Ask for access while it was never decided, and answer the grant that results. With no activity in front, or once
      * the member has answered, it asks nothing and answers the grant as it stands (`Gallery.requestAccess`).
      */
-    suspend fun requestAccess(): LibraryGrant =
+    override suspend fun requestAccess(): LibraryGrant =
         if (current() != LibraryGrant.NOT_DETERMINED) state.value else ask("requestAccess")
 
     /**
      * Android's selection sheet, for a partial grant (API 34+): asking again is how Android lets a member revise the
      * selection, or allow every photo. The selection arrives through the gallery's observer; this answers the grant.
      */
-    suspend fun widenSelection(): LibraryGrant =
+    override suspend fun widenSelection(): LibraryGrant =
         if (current() != LibraryGrant.LIMITED) state.value else ask("widenSelection")
 
     private fun refresh() {

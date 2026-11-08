@@ -1027,7 +1027,14 @@ class StatusScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Any member renames the event for everyone until its photos are deleted",
+        scenario = "A guest fixes a typo in the name",
+    )
     fun `success closes the dialog and clears the latch`() = runComposeUiTest {
+        // For "A guest fixes a typo in the name", the screen's part: a rename that succeeded closes the dialog. The
+        // rename itself and the other members' apps are `MembershipChangesIntegrationTest`'s, the service's the api's.
         var consumed = 0
         var dismissed = 0
         val status = mutableStateOf<RenameState>(RenameState.Idle)

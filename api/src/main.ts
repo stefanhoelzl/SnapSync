@@ -14,7 +14,7 @@
 import * as BunnySDK from "@bunny.net/edgescript-sdk";
 import { createApp } from "./app.ts";
 import { BUILD_SHA, DEPLOYMENT, readConfig } from "./config.ts";
-import { startErrorReporting } from "./error-report.ts";
+import { reporterFor } from "./error-report.ts";
 import { libsqlDb } from "./db-libsql.ts";
 import { storeSink } from "./request-log-store.ts";
 
@@ -24,15 +24,12 @@ import { storeSink } from "./request-log-store.ts";
 // and the tests build a `node:sqlite` one over the same port.
 const config = readConfig(Deno.env.toObject());
 
-// Failure reports (`error-report.ts`): started only when this bundle carries a DSN, which the resolver
-// renders for the deployed `prod` and `maintenance` bundles alone — so nothing else ever reports.
-const reporter = DEPLOYMENT.sentryDsn
-  ? startErrorReporting({
-    dsn: DEPLOYMENT.sentryDsn,
-    release: BUILD_SHA,
-    environment: config.maintenance ? "maintenance" : "production",
-  })
-  : undefined;
+// Failure reports (`error-report.ts`): started only when this bundle carries a DSN (`reporterFor`), which the
+// resolver renders for the deployed `prod` and `maintenance` bundles alone — so nothing else ever reports.
+const reporter = reporterFor(DEPLOYMENT.sentryDsn, {
+  release: BUILD_SHA,
+  environment: config.maintenance ? "maintenance" : "production",
+});
 
 const db = libsqlDb(config.databaseUrl, config.databaseToken);
 

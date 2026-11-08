@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import app.snapsync.android.permission.AndroidPhotoPermission
+import app.snapsync.android.permission.PhotoGrants
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
@@ -52,7 +53,7 @@ import kotlinx.coroutines.withContext
 @NeverAnswers(Never(member = "changeToken", answer = "null"))
 class AndroidGallery(
     context: Context,
-    private val permission: AndroidPhotoPermission,
+    private val permission: PhotoGrants,
     private val scope: CoroutineScope,
     private val log: Logger = Logger.withTag("gallery"),
 ) : AndroidGalleryReader(context, permission::current, log), Gallery {

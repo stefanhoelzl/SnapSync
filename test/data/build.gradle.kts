@@ -32,6 +32,8 @@ kotlin {
             implementation(libs.coroutines.test)
             // The structured log's severities, read back from what a suite records.
             implementation(libs.kermit)
+            // `@Verifies`: a scenario only a use case can be reached with is claimed by the test that shows it.
+            implementation(project(":test:verifies"))
         }
     }
 }

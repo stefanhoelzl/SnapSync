@@ -25,6 +25,7 @@ import {
   E,
   EVENT,
   joinEvent,
+  lineSink,
   recorder,
   rows,
   store,
@@ -138,6 +139,9 @@ Deno.test("encrypted event → plaintext, or a file of another key, is refused 4
   db.close();
 });
 
+// @Verifies(spec = "invite-link", requirement = "Only the whole invite opens an event's photos", scenario = "The stored photos cannot be opened without the invite")
+// The api's part: no route stores an encrypted event's photo unsealed. The app's part, that what it sends opens only
+// with the invite's key, is `EventKeyIntegrationTest`'s.
 Deno.test("encrypted event → every route that files bytes under it refuses plaintext, the event-less one included", async () => {
   const db = await member(KEY_ID);
   const { calls, fetchImpl } = recorder();
@@ -170,6 +174,51 @@ Deno.test("encrypted event → the extension's one-file key seals the plaintext 
       .arrayBuffer(),
   );
   assertEquals(file, asDevice, "byte for byte what the device writes with the same head");
+  db.close();
+});
+
+// @Verifies(spec = "invite-link", requirement = "Only the whole invite opens an event's photos", scenario = "The service never learns the event's key")
+// The api's part: the one photo's key the iPhone's background upload hands it seals that photo and is kept nowhere —
+// not in storage, the request log or the database. The app's part, that no request carries the event's key, is
+// `EventKeyIntegrationTest`'s.
+Deno.test("encrypted event → the extension's one-file key is used once and kept nowhere", async () => {
+  const db = await member(KEY_ID);
+  const { calls, fetchImpl } = recorder();
+  const lines: string[] = [];
+  const head = { ...freshHead(), keyId: await keyIdOf(EVENT_KEY) };
+  const fileKey = await fileKeyOf(EVENT_KEY, head.salt, AD);
+  const traces = [
+    encodeBase64Url(fileKey),
+    encodeHex(fileKey),
+    encodeBase64Url(EVENT_KEY),
+    encodeHex(EVENT_KEY),
+  ];
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl, logSink: lineSink(lines) })
+    .request(
+      BYTE_PATH,
+      putting(PHOTO, {
+        [FILE_KEY_HEADER]: encodeBase64Url(fileKey),
+        [FILE_HEAD_HEADER]: encodeBase64Url(encodeHead(head)),
+      }),
+    );
+  assertEquals(res.status, 201);
+  assertEquals(lines.length, 1, "the request was logged");
+  const outbound = calls.map((c) => `${c.url} ${JSON.stringify(c.init.headers ?? {})}`);
+  const tables = await rows(db, `SELECT name FROM sqlite_master WHERE type = 'table'`);
+  const stored = [];
+  for (const { name } of tables) {
+    stored.push(JSON.stringify(await rows(db, `SELECT * FROM "${name}"`)));
+  }
+  for (const trace of traces) {
+    for (
+      const [where, text] of [["the log", lines], ["a storage call", outbound], [
+        "the database",
+        stored,
+      ]] as const
+    ) {
+      assert(!text.some((t) => t.includes(trace)), `${where} holds a key: ${trace}`);
+    }
+  }
   db.close();
 });
 
