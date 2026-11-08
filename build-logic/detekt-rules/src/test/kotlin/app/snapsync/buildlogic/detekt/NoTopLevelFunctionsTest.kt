@@ -1,4 +1,4 @@
-package app.snapsync.tools.detekt
+package app.snapsync.buildlogic.detekt
 
 import io.gitlab.arturbosch.detekt.test.TestConfig
 import io.gitlab.arturbosch.detekt.test.lint

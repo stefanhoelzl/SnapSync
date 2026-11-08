@@ -7,25 +7,28 @@ import org.gradle.api.artifacts.VersionCatalogsExtension
 import java.io.File
 
 /**
- * `snapsync.detekt-tiers`, applied once, by the root (`docs/architecture.md`, "Complexity ceilings"): every detekt
- * task the build runs — the shell PROOF (`detektAppShell`) and the complexity BUDGETS (one task per tier) — and the
- * project's own rules on each.
+ * `snapsync.quality`, applied once, by the root (`docs/architecture.md`, "Complexity ceilings"): every detekt
+ * task the build runs — the shell PROOF (`detektAppShell`) and the complexity BUDGETS (one task per tier, the build
+ * logic's own included) — the project's own rules on each, and their tests on `check`.
  *
  * The plugin's own `detekt` task is disabled: it inspects the ROOT project's Kotlin source set, which does not exist,
  * so it would pass while inspecting nothing — a vacuous pass one tab-completion away from the real ones. Every detekt
  * task in this build is one registered here on purpose.
  */
-class DetektTiersPlugin : Plugin<Project> {
+class QualityPlugin : Plugin<Project> {
     override fun apply(root: Project) {
-        check(root == root.rootProject) { "snapsync.detekt-tiers is the root's: it reads every subproject" }
+        check(root == root.rootProject) { "snapsync.quality is the root's: it reads every subproject" }
         root.pluginManager.apply("io.gitlab.arturbosch.detekt")
         root.tasks.named("detekt").configure { enabled = false }
 
-        // The project's own rules (`:tools:detekt-rules`) and the two third-party rule sets, on every task registered
-        // here: the plugin hands the root's `detektPlugins` to each. Which files a rule reads is its `includes` in
-        // `config/detekt/_base.yml`.
+        // The project's own rules (build-logic's `:detekt-rules`, substituted by its coordinates) and the two
+        // third-party rule sets, on every task registered here: the plugin hands the root's `detektPlugins` to each.
+        // Which files a rule reads is its `includes` in `config/detekt/_base.yml`.
         val libs = root.extensions.getByType(VersionCatalogsExtension::class.java).named("libs")
-        root.dependencies.add("detektPlugins", root.project(":tools:detekt-rules"))
+        root.dependencies.add("detektPlugins", RULES)
+        // The rules' own tests: an included build's `check` is never reached from this one's.
+        val rulesTest = root.gradle.includedBuild(BUILD_LOGIC).task(":detekt-rules:test")
+        root.tasks.named("check").configure { dependsOn(rulesTest) }
         root.dependencies.add("detektPlugins", libs.findLibrary("detekt-formatting").get())
         root.dependencies.add("detektPlugins", libs.findLibrary("compose-rules-detekt").get())
 
@@ -112,16 +115,19 @@ class DetektTiersPlugin : Plugin<Project> {
         root.registerTier("detektQueryTier", "query", srcDirs("query")) { exclude(excludeTests) }
         root.registerTier("detektPresentationTier", "presentation", srcDirs("presentation")) { exclude(excludeTests) }
         root.registerTier("detektCompositionTier", "composition", srcDirs("composition")) { exclude(excludeTests) }
-        root.registerTier("detektHarnessTier", "harness", srcDirs("harness")) {
+        // The project's detekt rules are build logic now, but keep the harness ceilings they were measured under until
+        // the build-logic build joins the `buildscripts` tier.
+        val rules = root.file("build-logic/detekt-rules/src")
+        root.registerTier("detektHarnessTier", "harness", srcDirs("harness") + rules) {
             exclude(excludeTests)
             // Shell source contributed into `:app:ios`, owned by `detektAppShell` at threshold 2.
             exclude("**/test/rig/src/hook/**", "**/test/rig/src/ext-hook/**")
         }
-        // Every module's test source sets, plus the modules that are nothing but tests.
+        // Every module's test source sets, plus the modules that are nothing but tests — and the detekt rules' tests.
         root.registerTier(
             "detektTestsTier",
             "tests",
-            root.subprojects.map { it.layout.projectDirectory.dir("src").asFile },
+            root.subprojects.map { it.layout.projectDirectory.dir("src").asFile } + rules,
         ) { include(TEST_SOURCE_SET_DIRS.map { "**/$it/**" }) }
         // The build scripts: Kotlin carrying real logic. Of the convention plugins, the wire's route generator (build
         // logic, and real logic); the others predate the scan and are not in it yet — bringing them in is its own
@@ -130,10 +136,8 @@ class DetektTiersPlugin : Plugin<Project> {
             "detektBuildScriptsTier",
             "buildscripts",
             listOf(root.buildFile, root.file("settings.gradle.kts")) + root.subprojects.map { it.buildFile } +
-                listOf(
-                    root.file("build-logic/build.gradle.kts"),
-                    root.file("build-logic/src/main/kotlin/app/snapsync/buildlogic/wire"),
-                ),
+                BUILD_LOGIC_BUILD_FILES.map(root::file) +
+                root.file("build-logic/src/main/kotlin/app/snapsync/buildlogic/wire"),
         )
     }
 
@@ -185,6 +189,19 @@ class DetektTiersPlugin : Plugin<Project> {
     }
 
     companion object {
+        /** The included build holding the convention plugins and the project's detekt rules. */
+        const val BUILD_LOGIC = "build-logic"
+
+        /** The project's own rules, by the coordinates the root substitutes to build-logic's `:detekt-rules`. */
+        const val RULES = "app.snapsync.buildlogic:detekt-rules"
+
+        /** The build-logic build's own build scripts. */
+        val BUILD_LOGIC_BUILD_FILES = listOf(
+            "build-logic/settings.gradle.kts",
+            "build-logic/build.gradle.kts",
+            "build-logic/detekt-rules/build.gradle.kts",
+        )
+
         /** Kotlin source-set directory names that hold TESTS. Everything else under `src/` is production. */
         val TEST_SOURCE_SET_DIRS = listOf(
             "commonTest",
@@ -281,7 +298,6 @@ class DetektTiersPlugin : Plugin<Project> {
             ":test:journeys" to "harness",
             ":test:levers" to "harness",
             ":tools:diagrams" to "harness",
-            ":tools:detekt-rules" to "harness",
 
             // Modules with no production source at all.
             ":test:architecture" to "tests",

@@ -20,6 +20,11 @@ dependencyResolutionManagement {
     }
 }
 
+// The build-logic build again, as a build of LIBRARIES: one included only under `pluginManagement` contributes plugins
+// only, and every detekt task loads its `:detekt-rules` (`app.snapsync.buildlogic:detekt-rules`, substituted by
+// coordinates).
+includeBuild("build-logic")
+
 rootProject.name = "snapsync"
 
 include(":app:desktop")
@@ -54,7 +59,6 @@ include(":ui:components")
 include(":ui:state")
 include(":test:architecture")
 include(":tools:diagrams")
-include(":tools:detekt-rules")
 include(":test:contracts")
 include(":test:integration")
 include(":test:harness-driver")

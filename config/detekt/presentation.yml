@@ -1,4 +1,4 @@
-# The `presentation` tier (`DetektTiersPlugin`): `:core:presentation`, the reduction into the screen's state.
+# The `presentation` tier (`QualityPlugin`): `:core:presentation`, the reduction into the screen's state.
 #
 # A CLAIM, not debt (`docs/architecture.md`, "The core and its layers"): presentation reduces what the queries read into
 # `UiState`, one concern per file — a health ladder of rungs, a layer per world, a flow per surface — so a function

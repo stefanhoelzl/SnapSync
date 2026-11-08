@@ -1,4 +1,4 @@
-# The `data` tier (`DetektTiersPlugin`): `:core:data`, the repositories and the backend's protocol.
+# The `data` tier (`QualityPlugin`): `:core:data`, the repositories and the backend's protocol.
 #
 # A CLAIM, not debt (`docs/patterns.md`, "The data layer"): data translates and never decides — its only branch is an
 # exhaustive `when` over a fact or a domain verdict (`DataShape`), so a function stays at most 3 paths and 3 cognitive

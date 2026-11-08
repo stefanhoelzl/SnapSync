@@ -38,8 +38,8 @@ plugins {
     alias(libs.plugins.android.kmp.library) apply false
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.detekt)
-    // Every detekt task this build runs, and the project's own rules on each (`DetektTiersPlugin`).
-    id("snapsync.detekt-tiers")
+    // Every detekt task this build runs, and the project's own rules on each (`QualityPlugin`).
+    id("snapsync.quality")
     // Every module's archives named after its whole path, so no two modules' jars collide (`ArchiveNamesPlugin`).
     id("snapsync.archive-names")
     // Every module's coverage, described in the `coverage { }` block below (`docs/architecture.md`, "Coverage").
@@ -324,7 +324,7 @@ dependencyAnalysis {
 }
 
 // Every detekt task — the shell proof (`detektAppShell`) and the complexity budgets, one per tier — is registered by
-// the `snapsync.detekt-tiers` convention plugin (`build-logic`), which owns the shell roots and the tier map.
+// the `snapsync.quality` convention plugin (`build-logic`), which owns the shell roots and the tier map.
 
 // The build logic's own tests (today the zero coverage gate's judgement, `CoverageZeroTest`): an included build's
 // `check` is never reached from this one's, so without this edge they would run on nobody's command.

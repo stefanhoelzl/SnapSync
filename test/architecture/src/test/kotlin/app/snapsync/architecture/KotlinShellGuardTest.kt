@@ -45,7 +45,7 @@ class KotlinShellGuardTest {
         ?: fail("could not locate the repository root")
 
     /**
-     * DERIVED from `APP_SHELL_SOURCES` in the detekt convention plugin (`DetektTiersPlugin`) — the same list the
+     * DERIVED from `APP_SHELL_SOURCES` in the detekt convention plugin (`QualityPlugin`) — the same list the
      * `detektAppShell` task scans — rather than a second copy of it.
      *
      * It used to be a copy, and the duplication had already failed once: `build.gradle.kts` records that
@@ -66,7 +66,7 @@ class KotlinShellGuardTest {
     private val shellSourceRoots: List<String> = run {
         val build = File(
             repoRoot,
-            "build-logic/src/main/kotlin/app/snapsync/buildlogic/DetektTiersPlugin.kt",
+            "build-logic/src/main/kotlin/app/snapsync/buildlogic/QualityPlugin.kt",
         ).readText()
         // Comments are stripped BEFORE the block is delimited. A `[^)]*` match truncated at the first
         // `)` inside a comment — "(it constructs and forwards, it decides nothing)" — silently dropping
@@ -77,7 +77,7 @@ class KotlinShellGuardTest {
             .substringBefore("\n        )")
             .takeIf { it.isNotBlank() }
             ?: fail(
-                "DetektTiersPlugin no longer declares `val APP_SHELL_SOURCES = listOf(...)` — the shell " +
+                "QualityPlugin no longer declares `val APP_SHELL_SOURCES = listOf(...)` — the shell " +
                     "gate's scope has moved, and this guard is now deriving from nothing. Re-point it " +
                     "rather than restoring a hand-written copy.",
             )
@@ -141,7 +141,7 @@ class KotlinShellGuardTest {
         assertTrue(
             unscanned.isEmpty(),
             "shell modules the shell gate does not scan: $unscanned. Add each one's `src` to " +
-                "`APP_SHELL_SOURCES` in DetektTiersPlugin. A shell absent from that list is never " +
+                "`APP_SHELL_SOURCES` in QualityPlugin. A shell absent from that list is never " +
                 "measured for decisions, and nothing else would tell you \u2014 which is exactly how " +
                 "the forge shell went unscanned until the tree was measured.",
         )
