@@ -26,7 +26,6 @@ import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
-import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.ScheduleResult
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
@@ -279,10 +278,10 @@ class AndroidWake(context: Context, private val log: Log = Log("wake")) : Wake {
          * An entry port's delivery: wait for the process's composition to listen on the [AndroidWake] (no composition,
          * such as a build that refused at start or a rig launch whose wake is mocked, runs nothing), then [block].
          */
-        suspend fun deliver(id: WakeId, block: suspend (AndroidWake) -> Unit) {
+        suspend fun deliver(block: suspend (AndroidWake) -> Unit) {
             val wake = withTimeoutOrNull(COMPOSITION_WAIT_MILLIS) { registration.filterNotNull().first() } ?: return
-            PlatformCalls.attemptSuspending { block(wake) }
-                .onFailure { Log("wake").unlabelled.w("the <id> wake failed", "id" of id, cause = it) }
+            // The wake's run is the runtime's, and contained there: a failure is reported where the run was started.
+            block(wake)
         }
     }
 }
@@ -298,7 +297,7 @@ private class WorkerCompletion(private val done: CompletableDeferred<Unit>) : Co
 class WakeWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val id = AndroidWake.idOf(inputData.getString(AndroidWake.ID)) ?: return Result.success()
-        AndroidWake.deliver(id) { it.run(id) }
+        AndroidWake.deliver { it.run(id) }
         return Result.success()
     }
 }
@@ -319,7 +318,7 @@ class WakeJobService : JobService() {
         val delivered = AtomicBoolean(false)
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
-                AndroidWake.deliver(id) { it.runJob(params.jobId, id, delivered) }
+                AndroidWake.deliver { it.runJob(params.jobId, id, delivered) }
             } finally {
                 // Absent once `onStopJob` took it: the system has ended the job, and must not hear of it again.
                 if (runs.remove(params.jobId) != null) jobFinished(params, false)

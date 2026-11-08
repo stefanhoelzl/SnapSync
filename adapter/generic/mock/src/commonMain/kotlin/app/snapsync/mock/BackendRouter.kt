@@ -2,6 +2,7 @@ package app.snapsync.mock
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.ResourceRoleText
@@ -9,7 +10,6 @@ import app.snapsync.format.UploadKeyText
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.BackendFault
 import app.snapsync.levers.WorldEvent
-import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
@@ -154,7 +154,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         if (req.challenge !in state.challenges) return text(CONFLICT, "stale challenge")
         val proof = req.proof as? AppleAppAttestProof
         val genuine = proof != null &&
-            PlatformCalls.attempt { Base64.decode(proof.attestation) }.getOrNull()
+            base64OrNull(proof.attestation)
                 ?.contentEquals("attestation:${proof.keyId}:${req.challenge}".encodeToByteArray()) == true
         if (!genuine) return text(UNAUTHORIZED, "attestation rejected: ${DeviceRefusal.DEVICE_UNVERIFIABLE.wireName}")
         state.attestedKeys[req.deviceId] = proof.keyId
@@ -397,7 +397,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
 
     /** A whole-second UTC instant, the only shape the description admits — or `null`. */
     private fun instantOrNull(raw: String): Instant? =
-        raw.takeIf { WHOLE_SECOND.matches(it) }?.let { PlatformCalls.attempt { Instant.parse(it) }.getOrNull() }
+        raw.takeIf { WHOLE_SECOND.matches(it) }?.let(Instant::parseOrNull)
 
     /** How an operation is reached — which of its gates run, which hold an operator can put on it. */
     private enum class Access { OPEN, OPTIONAL, GATED }
@@ -456,7 +456,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         val bodyLength: Long get() = body?.encodeToByteArray()?.size?.toLong() ?: 0
 
         fun <T> decode(strategy: DeserializationStrategy<T>): T? =
-            body?.let { PlatformCalls.attempt { WireJson.decodeFromString(strategy, it) }.getOrNull() }
+            body?.let { decodedOrNull(strategy, it) }
 
         companion object {
             fun of(request: HttpRequest): Call? {
@@ -619,23 +619,38 @@ private fun <T> json(
 internal fun ResourceRole.onWire(): Role = Role.fromValue(ResourceRoleText.of(this)) ?: error("no described role for $this")
 
 /** A published manifest, as the backend keeps it — under the device the path names. */
-private fun Manifest.inApp(deviceId: String): MockManifest? = PlatformCalls.attempt {
-    MockManifest(
-        deviceId = deviceIdOf(deviceId),
-        assets = assets.map { asset ->
-            MockManifestAsset(
-                AssetId.parse(asset.assetId)!!,
-                asset.creationDate,
-                asset.resources.map { r ->
-                    val role = ResourceRoleText.parse(r.role.value)!!
-                    MockManifestResource(role, r.contentType, r.key, r.filename)
-                },
-            )
-        },
-        version = version,
-        final = `final`,
-    )
-}.getOrNull()
+private fun Manifest.inApp(deviceId: String): MockManifest? = MockManifest(
+    deviceId = DeviceId.parse(deviceId) ?: return null,
+    assets = assets.map { asset ->
+        MockManifestAsset(
+            AssetId.parse(asset.assetId) ?: return null,
+            asset.creationDate,
+            asset.resources.map { r ->
+                val role = ResourceRoleText.parse(r.role.value) ?: return null
+                MockManifestResource(role, r.contentType, r.key, r.filename)
+            },
+        )
+    },
+    version = version,
+    final = `final`,
+)
+
+/** [text]'s bytes, or `null` when it is no Base64. */
+private fun base64OrNull(text: String): ByteArray? = try {
+    Base64.decode(text)
+} catch (_: IllegalArgumentException) {
+    null
+}
+
+/**
+ * [text] as [strategy] reads it, or `null` when it does not read — kotlinx's failures are `IllegalArgumentException`s
+ * (`SerializationException` among them).
+ */
+internal fun <T> decodedOrNull(strategy: DeserializationStrategy<T>, text: String): T? = try {
+    WireJson.decodeFromString(strategy, text)
+} catch (_: IllegalArgumentException) {
+    null
+}
 
 /** A manifest resource's upload key — the name the byte route stores it under. */
 internal fun storedKey(

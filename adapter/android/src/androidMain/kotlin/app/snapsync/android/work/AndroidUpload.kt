@@ -13,7 +13,6 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
 import app.snapsync.inbound.of
-import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import app.snapsync.ports.CreateOutcome
@@ -32,6 +31,7 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.headers
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
+import io.ktor.http.BadContentTypeFormatException
 import io.ktor.http.ContentType
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.isSuccess
@@ -50,6 +50,7 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.net.URI
+import java.net.URISyntaxException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
@@ -156,7 +157,7 @@ class AndroidUpload(
         } ?: return CreateOutcome.FAILED.also {
             log.unlabelled.w("<tag>: the source is neither a MediaStore item nor a file here", "tag" of tag)
         }
-        PlatformCalls.attempt { URI(target.url).rawPath }.getOrNull()
+        pathOf(target.url)
             ?: return CreateOutcome.FAILED.also { log.unlabelled.w("<tag>: the destination is not a URL", "tag" of tag) }
         synchronized(live) {
             // A transfer still waiting for an unmetered network holds no slot: it sends nothing yet.
@@ -317,11 +318,11 @@ class AndroidUpload(
     ) : OutgoingContent.WriteChannelContent() {
         override val contentLength: Long? = length
         override val contentType: ContentType? = type?.let {
-            PlatformCalls.attempt {
-                ContentType.parse(
-                    it,
-                )
-            }.getOrNull()
+            try {
+                ContentType.parse(it)
+            } catch (_: BadContentTypeFormatException) {
+                null
+            }
         }
 
         override suspend fun writeTo(channel: ByteWriteChannel) {
@@ -358,4 +359,11 @@ class AndroidUpload(
         const val CONTENT_TYPE = "Content-Type"
         const val CONTENT_LENGTH = "Content-Length"
     }
+}
+
+/** The path of [url], or `null` when it is no URI. */
+private fun pathOf(url: String): String? = try {
+    URI(url).rawPath
+} catch (_: URISyntaxException) {
+    null
 }

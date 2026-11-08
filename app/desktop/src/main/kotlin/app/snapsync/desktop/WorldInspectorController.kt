@@ -38,7 +38,6 @@ import app.snapsync.mock.MockManifestAsset
 import app.snapsync.mock.MockManifestResource
 import app.snapsync.mock.StorePage
 import app.snapsync.mock.id
-import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryRead
@@ -59,6 +58,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.LocalDateTime
+import java.awt.HeadlessException
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import kotlin.time.Duration.Companion.seconds
@@ -387,7 +387,7 @@ class WorldInspectorController(
             launch {
                 mocks.systemUi.shared.collect { shared ->
                     shared.lastOrNull()?.let { url ->
-                        PlatformCalls.attempt { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
+                        copyToClipboard(url)
                         appendConsole("share invite → $url")
                     }
                 }
@@ -612,3 +612,14 @@ private fun createIntents(name: String, from: LocalDateTime, until: LocalDateTim
     UiIntent.RangeUntilMinute(until.minute),
     UiIntent.ConfirmCreate,
 )
+
+/** [text] on the system clipboard — where the desktop has one: a headless run, or a clipboard held elsewhere, has not. */
+private fun copyToClipboard(text: String) {
+    try {
+        Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
+    } catch (_: HeadlessException) {
+        // No desktop: nothing to copy to.
+    } catch (_: IllegalStateException) {
+        // The clipboard is held elsewhere right now: the console line still names the link.
+    }
+}
