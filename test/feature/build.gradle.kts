@@ -9,8 +9,8 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The `android` target (`snapsync.android`), mirroring the mocks'. Its `commonTest` is not run on the emulator.
     id("snapsync.android")
-    // Instrumented: its tests also cover the zones whose entries in the root build file's `coverage { }` name it
-    // (`:core:services` among them). It holds no class of its own to measure.
+    // Instrumented: its tests also cover the modules whose `coverage { }` name it in `alsoCoveredBy`
+    // (`:core:ports` and `:core:application`). It holds no class of its own to measure.
     alias(libs.plugins.kover)
 }
 

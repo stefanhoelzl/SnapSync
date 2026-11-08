@@ -664,7 +664,7 @@ the same variability where nothing describes it. *Gate:* `DevControlsContainment
 | Two runs that must not overlap name an `Exclusion` | `ExclusionTest` |
 | Production reads development controls only through `DevControls` | `DevControlsContainmentTest` + `NeverAnswersCheck` |
 | Every line through `Log`, its event a literal | `EventNameLiteralTest` |
-| Every core module has no uncovered line | `coverageZero` (credit per `alsoCoveredBy` in the root build file) |
+| Every core module has no uncovered line | `coverageZero` (credit per `alsoCoveredBy` in each module's `coverage { }`) |
 | The layers below presentation throw only an `InvalidProgramState`; no `require`, `check`, `!!` or throwing read | detekt `OnlyInvalidProgramStateThrows` (`domain`, `format`, `data`, `application`, `query`, `entrypoints`, `scheduling`, `inbound`) |
 | An `InvalidProgramState`'s `because` is a literal | detekt `InvalidProgramStateBecause` (every production source set) |
 | Nothing catches an `InvalidProgramState` | `CatchGateTest` |

@@ -42,13 +42,13 @@ core/            the core, one module per layer (domain format wire inbound port
 adapter/ ui/ app/ test/   the platform adapters, the screens, the roots, the test equipment - graph in architecture/modules.md
 openspec/       specs/ (contract of record: user-observable outcomes) + changes/archive/ (decision records)
 docs/           architecture · testing · deployment · patterns · agents - engineering explanation, NOT contract
-architecture/   GENERATED diagrams - `./gradlew architectureDiagrams` and commit; stale blocks the PR
+architecture/   GENERATED diagrams - written by `./gradlew build`; commit them, a tree the build leaves dirty blocks the PR
 metadata/       the listing copy both stores render from, App Review notes, Play declarations + art
 screenshots/    the committed raw captures: ios/ and android/
 scripts/        build and dev tooling
 .ship/          this repo's half of the global `/ship` skill (docs/agents.md)
-build-logic/    the included build holding the convention plugins
-tools/ config/ gradle/            more build tooling
+build-logic/    the included build: every convention plugin and task, and the project's detekt rules
+config/ gradle/            more build tooling
 ```
 
 **There is no `backend/`** - it split into `api/` + `site/`. Capability names are whatever `ls openspec/specs/`

@@ -481,7 +481,7 @@ min against ~10).
 
 | Job | Runner | What it does |
 |---|---|---|
-| `build` | ubuntu | `./gradlew build` (every target compiled, every JVM test, every architecture gate; needs Deno), then the diagrams freshness check: `architectureDiagrams` on the clean checkout must leave `architecture/` unchanged. |
+| `build` | ubuntu | `./gradlew build` (every target compiled, every JVM test, every architecture gate, every generated committed file written; needs Deno), then ONE check: the build left the tree clean (`git status --porcelain`, untracked files included), failing with the fix — run `./gradlew build` and commit what it wrote (`docs/architecture.md`, "Generated files are written by the build"). |
 | `metadata` | ubuntu | `openspec validate --specs --strict` (pinned 1.13.2), the resolver's suite (§1), and the App Store listing's offline validation (§6). |
 | `api-test`, `migration-rehearsal` | ubuntu | §2, "Gates". |
 | `site-build` | ubuntu | The site's build and `npm run check`. |
