@@ -1,7 +1,7 @@
 package app.snapsync.data.receiving
 
 import app.snapsync.data.gallery.assetId
-import app.snapsync.data.gallery.photoAccess
+import app.snapsync.data.gallery.PhotoGrants
 import app.snapsync.data.gallery.platformId
 import app.snapsync.data.gallery.role
 import app.snapsync.data.sharing.SelectionSnapshots
@@ -38,7 +38,7 @@ class MarkedPhotos(private val gallery: GalleryReader, private val selection: Se
 
     /** Every marked photo in [window] outside [known], by the token its name carries. */
     suspend fun inWindow(window: RecognitionWindow, known: Set<AssetId>): MarkedRead =
-        when (val plan = ReadPlan.of(gallery.access().photoAccess(), selection.read ?: NOTHING_READ)) {
+        when (val plan = ReadPlan.of(PhotoGrants.of(gallery.access()).access, selection.read ?: NOTHING_READ)) {
             ReadPlan.Walk -> fromLibrary(window, known)
             is ReadPlan.Snapshot -> MarkedRead.Found(
                 marked(plan.selection.assets, known) { it.within(window.from, window.until) },

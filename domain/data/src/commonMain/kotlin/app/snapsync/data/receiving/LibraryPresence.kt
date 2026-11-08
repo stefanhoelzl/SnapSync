@@ -1,7 +1,7 @@
 package app.snapsync.data.receiving
 
 import app.snapsync.data.gallery.assetId
-import app.snapsync.data.gallery.photoAccess
+import app.snapsync.data.gallery.PhotoGrants
 import app.snapsync.data.gallery.platformId
 import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.data.sharing.SelectionState
@@ -29,7 +29,7 @@ class LibraryPresence(private val gallery: GalleryReader, private val selection:
 
     /** The verdict for each of [ids] — an entry for every id asked about. */
     suspend fun of(ids: Set<AssetId>): Map<AssetId, AssetPresence> =
-        when (val plan = ReadPlan.of(gallery.access().photoAccess(), selection.read)) {
+        when (val plan = ReadPlan.of(PhotoGrants.of(gallery.access()).access, selection.read)) {
             ReadPlan.Walk -> fetched(ids)
             is ReadPlan.Snapshot -> selected(ids, plan.selection)
             ReadPlan.NotReadable -> ids.associateWith { AssetPresence.UNKNOWN }

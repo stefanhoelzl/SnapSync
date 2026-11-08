@@ -19,7 +19,6 @@ import app.snapsync.data.event.EventCreation
 import app.snapsync.data.foreground.AppForeground
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.gallery.PhotoGrants
-import app.snapsync.data.gallery.photoAccess
 import app.snapsync.data.links.LinkReading
 import app.snapsync.data.links.OpenedInvites
 import app.snapsync.data.process.FootprintReading
@@ -54,7 +53,6 @@ import app.snapsync.entrypoints.OnSelectionChanged
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Inbound
-import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Databases
@@ -94,7 +92,6 @@ import app.snapsync.scheduling.Observation
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
@@ -360,9 +357,6 @@ class AppCore internal constructor(
     /** The join gate's read of an invite's event, a lookup the screen asks on the composition lane. */
     val joinDetails: JoinDetailsLookup get() = work.membership.joinDetails
 
-    /** What the photo-library grant means now, over the permission port — the one read every feature takes. */
-    val galleryAccess: GalleryAccessState by lazy { GalleryAccessState(ports.gallery.grant) }
-
     /** The membership as a screen shows it, for readers outside the core (the status host): no service type. */
     val membership: StateFlow<MembershipShown> get() = work.membership.query.shown
 
@@ -375,10 +369,7 @@ class AppCore internal constructor(
     /** What the event album holds on this phone, for the status host's album wording. */
     val albumContents: AlbumContents get() = album.contents
 
-    /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
-    val photoPermission: StateFlow<GalleryAccess> get() = galleryAccess.grant
-
-    /** The photo-library grant, as the screen follows it. */
+    /** The photo-library grant, as the screen and the grant-change subscription follow it. */
     val photoGrant: PhotoGrantQuery by lazy { PhotoGrantQuery(PhotoGrants(ports.gallery.grant)) }
 
     /** How far the member's photos are shared, as the status host follows it. */
@@ -486,7 +477,7 @@ class AppCore internal constructor(
     fun installPermissionSubscriptions() {
         // The launch reconcile, then real changes only: the value the launch reconciles against is no change, and a
         // change that lands during the launch reconcile is still delivered (captured before the reconcile starts).
-        val changes = galleryAccess.changesSinceLaunch()
+        val changes = photoGrant.changesSinceLaunch()
         work.uploaderChange.deliver(UploaderChange.LAUNCH)
         observation.follow(changes, work.grantChanged)
         // The event album follows the grant: ensured whenever access is usable, gathered into once it became usable.
@@ -504,7 +495,7 @@ class AppCore internal constructor(
         // With one sweep per process and no re-arm, a sweep that ran before a partial grant's selection was read
         // would defer every inherited row to the next launch — and on a URLSession-driven relaunch that never
         // foregrounds, potentially every launch. So it waits until the presence source can answer.
-        observation.follow(selection.answerableOnce(ports.gallery.access().photoAccess()), work.selectionAnswerable)
+        observation.follow(selection.answerableOnce(PhotoGrants.of(ports.gallery.access()).access), work.selectionAnswerable)
     }
 
     /**

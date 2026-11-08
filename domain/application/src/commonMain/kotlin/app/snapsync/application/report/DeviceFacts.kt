@@ -40,7 +40,7 @@ class DeviceFacts(
             putConditions(reading)
             put(DiagnosticKeys.TIME_ZONE, conditions.zone())
             put(DiagnosticKeys.MEMORY_FOOTPRINT_MB, ReportFacts.megabytes(conditions.footprint())) { it.toString() }
-            val selected = ReportFacts.selectionPhotos(grant.standing(), selection.selectedPhotos)
+            val selected = ReportFacts.selectionPhotos(grant.grant(), selection.selectedPhotos)
             put(DiagnosticKeys.SELECTION_PHOTOS, selected) { it.toString() }
         }
     }

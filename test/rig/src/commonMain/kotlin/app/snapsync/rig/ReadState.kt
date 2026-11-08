@@ -43,6 +43,6 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: 
         ),
         build = hooks.buildFacts(),
         // The OS's answer is grant-dependent, so the grant it was read under travels with it (see [OsExtensionView]).
-        osExtension = hooks.readOsExtension(core.photoPermission.value.name),
+        osExtension = hooks.readOsExtension(RigGrant.name(core.photoGrant.state.value)),
     )
 }

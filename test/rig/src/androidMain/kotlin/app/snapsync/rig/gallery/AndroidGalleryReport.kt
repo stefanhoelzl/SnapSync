@@ -6,6 +6,7 @@ import android.provider.MediaStore
 import app.snapsync.compose.AppCore
 import app.snapsync.levers.CensusView
 import app.snapsync.levers.GalleryView
+import app.snapsync.rig.RigGrant
 
 /**
  * `GET /device/gallery` where the photo library is REAL on Android — the counterpart of the iOS app host's PhotoKit
@@ -17,7 +18,7 @@ fun androidGalleryReader(core: () -> AppCore, context: Context): suspend (String
     { cutoff, resources, includesUpload ->
         val report = GalleryReport(
             photos = core().ownPhotos,
-            grant = { core().photoPermission.value.name },
+            grant = { RigGrant.name(core().photoGrant.state.value) },
             census = { mediaStoreCensus(context) },
         )
         report.read(cutoff, resources, includesUpload)

@@ -1,6 +1,6 @@
 package app.snapsync.data.album
 
-import app.snapsync.data.gallery.photoAccess
+import app.snapsync.data.gallery.PhotoGrants
 import app.snapsync.data.gallery.platformId
 import app.snapsync.domain.album.AlbumAdd
 import app.snapsync.domain.album.AlbumContents
@@ -77,7 +77,7 @@ class PhotoAccessChanges(private val grant: StateFlow<LibraryGrant>) {
     val changes: Flow<AccessChange> = flow {
         var before: PhotoAccess? = null
         grant.collect { granted ->
-            val now = granted.photoAccess()
+            val now = PhotoGrants.of(granted).access
             emit(AccessChange(before, now))
             before = now
         }

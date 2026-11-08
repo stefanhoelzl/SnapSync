@@ -29,7 +29,7 @@ discovery differs). For the backend, load `local-backend`.
 
 State these before writing a scenario against this host, or you will write one that silently cannot run.
 
-- **No `GalleryAccess.LIMITED`.** `simctl privacy` has no `photos-limited` (though `contacts-limited`
+- **No `LibraryGrant.LIMITED`.** `simctl privacy` has no `photos-limited` (though `contacts-limited`
   exists). Accepted everywhere-gap: the device needs taps for it too.
 - **No APNs token** — `no valid "aps-environment" entitlement string found`. `simctl push` never contacts
   Apple, so a synthetic token through `rig os push-token --token <hex>` is the way in.

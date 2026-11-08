@@ -22,6 +22,7 @@ import app.snapsync.domain.report.Fact
 import app.snapsync.domain.report.ReportContext
 import app.snapsync.domain.report.ReportedEnvironment
 import app.snapsync.domain.upload.AssetProgress
+import app.snapsync.format.PhotoGrantText
 import app.snapsync.format.TimestampText
 
 /** The membership held, `null` while none is or it cannot be read now. */
@@ -49,7 +50,7 @@ class ReportState(
         put("extension_registrable", osUploader.admission().name)
         put("app_admission", appAdmission.admission().name)
         putAll(verification(context.verification))
-        put("photo_permission", grant.standing().name)
+        put("photo_permission", PhotoGrantText.report(grant.grant()))
         putAll(membershipFacts(membership.joined()))
     }
 

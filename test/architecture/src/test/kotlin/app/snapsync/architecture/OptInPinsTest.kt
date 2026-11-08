@@ -195,9 +195,6 @@ class OptInPinsTest {
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/gallery/PhotoGrants.kt" to mapOf(
             "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "the platform's grant read as the domain's `PhotoGrant`, one-to-one"),
         ),
-        "/domain/services/src/commonMain/kotlin/app/snapsync/services/gallery/GrantReading.kt" to mapOf(
-            "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "a hand-written StateFlow over the platform's grant (4.4)"),
-        ),
         "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/ios/qos/ThreadQos.kt" to mapOf(
             "DelicateCoroutinesApi" to Pin(1, "each lane's thread is never closed: it lives as long as the process"),
         ),
