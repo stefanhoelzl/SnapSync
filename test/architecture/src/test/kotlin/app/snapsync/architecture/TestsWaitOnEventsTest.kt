@@ -64,7 +64,8 @@ class TestsWaitOnEventsTest {
     }
 
     /**
-     * The all-real journeys (`:test:journeys`) wait the same way — on the events the device host serves — and then read
+     * The all-real journeys (`:test:journeys`) wait the same way — on the events the device host serves, or, with the app
+     * closed, on the local backend's request log as it grows (`BackendRequests`) — and then read
      * the real system once; they claim requirements and read no log, as the suite does, with no list of exceptions. The
      * wall-clock rule is not theirs: a device runs on real time, the journeys date their events and photos from today,
      * and their bounds are the client's waits (`RigClient.awaitScreen`), not their own.

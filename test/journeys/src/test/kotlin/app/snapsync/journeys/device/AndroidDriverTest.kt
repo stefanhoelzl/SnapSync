@@ -75,6 +75,57 @@ class AndroidDriverTest {
     }
 
     @Test
+    fun a_swipe_removes_the_apps_own_task_from_the_recent_apps() {
+        // `dumpsys activity recents`, as API 36 printed it (2026-11-07).
+        val recents = """
+              * Recent #0: Task{64d1a65 #165 type=standard A=10222:app.snapsync}
+              * Recent #1: Task{3a836bb #2 type=home I=com.google.android.apps.nexuslauncher/.NexusLauncherActivity}
+              * Recent #2: Task{3dc2d28 #162 type=standard A=10171:app.snapsync.other}
+        """.trimIndent()
+        val shell = RecordingShell { if ("recents" in it) Answer(0, recents, "") else Answer(0, "", "") }
+        AndroidDriver(shell, "adb", "s").removeTask("app.snapsync")
+        assertEquals(listOf("shell", "am", "stack", "remove", "165"), shell.commands.last().drop(3))
+        assertEquals(162, AndroidDriver.taskOf(recents, "app.snapsync.other"))
+        assertEquals(null, AndroidDriver.taskOf(recents, "app.snap"))
+    }
+
+    @Test
+    fun the_last_exit_is_the_newest_record_and_names_its_subreason() {
+        // `dumpsys activity exit-info`, newest first, as API 36 printed it after `am stack remove` (2026-11-07).
+        val dump = """
+            ACTIVITY MANAGER PROCESS EXIT INFO (dumpsys activity exit-info)
+              package: app.snapsync
+                Historical Process Exit for uid=10222
+                    ApplicationExitInfo #0:
+                      timestamp=2026-11-07 19:02:46.387 pid=4571 realUid=10222 packageUid=10222 definingUid=10222 user=0
+                      process=app.snapsync reason=10 (USER REQUESTED) subreason=22 (REMOVE TASK) status=0
+                      importance=400 pss=0.00 rss=0.00 description=remove task state=empty trace=null
+                    ApplicationExitInfo #1:
+                      timestamp=2026-11-07 19:01:27.001 pid=4402 realUid=10222 packageUid=10222 definingUid=10222 user=0
+                      process=app.snapsync reason=10 (USER REQUESTED) subreason=21 (FORCE STOP) status=0
+        """.trimIndent()
+        assertEquals(AndroidDriver.ExitRecord(4571, 10, 22, "REMOVE TASK"), AndroidDriver.ExitRecord.parse(dump))
+        assertEquals(
+            null,
+            AndroidDriver.ExitRecord.parse("ACTIVITY MANAGER PROCESS EXIT INFO (dumpsys activity exit-info)"),
+        )
+    }
+
+    @Test
+    fun the_library_watches_are_the_jobs_waiting_for_a_content_change() {
+        val dump = """
+            JOB #u0a216/4: 7a3b app.snapsync/androidx.work.impl.background.systemjob.SystemJobService
+                Minimum latency: +59m59s
+            JOB #u0a216/7: 9c2d app.snapsync/app.snapsync.android.work.WakeJobService
+                  Trigger content URIs:
+                    1 content://media/external/images/media
+        """.trimIndent()
+        val driver = AndroidDriver(RecordingShell { Answer(0, dump, "") }, "adb", "s")
+        assertEquals(1, driver.libraryWatches("app.snapsync"))
+        assertEquals(1, driver.delayedJobs("app.snapsync"))
+    }
+
+    @Test
     fun a_failing_command_fails_naming_itself_and_what_it_printed() {
         val driver = AndroidDriver(RecordingShell { Answer(1, "", "Failure [INSTALL_FAILED]") }, "adb", "s")
         val failed = assertFailsWith<CommandFailed> { driver.install(File("a.apk")) }

@@ -25,7 +25,7 @@ import kotlin.time.TimeSource
  * It starts the real backend, installs the rig build, grants it the photo library BEFORE its first launch, and chooses
  * its adapters: real for every system Android has an adapter for, mock for the rest (the crash reporter, and the iOS-only
  * upload-job queue and extension registration). Then the journeys, over the control channel — the same ones the iOS
- * simulator app runs — and, last, the force-stop journey, which only Android can play.
+ * simulator app runs — then the two only Android can play: the swipe-away journey, and, last, the force-stop one.
  *
  * It FAILS on: a backend that never answers, an app baked for another backend, a vocabulary entry the host leaves
  * unclassified, a refused adapter choice, and any journey failure.
@@ -39,8 +39,11 @@ class AndroidRun(
 ) {
     private val client = RigClient("http://127.0.0.1:$RIG_PORT")
 
+    /** Where the local backend writes its request log: the evidence's, and what the swipe-away journey follows. */
+    private val backendLog = evidence.file("backend.log")
+
     /** Answers whether every journey passed; throws on what stopped the run before them. */
-    fun run(): Boolean = LocalBackend(api, evidence.file("backend.log")).use { backend ->
+    fun run(): Boolean = LocalBackend(api, backendLog).use { backend ->
         try {
             runBlocking { journeys(backend) }
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
@@ -89,12 +92,13 @@ class AndroidRun(
 
         evidence.stage("journeys: starting")
         val passed = runner.run(
-            listOf(JOURNEYS, FORCE_STOP_JOURNEY),
+            listOf(JOURNEYS, SWIPE_AWAY_JOURNEY, FORCE_STOP_JOURNEY),
             mapOf(
                 APP_A to "http://127.0.0.1:$RIG_PORT",
                 BACKEND to LocalBackend.BASE,
                 ANDROID_SERIAL to device.serial,
                 ADB to device.adb,
+                BACKEND_LOG to backendLog.path,
             ),
         )
         evidence.stage("journeys: done")

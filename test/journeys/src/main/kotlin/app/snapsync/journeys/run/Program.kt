@@ -131,6 +131,9 @@ internal const val JOURNEYS = "app.snapsync.journeys.Journeys"
 /** The journey only Android plays: a force-stop, which no tool can perform on an iPhone. */
 internal const val FORCE_STOP_JOURNEY = "app.snapsync.journeys.ForceStopJourney"
 
+/** Android's other journey: a swipe from the recent apps, which leaves the app's scheduled work standing. */
+internal const val SWIPE_AWAY_JOURNEY = "app.snapsync.journeys.SwipeAwayJourney"
+
 /** The rig release build `scripts/journeys-build android` leaves. */
 private const val ANDROID_APK = "app/android/build/outputs/apk/release/android-release.apk"
 
@@ -139,6 +142,9 @@ internal const val APP_A = "snapsync.journey.appA"
 internal const val BACKEND = "snapsync.journey.backend"
 internal const val ANDROID_SERIAL = "snapsync.journey.androidSerial"
 internal const val ADB = "snapsync.journey.adb"
+
+/** The file the local backend writes its request log to ([BackendRequests]). */
+internal const val BACKEND_LOG = "snapsync.journey.backendLog"
 
 internal const val EXIT_OK = 0
 internal const val EXIT_FAILED = 1
