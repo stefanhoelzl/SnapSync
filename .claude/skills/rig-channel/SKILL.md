@@ -762,7 +762,7 @@ throws `LeverRefused`; an omitted `event` is the joined one, an omitted `device`
   `union(event?)`, `event(event?)` (registered, name, closedAt), `objects(device?, event?)`,
   `foreignDevice(device, assets, event?, kind?, filename?, final?, uploading?)` (a fellow member with complete photos —
   `PhotoKind.MOTION_PHOTO`: each a real Google motion photo; answers the event), `foreignDeviceLeave(device, event?)`,
-  `foreignDeviceReceived(device, event?)`.
+  `foreignDeviceRename(device, name, event?)`, `foreignDeviceReceived(device, event?)`.
 
 Gone with the move: every `backend/…` and `foreign-device[/…]` curl verb; `backend/deposit` (an own photo's bytes land
 unacknowledged with `upload-queue complete-job` and no extension invoke).

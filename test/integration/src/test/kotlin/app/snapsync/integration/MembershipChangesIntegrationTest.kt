@@ -5,6 +5,7 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
@@ -175,6 +176,67 @@ class MembershipChangesIntegrationTest {
         then { event<WorldEvent.UnionChanged> { it.asset == "A" && it.gained } }
     }
 
+    @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Any member renames the event for everyone until its photos are deleted",
+        scenario = "A guest fixes a typo in the name",
+    )
+    fun a_guest_renames_an_event_another_member_created_and_the_heading_shows_the_new_name() = behaviour {
+        // The guest's app's part: a member who joined another's event renames it, the rename succeeds and the heading
+        // shows the new name, and the service is told it. The dialog closing on that success is `StatusScreenTest`'s,
+        // that the service takes a rename from any member the api's (`shared-routes.test.ts`), and that another
+        // member's app shows it the test below.
+        val event = given {
+            val event = step(
+                "a fellow member's event, named with a typo",
+                act = {
+                    publicBackend.foreignDevice(DEV_F, listOf("FQ")).also {
+                        publicBackend.foreignDeviceRename(DEV_F, TYPO, it)
+                    }
+                },
+                until = { settled { true } },
+            )
+            step("its invite opened", act = { openLink("$LINK_ORIGIN/join/$event") }, until = {
+                screen<Layer.JoiningEvent> { (it.phase as? JoinPhase.Detailed)?.eventName == TYPO }
+            })
+            step("joined", act = { confirmJoin(Choices(direction = Direction.UploadOnly)) }, until = {
+                screen<Layer.Joined> { it.membership.name == TYPO }
+                settled { true }
+            })
+            renameDialogOpen()
+            event
+        }
+
+        whenever { rename(ANAS_30TH) }
+        then {
+            screen<Layer.Joined> { it.renameState == RenameState.Succeeded && it.membership.name == ANAS_30TH }
+            event<WorldEvent.EventRenamed> { it.event == event && it.name == ANAS_30TH }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Any member renames the event for everyone until its photos are deleted",
+        scenario = "A guest fixes a typo in the name",
+    )
+    fun another_members_rename_shows_the_next_time_the_app_is_opened() = behaviour {
+        // The other members' part: a rename another member made reaches this member's heading when they next open the
+        // app.
+        given {
+            joinedEvent(Choices(direction = Direction.UploadOnly), name = TYPO)
+            fellowMember(DEV_F, "FQ")
+            step("sent to the background", act = { os.background() }, until = { settled { true } })
+        }
+
+        whenever { publicBackend.foreignDeviceRename(DEV_F, ANAS_30TH) }
+        then { event<WorldEvent.EventRenamed> { it.name == ANAS_30TH } }
+
+        whenever { os.foreground() }
+        then { screen<Layer.Joined> { it.membership.name == ANAS_30TH } }
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
 
     /** The rename dialog open over the joined screen. */
@@ -187,6 +249,7 @@ class MembershipChangesIntegrationTest {
     private companion object {
         const val WEEKEND = "Weekend"
         const val ANAS_30TH = "Ana's 30th"
+        const val TYPO = "Ana's 3oth"
         const val CHANGE_EVENT = "changeEvent"
 
         /** A short range around the start of every behaviour's clock (1 June noon). */

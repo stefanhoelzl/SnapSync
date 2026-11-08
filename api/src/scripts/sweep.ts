@@ -68,11 +68,11 @@ import { sweepVerdict } from "../lifecycle.ts";
 import { compareVersions } from "../version.ts";
 import type { Config } from "../config.ts";
 import {
-  bugsinkSender,
   noSender,
   type ReportSender,
   type RequestLogSummary,
   runRequestLogPhase,
+  senderFor,
 } from "./request-log-report.ts";
 
 /** A count of storage objects plus their total size in bytes (summed from each entry's `Length`). */
@@ -494,7 +494,7 @@ if (import.meta.main) {
       log: console.log,
       day,
       // The DSN is the deployment's (rendered when the resolve step had SENTRY_DSN), as the edge's is.
-      sendReport: DEPLOYMENT.sentryDsn ? bugsinkSender(DEPLOYMENT.sentryDsn, BUILD_SHA) : noSender,
+      sendReport: senderFor(DEPLOYMENT.sentryDsn, BUILD_SHA),
     });
     console.log(formatSummary(summary));
     // On a GitHub Actions runner, also render the summary to the job's Summary panel (a Markdown table).

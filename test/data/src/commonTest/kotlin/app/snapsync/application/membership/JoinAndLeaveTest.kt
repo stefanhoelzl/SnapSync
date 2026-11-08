@@ -1,6 +1,7 @@
 package app.snapsync.application.membership
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.control.Verifies
 import app.snapsync.data.backend.json
 import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
@@ -79,7 +80,14 @@ class JoinAndLeaveTest {
     }
 
     @Test
+    @Verifies(
+        spec = "join-event",
+        requirement = "The shared capture range is always bounded and chosen by the member",
+        scenario = "A range that breaks the rules is refused",
+    )
     fun `a range that breaks the rule and a key that does not open the event send nothing`() = runTest {
+        // The join's own rule, whatever handed it the range: the calendar cannot pick one of these, so no behaviour of
+        // the app reaches it, and only the use case shows the refusal — nothing enrolled, nothing sent.
         for ((from, until) in listOf(
             "2026-07-22T00:00:00Z" to "2026-07-23T00:00:00Z",
             "2026-07-20T00:00:00Z" to "2026-07-15T00:00:00Z",

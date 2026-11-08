@@ -50,6 +50,8 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
             implementation(libs.ktor.client.mock)
+            // `@Verifies`: a scenario a shipped build's own answer decides is claimed by the test that shows it.
+            implementation(project(":test:verifies"))
         }
         // The JVM `Databases` adapter (`JdbcDatabases`): the one platform source set here, because the SQLDelight
         // driver is per platform. The iOS one is `:adapter:ios:ext-safe`'s.

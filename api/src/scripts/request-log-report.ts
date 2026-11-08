@@ -201,6 +201,14 @@ export function bugsinkSender(dsn: string, release: string): ReportSender {
   };
 }
 
+/**
+ * The sender a sweep run uses (`sweep.ts`): the deployed one when its bundle carries a DSN, as the edge's reporter
+ * is, and {@link noSender} otherwise — so a run of a development or test copy sends nothing.
+ */
+export function senderFor(dsn: string, release: string): ReportSender {
+  return dsn ? bugsinkSender(dsn, release) : noSender;
+}
+
 /** The sender of a run with no DSN: it cannot send, so the run fails rather than lose the report. */
 export const noSender: ReportSender = () =>
   Promise.reject(

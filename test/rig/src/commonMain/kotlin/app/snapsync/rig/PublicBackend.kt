@@ -64,6 +64,10 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
         reach.leave(named(event), deviceId(device).value)
     }
 
+    override suspend fun foreignDeviceRename(device: String, name: String, event: String?) {
+        reach.rename(named(event), deviceId(device).value, name)
+    }
+
     override suspend fun foreignDeviceReceived(device: String, event: String?) {
         reach.reportReceived(named(event), deviceId(device).value)
     }

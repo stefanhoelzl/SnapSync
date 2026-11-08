@@ -64,6 +64,17 @@ export function withoutAddress<E extends Sentry.Event>(event: E): E {
   return event;
 }
 
+/**
+ * The reporter a deployment starts (`main.ts`): none when its bundle carries no reporting address. The resolver
+ * renders one for the deployed `prod` and `maintenance` bundles alone, so a development or test copy reports nothing.
+ */
+export function reporterFor(
+  dsn: string,
+  options: Omit<ReporterOptions, "dsn">,
+): ErrorReporter | undefined {
+  return dsn ? startErrorReporting({ ...options, dsn }) : undefined;
+}
+
 /** Start reporting for this process. Default integrations, no tracing. */
 export function startErrorReporting(options: ReporterOptions): ErrorReporter {
   Sentry.init({

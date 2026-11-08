@@ -12,6 +12,7 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * **Photos travel on their own** (capability `delivery`), over the real composed stack: uploads that outlive the app in
@@ -421,6 +422,41 @@ class DeliveryIntegrationTest {
     @Verifies(
         spec = "delivery",
         requirement = "Only new photos are announced by a silent wake, and never only by it",
+        scenario = "A large event wakes some members per photo",
+    )
+    fun a_member_the_service_did_not_wake_receives_the_photo_at_the_next_background_check() = behaviour {
+        // The app's part: a phone no wake reaches brings the photo in at its own background check, without the app
+        // opened. Whom the service wakes in a large event is the api's (`fanout-bound.test.ts`).
+        given {
+            joinedEvent()
+            pushToken(TOKEN)
+            backgroundLaunch()
+        }
+
+        whenever { publicBackend.foreignDevice(DEV_F, listOf("FQ")) }
+        then {
+            never<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
+
+        // A background check looks at the photo list at most hourly (the join just did), so the next one past the hour.
+        whenever {
+            advance(PAST_THE_HOURLY_CHECK)
+            heartbeat()
+        }
+        then { event<WorldEvent.DownloadStarted>() }
+
+        whenever { downloadSession.finish() }
+        then {
+            times(1) { event<WorldEvent.LibraryAssetCreated> { it.asset.startsWith(imported("FQ")) } }
+            never<WorldEvent.UiChanged>()
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Only new photos are announced by a silent wake, and never only by it",
         scenario = "Opening the app catches up",
     )
     fun opening_the_app_brings_a_photo_no_wake_announced() = behaviour {
@@ -545,6 +581,9 @@ class DeliveryIntegrationTest {
         const val SESSION_CAP = 4
         const val TOKEN = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
         const val EVENT_FILES = "eventFiles"
+
+        /** Past the hour within which a background check does not read the photo list again. */
+        val PAST_THE_HOURLY_CHECK = 61.minutes
 
         /** Three days after the behaviour's start, the event still running — and a photo taken then. */
         const val DAYS_LATER = "2026-06-04T12:00:00Z"

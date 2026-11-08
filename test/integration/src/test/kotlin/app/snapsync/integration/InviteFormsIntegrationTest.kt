@@ -8,6 +8,7 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
+import kotlin.test.assertTrue
 
 /**
  * **Every invite form an installed build shares opens** (capability `invite-link`): a plain event's fragment form as
@@ -17,12 +18,19 @@ import kotlin.test.Test
 class InviteFormsIntegrationTest {
 
     @Test
-    @Verifies(spec = "invite-link", requirement = "Every invite form opens in every future version")
+    @Verifies(
+        spec = "invite-link",
+        requirement = "Every invite form opens in every future version",
+        scenario = "A new event's invite opens in every app in use",
+    )
     fun a_plain_events_fragment_form_invite_opens_the_join_screen() = behaviour {
+        // The core's part: a new plain event's invite is the fragment form, and it opens the join screen for that event.
+        // That a shipped build creates plain events is `InertDevControlsTest`'s.
         val link = given {
             step("events are created plain", act = { devControls.encryptNewEvents(false) }, until = {})
             inviteFor(registeredEvent(name = "Anna's 40th"))
         }
+        assertTrue(link.startsWith("$LINK_ORIGIN/join#v=3&d="), "the fragment form: $link")
 
         whenever { openLink(link) }
         then { screen<Layer.JoiningEvent> { (it.phase as? JoinPhase.Detailed)?.eventName == "Anna's 40th" } }

@@ -10,6 +10,7 @@ import { assert, assertEquals } from "@std/assert";
 import type { Db } from "../src/db.ts";
 import { eventBytePath } from "../src/storage.ts";
 import { completeEvent } from "../src/db.ts";
+import { OPERATIONS } from "../src/gen/wire.ts";
 import {
   as,
   assertPresigned,
@@ -207,6 +208,9 @@ async function fetches(db: Db) {
   );
 }
 
+// @Verifies(spec = "privacy-security", requirement = "The service records who reads an event's photo list", scenario = "A member's app is woken for a new photo")
+// The api's part: it records which phone read the list and the reason the app gave (`push`, a wake for a new photo).
+// The app's part, that a woken read gives that reason, is `UnionReaderIntegrationTest`'s.
 Deno.test("reads → a verified token names the reader and its trigger; a delta records where it started", async () => {
   const { db } = await eventWith(["A"]);
   const lines: string[] = [];
@@ -261,5 +265,27 @@ Deno.test("reads → a failing log write never fails the read", async () => {
       lines[0].includes("log down"),
     lines[0],
   );
+  db.close();
+});
+
+// @Verifies(spec = "privacy-security", requirement = "The service records who reads an event's photo list", scenario = "Members do not see each other's reads")
+// The record of reads is the operator's: no read a member's app can make of the service answers with when, why or by
+// whom another member read the list.
+Deno.test("reads → no read an app can make answers with another member's read", async () => {
+  const { db } = await eventWith(["A"]);
+  await (await app2(db, { ...await as(D2), "SnapSync-Trigger": "push" })(V2_UNION)).text();
+  assertEquals((await fetches(db)).length, 1, "the other member's read is recorded");
+  const read = app2(db, { ...await as(D), "SnapSync-Trigger": "foreground" });
+  const gets = OPERATIONS.filter((op) => op.method === "GET");
+  assert(gets.some((op) => op.id === "eventFiles"), "the photo list is among them");
+  for (const op of gets) {
+    const path = `/api/v2${op.path}`.replace("{eventId}", E).replace("{deviceId}", D)
+      .replace("{assetId}", "A").replace("{role}", "primary");
+    const res = await read(path);
+    const answer = `${res.headers.get("location") ?? ""} ${await res.text()}`;
+    for (const trace of [D2, "push", "trigger", "cursor_from"]) {
+      assert(!answer.includes(trace), `${op.id} answers with ${trace}: ${answer}`);
+    }
+  }
   db.close();
 });

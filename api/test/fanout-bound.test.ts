@@ -150,6 +150,9 @@ async function bigEvent() {
   return { db, others, pushed, request };
 }
 
+// @Verifies(spec = "delivery", requirement = "Only new photos are announced by a silent wake, and never only by it", scenario = "A large event wakes some members per photo")
+// The api's part: whom a new photo wakes — at most the bound, so in a large event some members are not woken. The
+// app's part, that a member not woken still receives it in the background, is `DeliveryIntegrationTest`'s.
 Deno.test("fan-out bound → the byte that completes an asset in a 101-device event wakes 40", async () => {
   const { db, others, pushed, request } = await bigEvent();
   await request(MANIFEST_PATH, { method: "PUT", body: DECLARE_ONE });
