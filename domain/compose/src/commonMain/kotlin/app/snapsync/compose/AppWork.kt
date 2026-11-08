@@ -177,7 +177,7 @@ internal class AppWork(private val core: AppCore) {
                 core.services.eventKeyStore,
                 receiving.stop,
                 stopUploads,
-                core.services.transition,
+                core.services.membershipChange,
             ),
         )
     }
@@ -219,7 +219,7 @@ internal class AppWork(private val core: AppCore) {
                 core.services.eventKeyStore,
                 membership.enroll,
                 Joining(
-                    core.services.transition,
+                    core.services.membershipChange,
                     core.shareSetLoad,
                     receiving.forgetOtherEvents,
                     receiving.recognize,

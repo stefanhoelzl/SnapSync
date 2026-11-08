@@ -17,8 +17,8 @@ import app.snapsync.data.time.WallClock
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.inbound.AppProcessOnly
+import app.snapsync.scheduling.Exclusion
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.membership.MembershipTransition
 
 /**
  * **The app process's services**, built here over [ports] and the [process] — never by a root (`docs/architecture.md`,
@@ -40,8 +40,8 @@ internal class AppServices(val ports: AppPorts, val process: ProcessGraph) {
     /** The device's wall clock, as the layers read time. */
     val wallClock: WallClock by lazy { WallClock(process.clock) }
 
-    /** A join in progress, from its key to its membership — what a sweep of a failed leave's leftovers waits out. */
-    val transition: MembershipTransition = MembershipTransition()
+    /** The membership change a join holds from its key on — what a sweep of a failed leave's leftovers yields to. */
+    val membershipChange: Exclusion = Exclusion("membership change")
 
     /** The leaves the backend has not confirmed. */
     val pendingLeaves: PendingLeaves by lazy { PendingLeaves(sharedDatabase) }
