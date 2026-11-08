@@ -62,3 +62,15 @@ compose.resources {
     packageOfResClass = "app.snapsync.ui.components.resources"
     publicResClass = true
 }
+
+// Coverage (`docs/architecture.md`, "Coverage"). `:ui:screens`' Compose tests render the real screens, and with them
+// these components.
+coverage {
+    skipped(
+        "Compose Resources' generated `Res` accessors, one per string: measuring them would hold the module to " +
+            "which strings a test reads",
+        packages = listOf("app.snapsync.ui.components.resources"),
+    )
+    unit(alsoCoveredBy = listOf(":ui:screens"))
+    integration { skipped("Compose: the suite stays at the intent level; the screens' own tests cover these") }
+}

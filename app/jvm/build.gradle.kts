@@ -31,3 +31,9 @@ dependencies {
     // The status host is an Orbit container: a caller naming it needs its supertype.
     api(libs.orbit.core)
 }
+
+// Coverage (`docs/architecture.md`, "Coverage"): the JVM root is wiring, smoke-tested by the integration surface.
+coverage {
+    unit(alsoCoveredBy = listOf(":test:integration"))
+    integration(instructions = 100, branches = 100)
+}

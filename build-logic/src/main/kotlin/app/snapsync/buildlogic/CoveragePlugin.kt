@@ -18,51 +18,66 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
 /**
- * `snapsync.coverage`, applied once, by the root (`docs/architecture.md`, "Coverage"): the `coverage { }` block
- * ([CoverageExtension]) and everything it describes. Each entry's measurements are set up on its module once the root
- * build file has run — before any module's own build file, so no module declares its coverage itself:
+ * `snapsync.coverage`, applied once, by the root through `snapsync.conventions` (`docs/architecture.md`, "Coverage"):
+ * every module's `coverage { }` ([ModuleCoverage]), declared in the module's OWN build file, and everything it
+ * describes. Once a module's build file has run, its measurements are set up on it:
  *
  *  - `unit(…)` applies Kover and the ZERO gate ([CoverageZeroTask], on `check`), filters the module's report to its
  *    OWN classes, and merges in the coverage of the modules that also cover it. Without the filter, a module covered by
  *    another would measure that module's classes too;
  *  - `integration(…)` is judged by `:test:integration`'s `integrationCoverage` ([IntegrationCoverageTask]): what the
- *    suite ALONE covers of the module, against its target or the block's `integrationGoal`;
+ *    suite ALONE covers of the module, against its target or the suite's `integrationCoverage { goal(…) }`;
  *  - a `skipped(…, packages)` leaves those packages out of the measurements it stands in.
  *
- * And it holds the block complete ([CoverageEntriesTask], on `check`): every module with a JVM target outside
- * `:test:*` and `:tools:*` has an entry, so no module is measured — or left out — by nobody's decision.
+ * And it holds the description complete ([CoverageEntriesTask], on `check`): every module with a JVM target outside
+ * `:test:*` and `:tools:*` declares its coverage, so no module is measured — or left out — by nobody's decision.
  */
 class CoveragePlugin : Plugin<Project> {
     override fun apply(root: Project) {
         check(root == root.rootProject) { "snapsync.coverage is the root's: it describes every module" }
         root.pluginManager.apply("base")
-        val coverage = root.extensions.create("coverage", CoverageExtension::class.java)
-        root.afterEvaluate {
-            val exists = { path: String -> root.findProject(path)?.buildFile?.exists() == true }
-            val problems = coverage.entries.flatMap { it.problems(exists) } +
-                coverage.entries.groupBy { it.path }.filterValues { it.size > 1 }.keys.map { "$it has more than one entry" }
-            val goal = coverage.goal
-            val unset = listOf("the block sets no integrationGoal(…)").takeIf { goal == null }.orEmpty()
-            if (problems.isNotEmpty() || goal == null) {
-                val lines = (problems + unset).joinToString("\n") { "  $it" }
-                throw GradleException("The root build file's `coverage { }` is malformed:\n$lines")
-            }
-            registerIntegrationCoverage(root, coverage.entries, goal)
-            coverage.entries.forEach { entry ->
-                val unit = entry.unit?.takeIf { entry.wholeSkip == null && it.wholeSkip == null } ?: return@forEach
-                zeroGate(root.project(entry.path), entry.skippedPackages + unit.skippedPackages)
-                unit.alsoCoveredBy.forEach { root.project(entry.path).dependencies.add("kover", root.project(it)) }
-            }
+        root.subprojects {
+            val module = this
+            val coverage = extensions.create("coverage", ModuleCoverage::class.java, path)
+            if (path == INTEGRATION_SUITE) extensions.create("integrationCoverage", IntegrationGoal::class.java)
+            afterEvaluate { measure(module, coverage) }
+        }
+        root.gradle.projectsEvaluated {
+            val suite = root.project(INTEGRATION_SUITE)
+            val goal = suite.extensions.getByType(IntegrationGoal::class.java).goal
+                ?: throw GradleException(
+                    "${suite.buildFile.relativeTo(root.rootDir)} sets no `integrationCoverage { goal(…) }` " +
+                        "(`docs/architecture.md`, \"Coverage\")",
+                )
+            registerIntegrationCoverage(root, root.subprojects.map(::coverageOf).filter { it.declared }, goal)
         }
         val complete = root.tasks.register("coverageEntries", CoverageEntriesTask::class.java) {
             group = "verification"
-            description = "Fails when a JVM module has no entry in the root build file's `coverage { }`, or an entry " +
-                "names a module Kover cannot measure."
-            entries.set(root.provider { coverage.entries.map { it.path } })
+            description = "Fails when a JVM module's build file declares no `coverage { }`, or a module Kover cannot " +
+                "measure declares one."
+            entries.set(root.provider { root.subprojects.filter { coverageOf(it).declared }.map { it.path } })
             measurable.set(root.provider { root.subprojects.filter(::isMeasurable).map { it.path } })
         }
         root.tasks.named("check") { dependsOn(complete) }
     }
+
+    /** Sets up [module]'s measurements from its build file's `coverage { }`, failing on a malformed one. */
+    private fun measure(module: Project, coverage: ModuleCoverage) {
+        if (!coverage.declared) return
+        val root = module.rootProject
+        val problems = coverage.problems { root.findProject(it)?.buildFile?.exists() == true }
+        if (problems.isNotEmpty()) {
+            throw GradleException(
+                "${module.buildFile.relativeTo(root.rootDir)}'s `coverage { }` is malformed:\n" +
+                    problems.joinToString("\n") { "  $it" },
+            )
+        }
+        val unit = coverage.unit?.takeIf { coverage.wholeSkip == null && it.wholeSkip == null } ?: return
+        zeroGate(module, coverage.skippedPackages + unit.skippedPackages)
+        unit.alsoCoveredBy.forEach { module.dependencies.add("kover", module.project(it)) }
+    }
+
+    private fun coverageOf(p: Project): ModuleCoverage = p.extensions.getByType(ModuleCoverage::class.java)
 
     /** A JVM target (Kover is JVM-only), outside the test and tool modules, which are measured by nothing. */
     private fun isMeasurable(p: Project): Boolean =
@@ -113,11 +128,16 @@ abstract class CoverageEntriesTask : DefaultTask() {
     fun judge() {
         val missing = measurable.get() - entries.get().toSet()
         val unmeasurable = entries.get() - measurable.get().toSet()
-        val problems = missing.map { "  $it has no entry: describe its coverage, or skip it with a reason" } +
-            unmeasurable.map { "  $it has an entry, but Kover cannot measure it (no JVM target, or a test/tool module)" }
+        val undeclared = missing.map {
+            "  $it declares no `coverage { }` in its build file: describe its coverage, or skip it with a reason"
+        }
+        val unmeasured = unmeasurable.map {
+            "  $it declares `coverage { }`, but Kover cannot measure it (no JVM target, or a test/tool module)"
+        }
+        val problems = undeclared + unmeasured
         if (problems.isNotEmpty()) {
             throw GradleException(
-                "The root build file's `coverage { }` (`docs/architecture.md`, \"Coverage\"):\n" + problems.joinToString("\n"),
+                "Every module's `coverage { }` (`docs/architecture.md`, \"Coverage\"):\n" + problems.joinToString("\n"),
             )
         }
     }

@@ -38,3 +38,9 @@ kotlin {
         }
     }
 }
+
+// Coverage (`docs/architecture.md`, "Coverage").
+coverage {
+    unit(alsoCoveredBy = listOf(":ui:screens"))
+    integration() // at the goal since phase 22 claimed the app specs
+}

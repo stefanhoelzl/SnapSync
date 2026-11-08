@@ -20,3 +20,11 @@ kotlin {
         }
     }
 }
+
+// Coverage (`docs/architecture.md`, "Coverage"). The composition layer: wiring, not unit-tested by law ("The
+// composition layer") — smoke-tested by the integration surface, which composes both processes over the JVM root, and
+// driven by the mocks' suites: the process's start (`ProcessCompositionTest`).
+coverage {
+    unit(alsoCoveredBy = listOf(":test:integration", ":adapter:generic:mock"))
+    integration(instructions = 100, branches = 100)
+}

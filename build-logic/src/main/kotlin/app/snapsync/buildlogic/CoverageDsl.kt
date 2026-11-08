@@ -1,42 +1,23 @@
 package app.snapsync.buildlogic
 
+import javax.inject.Inject
+
 /**
- * The root build file's `coverage { }` block (`docs/architecture.md`, "Coverage"): every module's coverage, described
- * in one place. An entry names a module and settles each measurement — a target, or a [Measurement.skipped] with its
- * reason:
+ * The GOAL of the integration measurement, set in `:test:integration`'s build file — the suite judged against it:
  *
  * ```
- * coverage {
- *     integrationGoal(instructions = 95, branches = 85)
- *     ":core:services" {
- *         skipped("SQLDelight's generated code; …", packages = listOf("app.snapsync.data.store.db"))
- *         unit(alsoCoveredBy = listOf(":adapter:generic:mock"))
- *         integration(instructions = 80, branches = 58)
- *     }
- *     ":adapter:generic:mock" { skipped("test equipment") }
- * }
+ * integrationCoverage { goal(instructions = 95, branches = 85) }
  * ```
- *
- * WHERE a `skipped` stands decides what it skips: in the entry it skips the module from every measurement, inside a
- * measurement's block only that measurement; with `packages` only those packages, without them everything at its
- * level. A reason is required, so what the block leaves out is read in review.
  */
-abstract class CoverageExtension {
-    internal val entries = mutableListOf<ModuleCoverage>()
+abstract class IntegrationGoal {
     internal var goal: Pair<Int, Int>? = null
 
     /**
-     * The GOAL of the integration measurement: what `:test:integration` alone covers of each module, in whole
-     * percentages. An `integration(…)` below it is an EXCEPTION — today's measurement, which only rises and fails the
-     * build once the module no longer needs it.
+     * What `:test:integration` alone covers of each module, in whole percentages. A module's `integration(…)` below it
+     * is an EXCEPTION — today's measurement, which only rises and fails the build once the module no longer needs it.
      */
-    fun integrationGoal(instructions: Int, branches: Int) {
+    fun goal(instructions: Int, branches: Int) {
         goal = instructions to branches
-    }
-
-    /** The entry for the module at this path. */
-    operator fun String.invoke(configure: ModuleCoverage.() -> Unit) {
-        entries += ModuleCoverage(this).apply(configure)
     }
 }
 
@@ -65,8 +46,25 @@ class UnitCoverage(val alsoCoveredBy: List<String>) : Measurement()
 /** The INTEGRATION measurement's targets; null is the goal. */
 class IntegrationCoverage(val instructions: Int?, val branches: Int?, val targeted: Boolean) : Measurement()
 
-/** One module's entry. */
-class ModuleCoverage(val path: String) : Measurement() {
+/**
+ * A module's `coverage { }` (`docs/architecture.md`, "Coverage"), in its own build file: it settles each measurement —
+ * a target, or a [Measurement.skipped] with its reason:
+ *
+ * ```
+ * coverage {
+ *     skipped("SQLDelight's generated code; …", packages = listOf("app.snapsync.data.store.db"))
+ *     unit(alsoCoveredBy = listOf(":test:data"))
+ *     integration(instructions = 80, branches = 58)
+ * }
+ * ```
+ *
+ * WHERE a `skipped` stands decides what it skips: at the top it skips the module from every measurement, inside a
+ * measurement's block only that measurement; with `packages` only those packages, without them everything at its
+ * level. A reason is required, so what the block leaves out is read in review.
+ *
+ * Open so Gradle can decorate it as the module's extension; [path] is the module's.
+ */
+open class ModuleCoverage @Inject constructor(val path: String) : Measurement() {
     internal var unit: UnitCoverage? = null
     internal var units = 0
     internal var integration: IntegrationCoverage? = null
@@ -96,6 +94,9 @@ class ModuleCoverage(val path: String) : Measurement() {
         units++
         unit = UnitCoverage(alsoCoveredBy).apply(configure)
     }
+
+    /** Whether the module's build file describes its coverage at all. */
+    internal val declared: Boolean get() = skips.isNotEmpty() || units > 0 || integrations > 0
 
     /** Every problem with this entry, each a sentence naming the module; empty when it is well-formed. */
     internal fun problems(exists: (String) -> Boolean): List<String> = buildList {

@@ -66,3 +66,8 @@ compose.desktop {
         (project.findProperty("snapsync.attach") as String?)?.let { jvmArgs += "-Dsnapsync.attach=$it" }
     }
 }
+
+// Coverage (`docs/architecture.md`, "Coverage").
+coverage {
+    skipped("test equipment: the world harness, where a person reviews every UI state")
+}

@@ -38,7 +38,7 @@ object IntegrationVerdict {
     /** The table every run writes: measured, target, and the gap to the goal. */
     fun summary(measured: List<Measured>, goal: Pair<Int, Int>): String = buildString {
         append("# What the integration suite alone covers\n\n")
-        append("Goal: ${goal.first} % instructions, ${goal.second} % branches. Targets from the root build file's ")
+        append("Goal: ${goal.first} % instructions, ${goal.second} % branches. Targets from each module's ")
         append("`coverage { }`.\n\n")
         append("| module | instructions | target | branches | target |\n|---|---|---|---|---|\n")
         measured.sortedBy { it.path }.forEach { m ->
