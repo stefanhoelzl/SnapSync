@@ -93,3 +93,8 @@ kotlin {
         }
     }
 }
+
+// Coverage (`docs/architecture.md`, "Coverage").
+coverage {
+    skipped("test equipment: the mocks are proved against the port contracts, not measured")
+}

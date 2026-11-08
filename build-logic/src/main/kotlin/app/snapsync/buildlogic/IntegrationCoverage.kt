@@ -34,8 +34,8 @@ internal fun registerIntegrationCoverage(root: Project, entries: List<ModuleCove
     val judged = entries.filter { e -> e.wholeSkip == null && e.integration?.let { it.targeted } == true }
     val task = suite.tasks.register("integrationCoverage", IntegrationCoverageTask::class.java) {
         group = "verification"
-        description = "Fails when the integration suite alone covers a module below its target in the root build " +
-            "file's `coverage { }`."
+        description = "Fails when the integration suite alone covers a module below the target its build " +
+            "file's `coverage { }` sets."
         dependsOn("test")
         report.set(suite.layout.buildDirectory.file(SUITE_REPORT))
         goalInstructions.set(goal.first)
@@ -123,7 +123,7 @@ abstract class IntegrationCoverageTask : DefaultTask() {
         val problems = IntegrationVerdict.problems(measured, goal)
         if (problems.isNotEmpty()) {
             throw GradleException(
-                "Coverage of the integration suite alone (the root build file's `coverage { }`, `docs/architecture.md`, " +
+                "Coverage of the integration suite alone (each module's `coverage { }`, `docs/architecture.md`, " +
                     "\"Coverage\"):\n" + problems.joinToString("\n") { "  $it" } +
                     "\nA drop is fixed by a test, never by lowering a number. Every module: ${dir.resolve("summary.md")}",
             )

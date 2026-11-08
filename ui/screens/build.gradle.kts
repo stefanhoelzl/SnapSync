@@ -80,3 +80,14 @@ nativeStrings {
     locales.set(listOf("en", "de"))
     otherResources.add(rootProject.file("ui/components/src/commonMain/composeResources"))
 }
+
+// Coverage (`docs/architecture.md`, "Coverage").
+coverage {
+    skipped(
+        "Compose Resources' generated `Res` accessors, one per string: measuring them would hold the module to " +
+            "which strings a test reads",
+        packages = listOf("app.snapsync.ui.resources"),
+    )
+    unit()
+    integration { skipped("Compose: the suite stays at the intent level; its own Compose tests cover it") }
+}

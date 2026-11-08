@@ -21,3 +21,9 @@ kotlin {
         }
     }
 }
+
+// Coverage (`docs/architecture.md`, "Coverage").
+coverage {
+    unit()
+    integration { skipped("an adapters' codec: the suite runs over mocks; its own round-trip tests prove it") }
+}

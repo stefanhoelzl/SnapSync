@@ -23,3 +23,16 @@ kotlin {
         }
     }
 }
+
+// Coverage (`docs/architecture.md`, "Coverage").
+coverage {
+    unit()
+    // → 91/68 in phase 31, once the polling tests waited on outcome events instead.
+    // → 94/72 in phase 4.9 (status and presentation): the joined layer's and the switch's new optional facts
+    // (`accessFix`, `PendingSwitch.service`) add their generated serializers' default branches, which the suite
+    // never decodes. No test was lost. Measured 72.93 %.
+    // → 93/72 when the shown invite became a secret type (4.10): its masked print, which exists so that a logged
+    // screen state carries no key, is never reached by a member's day — by design. No test was lost. Measured
+    // 93.76 %.
+    integration(instructions = 93, branches = 72)
+}

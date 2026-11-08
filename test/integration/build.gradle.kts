@@ -70,3 +70,10 @@ tasks.test {
     // replay one order, `parallel` to hunt a race — `-Psnapsync.lanes=…`.
     providers.gradleProperty("snapsync.lanes").orNull?.let { systemProperty("snapsync.lanes", it) }
 }
+
+// The GOAL of the integration measurement (`docs/architecture.md`, "Coverage"): what this suite ALONE covers of each
+// module, judged right after it by `integrationCoverage`; it credits no module. A module's `integration(…)` below the
+// goal is an EXCEPTION — its lowest measurement when it was set, rounded down — which only rises (lowering one needs a
+// reason stated in its PR) and fails the build once the module meets the goal. A measurement that moves between two
+// runs of the same code is a flaky test to fix, never a margin.
+integrationCoverage { goal(instructions = 95, branches = 85) }

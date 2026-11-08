@@ -31,3 +31,10 @@ kotlin {
         }
     }
 }
+
+// Coverage (`docs/architecture.md`, "Coverage"). The process's composition registers its metric reports' entry point;
+// the mocks' suite drives it.
+coverage {
+    unit(alsoCoveredBy = listOf(":test:integration", ":adapter:generic:mock"))
+    integration(instructions = 100, branches = 100)
+}

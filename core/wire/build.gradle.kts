@@ -26,3 +26,16 @@ kotlin {
         }
     }
 }
+
+// Coverage (`docs/architecture.md`, "Coverage").
+coverage {
+    skipped(
+        "generated from api/openapi.yaml (`snapsync.wire`): the routes, replies and limits, and the DTOs; the " +
+            "Backend contract runs the real gateway over them",
+        packages = listOf("app.snapsync.wire.api", "app.snapsync.wire.models"),
+    )
+    unit()
+    // → 81 in phase 5 (clean-up), when the runtime's helpers moved onto `Wire` (no top-level functions in the
+    // core): the same code, measured as one object. No test was lost. Measured 81.90 %.
+    integration(instructions = 81, branches = 71)
+}

@@ -38,3 +38,16 @@ kotlin {
         }
     }
 }
+
+// Coverage (`docs/architecture.md`, "Coverage"). Declarations only: what it can count is the event ports' handler
+// bundles, measured by the entry mocks' dispatch tests (`EntryDispatchTest`). A member with a default body is logic in
+// a declaration layer and moves out.
+coverage {
+    unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
+    // → 90 with the update test (`AppUpdateIntegrationTest`), and 91 since; → 92 in phase 31, once the polling
+    // tests waited on outcome events instead. → 90 in phase 4.3 (encryption), when the Files port's answers moved
+    // in from model: the ways a file operation fails — a denied or failed one's facts — are the adapters' and their
+    // contracts' (`FilesContract`) to reach, never a member's day. → 91 in phase 38 (missing levers and world
+    // events). Measured 91.38 %, two runs.
+    integration(instructions = 91, branches = 85) // no branches: any branch target is met
+}

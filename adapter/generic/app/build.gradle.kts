@@ -102,3 +102,9 @@ tasks.named<Test>("jvmTest") {
     inputs.dir(vectors).withPropertyName("encryptedFileVectors")
     systemProperty("snapsync.vectorsDir", vectors.asFile.absolutePath)
 }
+
+// Coverage (`docs/architecture.md`, "Coverage").
+coverage {
+    unit()
+    integration { skipped("an adapter: the suite runs over mocks, and the port contracts prove adapters") }
+}
