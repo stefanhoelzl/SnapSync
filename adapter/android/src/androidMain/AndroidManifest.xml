@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The components this module's adapters run, merged into the app and into the device-test APK alike. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!--
+          The library-change wake's job (`AndroidWake`): this app's own JobScheduler job, not WorkManager's, so a
+          WorkManager start that misreads a swipe as a force-stop never cancels it. Only the system's job scheduler
+          binds it; not direct-boot aware, like every component here (`verifyNoDirectBoot`).
+        -->
+        <service
+            android:name="app.snapsync.android.work.WakeJobService"
+            android:directBootAware="false"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+    </application>
+</manifest>

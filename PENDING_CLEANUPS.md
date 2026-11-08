@@ -303,6 +303,24 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
   `capacity` from the test fixtures that stamp it (`api/test/support/harness.ts` `EVENT`, and every
   `INSERT INTO events` naming it). Regenerate `schema.sql`. Update `docs/architecture.md`'s events table.
 
+## Once no Android install predates the library-change job (the first release after 0.6)
+
+**Unlock condition:** `MIN_APP_VERSION` ≥ the first release carrying `WakeJobService`, and the sweep's version table
+(`api/src/scripts/sweep.ts`, `versionTable`) shows no kept Android device below it.
+
+### The library-change wake an older build left on WorkManager (app)
+- **What:** `AndroidWake.forgetLegacyWatch` (`adapter/android/.../work/AndroidWake.kt`) cancels the unique WorkManager
+  work `wake.LibraryChanged` whenever the library-change wake is armed or cancelled. `WakeWorker` still delivers a
+  `LibraryChanged` id it is handed, so a leftover that fires before this build first arms still wakes the app.
+- **Why:** builds up to 0.6 carried the library-change wake as WorkManager work, which an update leaves pending.
+  This build carries it as its own JobScheduler job (`WakeJobService`). Without the cancel, the leftover would fire
+  beside the job for the same photo. A WorkManager request is the OS's job queue, not a stored format, so
+  `older-install.installedAt` has no layer for it: `AndroidLibraryWakeTest`, "arming the library-change wake
+  withdraws the WorkManager request an older build left", enqueues an older build's request on the emulator and
+  covers the cancel.
+- **Remove:** delete `forgetLegacyWatch` and its two calls, that test, and this entry. `WakeWorker` then reads only
+  the heartbeat, and may drop the id it no longer gets.
+
 ## Once `MIN_APP_VERSION` ≥ the release that re-enables encrypted creation, and no plain event is open
 
 **Unlock condition:**

@@ -1798,12 +1798,15 @@ SE2), so:
   `UNRESTRICTED` while photos are kept off mobile data. Every other request — the device API over `HttpTransport` — ignores it.
 
 **On Android** there is one process and one uploader. The `Wake`, `BackgroundTime` and `TransferSession` adapters
-(`:adapter:android`'s `work/`) are WorkManager's:
-- **a wake** is one unique one-time work per `WakeId` — the heartbeat's delay and network constraint, or content-URI
-  triggers on MediaStore's image and video collections for the library watch. A re-request replaces a pending wake,
-  except from inside that wake's own running worker, where it appends (replacing would cancel the worker asking). The
-  worker is an entry port on the `Application.onCreate` composition and builds no screen; its stop (`onStopped`) expires
-  the wake's run.
+(`:adapter:android`'s `work/`) are WorkManager's, but for the library watch:
+- **a wake** is the heartbeat's unique one-time WorkManager work (its delay and network constraint), or the library
+  watch's own JobScheduler job: content-URI triggers on MediaStore's image and video collections, run by
+  `WakeJobService`. The watch is not WorkManager's because WorkManager reads a swipe from the recent apps as a
+  force-stop at the next start, and cancels the very job that woke the app (`AndroidWake`'s KDoc). A re-request
+  replaces a pending wake, except from inside that wake's own run, where it appends: WorkManager's `APPEND_OR_REPLACE`,
+  or the job's other id of two, since rescheduling a running job's id stops it. Worker and job are entry ports on the
+  `Application.onCreate` composition and build no screen; their stop (`onStopped`, `onStopJob`) expires the wake's
+  run. A reboot drops the watch (a content-URI job cannot persist) until the heartbeat's next run re-arms it.
 - **a background-time hold** is an expedited work that runs until the hold ends; its stop is the hold's expiry. It is
   what keeps a process the member just left, or one a worker started, from being frozen mid-unit.
 - **an upload** is an in-process PUT streamed from MediaStore (it `takesResources`: no staged copy), one at a
@@ -1813,7 +1816,7 @@ SE2), so:
   transfer that no longer exists. A connection per transfer: a streamed body is sent once, and a pooled connection
   the server closed would fail it outright.
 
-A force-stop cancels every WorkManager request until the next opening, when the foreground's wake re-requests them;
+A force-stop cancels every job, WorkManager's and the watch's, until the next opening, when the foreground's wake re-requests them;
 before the first unlock the app (not direct-boot aware) never runs. Doze and App Standby defer work to maintenance
 windows.
 
