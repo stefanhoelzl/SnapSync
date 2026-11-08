@@ -13,8 +13,8 @@
 # WHAT RUNS WHERE. The shared `commonTest` runs ONCE, on the JVM, in `build`. A platform runtime runs only what only it
 # can answer, and both platforms have the same two gates:
 #
-#   build           Linux: `./gradlew build` (every target compiled, every JVM test, every architecture gate) and the
-#                   diagrams freshness check
+#   build           Linux: `./gradlew build` (every target compiled, every JVM test, every architecture gate, every
+#                   generated committed file written) and the clean-tree check after it
 #   ios-build       the SIGNED device archive — the shipping iosArm64 compile, and the delivery source on main — then
 #                   the platform-bound tests, `./gradlew iosPlatformTest` on the simulator (the iOS adapters and their
 #                   contract bindings on the test executable, the native SQLite drivers)
@@ -124,20 +124,20 @@ jobs:
             **/build/reports/tests/
           if-no-files-found: ignore
 
-      # The diagrams freshness check (`docs/architecture.md`). `:tools:diagrams:test` under `build` is its local half;
-      # this half regenerates on a clean checkout and asks git, which also catches untracked new files and the
-      # sidecar's self-staleness. A semantically-stale merge shows up as this gate red on main, fixed by a regen PR.
-      - name: Regenerate diagrams
-        run: ./gradlew architectureDiagrams
-      - name: Fail if committed diagrams are stale
+      # Every generated, committed file — the diagrams under architecture/, the OS-shown strings — is written by the
+      # build (`docs/architecture.md`, "Generated files are written by the build"), so a clean tree after it proves each
+      # is current. Untracked files count: a generator that gained an output, or a test that leaves one behind, fails
+      # here too. A merge that leaves a file stale shows up as this gate red on main, fixed by committing the build's
+      # output.
+      - name: The build left the tree clean
         run: |
-          if [ -n "$(git status --porcelain architecture/)" ]; then
-            echo "::error::architecture/ is stale — run ./gradlew architectureDiagrams and commit the result"
-            git status --porcelain architecture/
-            git diff architecture/
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::the build changed the tree — run ./gradlew build and commit what it wrote"
+            git status --porcelain
+            git diff
             exit 1
           fi
-          echo "architecture/ is fresh"
+          echo "the tree is clean"
 
   # The small checks with no Gradle: each runs in seconds, so one runner carries all three.
   metadata:

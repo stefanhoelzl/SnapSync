@@ -4,8 +4,8 @@ The local half of what gates a merge on `main` (contract: `~/.claude/skills/ship
 cover the gates of `ci.yml` (each a required check, beside `check-label`) that a Linux machine can
 actually run:
 
-- `build` → `./gradlew build`, which also carries the diagrams freshness half
-  (`:tools:diagrams:test`), the detekt complexity tiers, and the `:test:architecture` guards
+- `build` → `./gradlew build` and the clean-tree check after it (every generated, committed file is written by the
+  build), the detekt complexity tiers, and the `:test:architecture` guards
 - `metadata` → its spec validation (`openspec validate --specs --strict`)
 - `api-test` → the deno set below
 
@@ -49,5 +49,7 @@ bundle's `github.sha` stamp grep, which can mean nothing off a runner.
 
 ## Build
 ```bash
-./gradlew build
+./gradlew build && { test -z "$(git status --porcelain)" || { echo "the build changed the tree — commit what it wrote:"; git status --porcelain; exit 1; }; }
 ```
+The build writes every generated, committed file (the diagrams under `architecture/`, the OS-shown strings), so the
+tree it leaves must be the one being shipped — the same check `ci.yml`'s `build` job runs after it.

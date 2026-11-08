@@ -1,11 +1,14 @@
 package app.snapsync.buildlogic.diagrams
 
+import app.snapsync.buildlogic.Committed
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 
@@ -76,9 +79,13 @@ abstract class ModulesDiagramTask : DefaultTask() {
     @get:OutputFile
     abstract val diagram: RegularFileProperty
 
+    /** Where a path in a message is relative to. */
+    @get:Internal
+    abstract val rootDir: DirectoryProperty
+
     @TaskAction
     fun render() {
         val edges = edges.get().map { it.substringBefore(' ') to it.substringAfter(' ') }
-        Committed.write(diagram.get().asFile, ModulesDiagram.render(modules.get(), edges), logger)
+        Committed.write(diagram.get().asFile, ModulesDiagram.render(modules.get(), edges), logger, rootDir.get().asFile)
     }
 }
