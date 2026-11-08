@@ -1,12 +1,15 @@
 package app.snapsync.buildlogic.diagrams
 
+import app.snapsync.buildlogic.Committed
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Nested
 import org.gradle.api.tasks.OutputFile
@@ -140,12 +143,17 @@ abstract class PortsDiagramTask : DefaultTask() {
     @get:OutputFile
     abstract val diagram: RegularFileProperty
 
+    /** Where a path in a message is relative to. */
+    @get:Internal
+    abstract val rootDir: DirectoryProperty
+
     @TaskAction
     fun render() {
         val modules = modules.get().map { m ->
             PortsDiagram.Module(m.path.get(), m.sources.files.sorted().map { it.readText() })
         }
         val ports = PortsDiagram.ports(ports.files.sorted().map { it.readText() })
-        Committed.write(diagram.get().asFile, PortsDiagram.render(ports, modules, mock.get()), logger)
+        val text = PortsDiagram.render(ports, modules, mock.get())
+        Committed.write(diagram.get().asFile, text, logger, rootDir.get().asFile)
     }
 }

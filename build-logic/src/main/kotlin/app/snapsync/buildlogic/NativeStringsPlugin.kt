@@ -26,8 +26,9 @@ import org.w3c.dom.Element
  * locale list declares the languages the app ships — the first is the base, in `values/` — and becomes iOS's
  * `CFBundleLocalizations` and Android's `locales_config.xml`, so each OS offers exactly those languages.
  *
- * The outputs are COMMITTED, like the architecture diagrams: `./gradlew nativeStrings` writes them and
- * `nativeStringsCheck` (part of `check`) fails while one is stale, or while a module's translations and the locale
+ * The outputs are COMMITTED, like the architecture diagrams, and written during `build` (`docs/architecture.md`,
+ * "Generated files are written by the build"): a file is rewritten only when its text changed, and the build says so;
+ * CI fails while the build leaves the tree dirty. The same task fails while a module's translations and the locale
  * list disagree.
  */
 class NativeStringsPlugin : Plugin<Project> {
@@ -40,7 +41,9 @@ class NativeStringsPlugin : Plugin<Project> {
         extension.androidRes.convention(root.dir("adapter/android/src/androidMain/res"))
         extension.localeConfig.convention(root.file("app/android/src/main/res/xml/locales_config.xml"))
 
-        fun NativeStringsTask.wire() {
+        val writer = project.tasks.register("nativeStrings", NativeStringsTask::class.java) {
+            group = "build"
+            description = "Writes the OS-shown strings and locale lists from the screens' strings.xml."
             locales.set(extension.locales)
             strings.set(extension.strings)
             otherResources.set(extension.otherResources)
@@ -50,19 +53,27 @@ class NativeStringsPlugin : Plugin<Project> {
             localeConfig.set(extension.localeConfig)
             rootDir.set(project.rootProject.layout.projectDirectory)
         }
-        project.tasks.register("nativeStrings", NativeStringsTask::class.java) {
-            group = "build"
-            description = "Writes the OS-shown strings and locale lists from the screens' strings.xml."
-            write = true
-            wire()
+        project.tasks.matching { it.name == "build" }.configureEach { dependsOn(writer) }
+        // What it writes are SOURCES of other modules — the Android adapter's resources, the Android app's locale list.
+        // Their resource and lint tasks run after it whenever both are in one build, so none reads a file the same
+        // build is about to rewrite.
+        project.gradle.projectsEvaluated {
+            val written = listOf(extension.androidRes.get().asFile, extension.localeConfig.get().asFile)
+            consumers(project.rootProject, written).forEach { consumer ->
+                consumer.tasks.matching { READS_RESOURCES.containsMatchIn(it.name) }
+                    .configureEach { mustRunAfter(writer) }
+            }
         }
-        val check = project.tasks.register("nativeStringsCheck", NativeStringsTask::class.java) {
-            group = "verification"
-            description = "Fails while a generated OS string file is stale (run ./gradlew nativeStrings)."
-            write = false
-            wire()
-        }
-        project.tasks.matching { it.name == "check" }.configureEach { dependsOn(check) }
+    }
+
+    /** The module owning each of [files]: the deepest project whose directory holds it. */
+    private fun consumers(root: Project, files: List<File>): Set<Project> = files.mapNotNull { file ->
+        root.allprojects.filter { file.startsWith(it.projectDir) }.maxByOrNull { it.projectDir.path.length }
+    }.toSet()
+
+    private companion object {
+        /** The Android tasks that read a module's resources: merging, processing, packaging, and lint. */
+        val READS_RESOURCES = Regex("""Resources|^lint""")
     }
 }
 
@@ -82,11 +93,8 @@ abstract class NativeStringsExtension {
     abstract val localeConfig: RegularFileProperty
 }
 
-/** Generates (or, with [write] off, verifies) every output — see [NativeStringsPlugin]. */
+/** Writes every output, once the locale list agrees with every module's translations — see [NativeStringsPlugin]. */
 abstract class NativeStringsTask : DefaultTask() {
-    @get:Input
-    var write: Boolean = false
-
     @get:Input
     abstract val locales: ListProperty<String>
 
@@ -97,8 +105,9 @@ abstract class NativeStringsTask : DefaultTask() {
     @get:Input
     abstract val otherResources: ListProperty<File>
 
-    // The outputs are also what the check READS, and they are committed files outside this project: tracked as
-    // internal so Gradle neither caches the check away nor claims the paths as another task's outputs.
+    // The outputs are committed SOURCES of other modules: tracked as internal so Gradle never claims those paths as
+    // this task's outputs (every task reading those modules' sources would then have to depend on it), and the task
+    // compares before it writes.
     @get:Internal
     abstract val infoPlist: RegularFileProperty
 
@@ -138,16 +147,7 @@ abstract class NativeStringsTask : DefaultTask() {
             }
             put(localeConfig.get().asFile, localeConfigXml(tags))
         }
-        val stale = outputs.filter { (file, text) -> !file.exists() || file.readText() != text }
-        if (write) {
-            stale.forEach { (file, text) -> file.parentFile.mkdirs(); file.writeText(text) }
-        } else if (stale.isNotEmpty()) {
-            val root = rootDir.get().asFile
-            throw GradleException(
-                "Stale generated strings — run ./gradlew nativeStrings and commit:\n" +
-                    stale.keys.joinToString("\n") { "  " + it.relativeTo(root) },
-            )
-        }
+        outputs.forEach { (file, text) -> Committed.write(file, text, logger, rootDir.get().asFile) }
     }
 
     /** Every `values*` directory of [dir] is a declared locale, and every declared locale has one. */

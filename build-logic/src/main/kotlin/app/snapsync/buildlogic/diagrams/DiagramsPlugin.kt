@@ -1,10 +1,9 @@
 package app.snapsync.buildlogic.diagrams
 
+import app.snapsync.buildlogic.Committed
 import app.snapsync.buildlogic.QualityPlugin
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.logging.Logger
-import java.io.File
 
 /**
  * `snapsync.diagrams`, applied once, by the root through `snapsync.conventions` (`docs/architecture.md`, "Diagrams"):
@@ -24,10 +23,12 @@ class DiagramsPlugin : Plugin<Project> {
         val modules = root.tasks.register("architectureModulesDiagram", ModulesDiagramTask::class.java) {
             description = "Writes architecture/modules.md from the Gradle project model."
             diagram.set(dir.file("modules.md"))
+            rootDir.set(root.layout.projectDirectory)
         }
         val ports = root.tasks.register("architecturePortsDiagram", PortsDiagramTask::class.java) {
             description = "Writes architecture/ports.md from :core:ports and every production module's sources."
             diagram.set(dir.file("ports.md"))
+            rootDir.set(root.layout.projectDirectory)
             mock.set(MOCK)
         }
         root.gradle.projectsEvaluated {
@@ -69,18 +70,5 @@ class DiagramsPlugin : Plugin<Project> {
         const val PORTS = "core/ports/src/commonMain"
         const val MOCK = ":adapter:generic:mock"
         val PRODUCTION = setOf("adapter", "app", "core", "ui")
-    }
-}
-
-/**
- * A generated file that is committed: written only when its text changed, and said so, so a local build that fixed one
- * tells.
- */
-internal object Committed {
-    fun write(file: File, text: String, logger: Logger) {
-        if (file.isFile && file.readText(Charsets.UTF_8) == text) return
-        file.parentFile.mkdirs()
-        file.writeText(text, Charsets.UTF_8)
-        logger.lifecycle("rewrote ${file.name}: commit it")
     }
 }
