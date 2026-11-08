@@ -138,6 +138,20 @@ snapsync:
       - '**/domain/data/src/commonMain/**'
       - '**/domain/application/src/commonMain/**'
       - '**/domain/query/src/commonMain/**'
+  ConstructorsTouchNoPort:
+    # A constructor never touches what it was handed (`docs/patterns.md`, "Composition is wiring"): so a graph built
+    # eagerly opens nothing.
+    active: true
+    includes:
+      - '**/domain/inbound/src/commonMain/**'
+      - '**/domain/scheduling/src/commonMain/**'
+      - '**/domain/entrypoints/src/commonMain/**'
+      - '**/domain/domain/src/commonMain/**'
+      - '**/domain/data/src/commonMain/**'
+      - '**/domain/application/src/commonMain/**'
+      - '**/domain/query/src/commonMain/**'
+      - '**/domain/presentation/src/commonMain/**'
+      - '**/domain/composition/**/src/commonMain/**'
   DomainPurity:
     # The domain is values and verdicts (`docs/patterns.md`, "The domain").
     active: true

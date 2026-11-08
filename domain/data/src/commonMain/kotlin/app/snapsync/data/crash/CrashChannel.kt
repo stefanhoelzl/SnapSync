@@ -25,19 +25,22 @@ import app.snapsync.ports.ThreadLabel
  */
 class CrashChannel(
     private val reporter: CrashReporter,
-    build: BuildInfo,
+    private val build: BuildInfo,
     /** The trigger the calling thread is labelled with, which rides a crossing as its `entry_point` tag. */
     private val label: ThreadLabel,
     private val shaping: CrashShaping,
 ) {
-    private val reporting = ReportingBuild(
-        build.dsn,
-        build.appVersion,
-        build.reporterEnvironment,
-        build.platform,
-        build.buildNumber,
-        build.processId,
-    ).reporting()
+    /** Whether and how this build reports — read from the build on first use, never as the channel is built. */
+    private val reporting by lazy {
+        ReportingBuild(
+            build.dsn,
+            build.appVersion,
+            build.reporterEnvironment,
+            build.platform,
+            build.buildNumber,
+            build.processId,
+        ).reporting()
+    }
 
     /** Where a bug report goes on this build: sent where it reports, else kept on the device. */
     val destination: ReportDestination get() = reporting.destination
@@ -46,9 +49,11 @@ class CrashChannel(
      * The log's way into the channel, or `null` for a build that reports nowhere — so such a build never constructs
      * one. Every line becomes a breadcrumb, and an `Error` line an event too ([LineReport]).
      */
-    val lines: LogWriter? = when (reporting) {
-        is Reporting.To -> CrashLines(this, label)
-        Reporting.Nowhere -> null
+    val lines: LogWriter? by lazy {
+        when (reporting) {
+            is Reporting.To -> CrashLines(this, label)
+            Reporting.Nowhere -> null
+        }
     }
 
     /**
@@ -56,7 +61,7 @@ class CrashChannel(
      * where it reports (the port's promise). It reads nothing but the build's own configuration, so it is safe on a
      * locked background launch.
      */
-    fun start() = when (reporting) {
+    fun start() = when (val reporting = reporting) {
         is Reporting.To -> reporter.start(reporting.options, shaping)
         Reporting.Nowhere -> Unit
     }

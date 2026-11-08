@@ -12,16 +12,15 @@ import kotlin.concurrent.Volatile
 /**
  * The push token the platform last delivered in this process, and the registration it would make. The token is
  * **delivered**, never pulled: the app asks at every entry and the OS answers every time — mostly with the token it
- * gave last time — and each answer is stored here. [kind] is the push service the adapter speaks, [env] the build's
- * push environment (compile-time: APNs' `sandbox` or `production`, on FCM the Firebase project), never the delivery's.
+ * gave last time — and each answer is stored here. Its endpoint names the push service the adapter speaks and the
+ * build's push environment (compile-time: APNs' `sandbox` or `production`, on FCM the Firebase project), never the
+ * delivery's.
  */
 class PushTokens(
     private val push: PushNotifications,
-    build: BuildInfo,
+    private val build: BuildInfo,
     private val identity: DeviceIdentity,
 ) {
-    private val kind: String = push.kind
-    private val env: String = build.pushEnvironment
 
     @Volatile
     private var latest: Delivered = Delivered.None
@@ -43,7 +42,7 @@ class PushTokens(
      * has never seen.
      */
     fun current(): RegistrationRead = when (val delivered = latest) {
-        is Delivered.Token -> identified(PushEndpoint(kind, delivered.token.value, env))
+        is Delivered.Token -> identified(PushEndpoint(push.kind, delivered.token.value, build.pushEnvironment))
         Delivered.None -> RegistrationRead.NoToken
     }
 
@@ -73,7 +72,7 @@ sealed interface RegistrationRead {
 
 /**
  * Where the backend sends this device's silent pushes, as the backend stores it: [kind] names the push service
- * (`PUSH_KIND_APNS`, `PUSH_KIND_FCM`), [token] the device token, [env] the build's environment.
+ * ([app.snapsync.ports.PushKind]), [token] the device token, [env] the build's environment.
  */
 data class PushEndpoint(val kind: String, val token: String, val env: String) {
     /**
