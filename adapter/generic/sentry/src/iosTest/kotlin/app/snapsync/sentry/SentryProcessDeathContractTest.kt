@@ -20,8 +20,8 @@ import app.snapsync.contracts.verify
 import app.snapsync.domain.crash.CrashOptions
 import app.snapsync.domain.crash.CrashShaping
 import app.snapsync.domain.program.InvalidProgramState
+import app.snapsync.inbound.Log
 import app.snapsync.objc.objcBoundary
-import co.touchlab.kermit.Logger
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
@@ -113,7 +113,7 @@ class SentryProcessDeathContractTest {
             FatalRoute.OBJC_CALLBACK -> dispatch_async(
                 dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT.toLong(), 0u),
             ) {
-                objcBoundary(Logger.withTag("ContractDeath"), "the contract's callback") {
+                objcBoundary(Log("ContractDeath"), "the contract's callback") {
                     throw InvalidProgramState(CrashReporterContract.becauseOf(FatalRoute.OBJC_CALLBACK))
                 }
             }

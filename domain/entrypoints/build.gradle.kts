@@ -28,7 +28,6 @@ kotlin {
             implementation(project(":ui:state"))
             // `StatusContainerHost` is an Orbit `ContainerHost`; presentation does not export Orbit.
             implementation(libs.orbit.core)
-            implementation(libs.kermit)
         }
     }
 }

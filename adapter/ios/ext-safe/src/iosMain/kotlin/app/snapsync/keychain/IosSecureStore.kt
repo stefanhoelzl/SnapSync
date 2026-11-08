@@ -2,6 +2,8 @@
 
 package app.snapsync.keychain
 
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreRead
@@ -176,11 +178,20 @@ internal class KeychainItem(
     private fun protectionOf(accessibility: String?): StoredProtection = when (accessibility) {
         ACCESSIBLE_AFTER_FIRST_UNLOCK -> StoredProtection.BACKGROUND_READABLE
         null -> {
-            log.i { "$service/$account reports no accessibility class" }
+            log.unlabelled.i(
+                "<service>/<account> reports no accessibility class",
+                "service" of service,
+                "account" of account,
+            )
             StoredProtection.UNREPORTED
         }
         else -> {
-            log.i { "$service/$account is stored `$accessibility`, not the required class" }
+            log.unlabelled.i(
+                "<service>/<account> is stored `<accessibility>`, not the required class",
+                "service" of service,
+                "account" of account,
+                "accessibility" of accessibility,
+            )
             StoredProtection.RESTRICTED
         }
     }
@@ -275,7 +286,7 @@ internal class KeychainItem(
     private fun cfString(value: String) = CFStringCreateWithCString(null, value, kCFStringEncodingUTF8)
 
     private companion object {
-        val log = co.touchlab.kermit.Logger.withTag("Keychain")
+        val log = Log("Keychain")
 
         /**
          * An `OSStatus` as the port's opaque diagnostic. It reaches a device log and an exception

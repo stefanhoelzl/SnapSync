@@ -124,7 +124,7 @@ class RigHooks(
      * `/health`'s body.
      *
      * [bootedAt] is reported rather than only logged because of an ordering fact: `SnapSyncRoot`'s init is
-     * what installs the Kermit file writer, and the hook deliberately does not touch `SnapSyncRoot` at boot
+     * what installs the log's file writer, and the hook deliberately does not touch `SnapSyncRoot` at boot
      * (so a rig build's launch ordering stays identical to production's). Measured on device the writer
      * happened to be installed already — but that ordering is not guaranteed, and a boot observable only in
      * a log that might not have been receiving yet is not observable.

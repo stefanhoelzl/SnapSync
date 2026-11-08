@@ -3,8 +3,9 @@ package app.snapsync.databases
 import app.cash.sqldelight.TransacterImpl
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.objc.objcBoundary
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.alloc
@@ -33,7 +34,7 @@ import platform.darwin.notify_register_dispatch
 internal class DarwinCommits(
     name: String,
     driver: SqlDriver,
-    private val log: Logger,
+    private val log: Log,
     private val elsewhere: () -> Unit,
 ) {
     private val notification = "app.snapsync.db.$name"
@@ -49,14 +50,26 @@ internal class DarwinCommits(
         val status = notify_register_dispatch(notification, out.ptr, queue) { _ ->
             objcBoundary(log, "commit notice $notification") { received() }
         }
-        if (status != NOTIFY_STATUS_OK.toUInt()) log.w { "$notification not observed (status $status)" }
+        if (status != NOTIFY_STATUS_OK.toUInt()) {
+            log.unlabelled.w(
+                "<notification> not observed (status <status>)",
+                "notification" of notification,
+                "status" of status,
+            )
+        }
         out.value
     }
 
     /** Announce a commit through this driver. */
     fun post() {
         val status = notify_post(notification)
-        if (status != NOTIFY_STATUS_OK.toUInt()) log.w { "$notification not posted (status $status)" }
+        if (status != NOTIFY_STATUS_OK.toUInt()) {
+            log.unlabelled.w(
+                "<notification> not posted (status <status>)",
+                "notification" of notification,
+                "status" of status,
+            )
+        }
     }
 
     /** Stop observing: the driver is closed. */

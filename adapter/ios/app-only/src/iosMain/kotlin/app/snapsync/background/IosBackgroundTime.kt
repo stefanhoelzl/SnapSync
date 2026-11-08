@@ -2,11 +2,12 @@
 
 package app.snapsync.background
 
+import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
+import app.snapsync.inbound.of
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
-import co.touchlab.kermit.Logger
 import platform.UIKit.UIApplication
 import platform.UIKit.UIBackgroundTaskInvalid
 import kotlin.concurrent.atomics.AtomicBoolean
@@ -71,23 +72,29 @@ internal object SystemBackgroundTimeApi : BackgroundTimeApi {
  * refusal, which no host presents to a running app's first hold, is held by this module's tests over that seam.
  */
 class IosBackgroundTime internal constructor(
-    private val log: Logger,
+    private val log: Log,
     // The operating-system boundary; production always passes the real one.
     private val api: BackgroundTimeApi,
 ) : BackgroundTime {
 
-    constructor(log: Logger) : this(log, SystemBackgroundTimeApi)
+    constructor(log: Log) : this(log, SystemBackgroundTimeApi)
 
     override fun begin(label: String, expiry: Running): BackgroundTimeHold {
         val expired = Once(expiry::expire)
         val identifier = api.begin(label) {
             objcBoundary(log, "backgroundTime.expiry($label)") {
-                log.w { "$label: the operating system says background time is up — requesting a stop" }
+                log.unlabelled.w(
+                    "<label>: the operating system says background time is up — requesting a stop",
+                    "label" of label,
+                )
                 expired.run()
             }
         }
         if (identifier == null) {
-            log.w { "$label: background time refused — the app's time is already up; reported as an expiry" }
+            log.unlabelled.w(
+                "<label>: background time refused — the app's time is already up; reported as an expiry",
+                "label" of label,
+            )
             expired.run()
             return Refused
         }

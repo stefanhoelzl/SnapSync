@@ -24,6 +24,8 @@ import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.ScheduleResult
 import app.snapsync.ports.Wake
@@ -31,7 +33,6 @@ import app.snapsync.ports.WakeHandlers
 import app.snapsync.ports.WakeId
 import app.snapsync.ports.WakeNetwork
 import app.snapsync.ports.WakeTrigger
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -99,7 +100,7 @@ import kotlin.time.toJavaDuration
 @NeverAnswers(
     Never(member = "schedule", answer = "ScheduleResult.Unsupported"),
 )
-class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wake")) : Wake {
+class AndroidWake(context: Context, private val log: Log = Log("wake")) : Wake {
 
     private val work = WorkManager.getInstance(context.applicationContext)
     private val jobs = context.getSystemService(JobScheduler::class.java)
@@ -121,7 +122,7 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
     }
 
     override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
-        run { request(id, trigger) }.also { log.i { "wake.schedule(id=$id) = $it" } }
+        run { request(id, trigger) }.also { log.unlabelled.i("wake.schedule(id=<id>) = <it>", "id" of id, "it" of it) }
 
     private suspend fun request(id: WakeId, trigger: WakeTrigger): ScheduleResult = try {
         when {
@@ -221,7 +222,7 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
             }
         }
         Unit
-    }.also { log.i { "wake.cancel(id=$id)" } }
+    }.also { log.unlabelled.i("wake.cancel(id=<id>)", "id" of id) }
 
     /** A worker's or job's run: hand the wake to the core, and hold the run open until its completion is released. */
     internal suspend fun run(id: WakeId) = run body@{
@@ -232,13 +233,13 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
         try {
             done.await()
         } catch (e: CancellationException) {
-            log.i { "the operating system stopped the $id wake — its time is up" }
+            log.unlabelled.i("the operating system stopped the <id> wake — its time is up", "id" of id)
             run.expire()
             throw e
         } finally {
             running -= id
         }
-    }.also { log.i { "wake.onTaskLaunched(id=$id)" } }
+    }.also { log.unlabelled.i("wake.onTaskLaunched(id=<id>)", "id" of id) }
 
     /**
      * The library-change job [job]'s run: started from now on, so a request from inside a run arms the other id, and
@@ -281,7 +282,7 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
         suspend fun deliver(id: WakeId, block: suspend (AndroidWake) -> Unit) {
             val wake = withTimeoutOrNull(COMPOSITION_WAIT_MILLIS) { registration.filterNotNull().first() } ?: return
             PlatformCalls.attemptSuspending { block(wake) }
-                .onFailure { Logger.withTag("wake").w(it) { "the $id wake failed" } }
+                .onFailure { Log("wake").unlabelled.w("the <id> wake failed", "id" of id, cause = it) }
         }
     }
 }

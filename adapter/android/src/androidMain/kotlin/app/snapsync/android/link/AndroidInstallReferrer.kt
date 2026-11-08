@@ -3,7 +3,7 @@ package app.snapsync.android.link
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.RemoteException
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
 import com.android.installreferrer.api.InstallReferrerClient
 import com.android.installreferrer.api.InstallReferrerStateListener
 import java.util.concurrent.atomic.AtomicBoolean
@@ -33,9 +33,9 @@ class AndroidInstallReferrer internal constructor(
     private val record: SharedPreferences,
     private val source: ReferrerSource,
     private val links: AndroidLinks,
-    private val log: Logger,
+    private val log: Log,
 ) {
-    constructor(context: Context, links: AndroidLinks, log: Logger) : this(
+    constructor(context: Context, links: AndroidLinks, log: Log) : this(
         record = context.getSharedPreferences(RECORD_FILE, Context.MODE_PRIVATE),
         source = PlayReferrerSource(context),
         links = links,
@@ -52,16 +52,18 @@ class AndroidInstallReferrer internal constructor(
                     markHandled()
                 }
                 ReferrerAnswer.NeverAvailable -> {
-                    log.i { "install referrer is not supported on this device" }
+                    log.unlabelled.i("install referrer is not supported on this device")
                     markHandled()
                 }
-                ReferrerAnswer.TryLater -> log.i { "install referrer is unavailable — asking again on the next start" }
+                ReferrerAnswer.TryLater -> log.unlabelled.i(
+                    "install referrer is unavailable — asking again on the next start",
+                )
             }
         }
     }
 
     private fun markHandled() {
-        if (!record.edit().putBoolean(HANDLED, true).commit()) log.w { "install referrer record not written" }
+        if (!record.edit().putBoolean(HANDLED, true).commit()) log.unlabelled.w("install referrer record not written")
     }
 
     private companion object {

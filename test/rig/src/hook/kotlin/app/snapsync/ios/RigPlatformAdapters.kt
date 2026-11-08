@@ -22,6 +22,7 @@ import app.snapsync.domain.upload.OsSupport
 import app.snapsync.files.IosFiles
 import app.snapsync.format.UploadersCarriedText
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.ios.upload.UploadExtensionRoot
 import app.snapsync.ios.urlsession.transferSessionBinding
 import app.snapsync.keychain.contract.deviceContracts
@@ -40,7 +41,6 @@ import app.snapsync.rig.rigPort
 import app.snapsync.rig.rigPortFilePath
 import app.snapsync.rig.rigServices
 import app.snapsync.rig.startWhenReady
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDate
 import platform.Foundation.NSProcessInfo
@@ -92,7 +92,7 @@ internal fun platformAdapters(real: AppDevicePorts): PlatformAdapters {
 }
 
 /** The root's wake in a rig build: production's, whose launches a device's contract run can take over for a clause. */
-internal fun rootWake(log: Logger): IosWake = contractTappableWake(log)
+internal fun rootWake(log: Log): IosWake = contractTappableWake(log)
 
 private fun startRig(launch: RigLaunch) = RigServer(
     hooks = iosHooks(launch),
@@ -164,7 +164,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
  * The typed services this host implements itself (`os`, `extension-host`): the platform's own adapters, and the
  * extension root's members.
  *
- * THUNKS, never method references. `UploadExtensionRoot` is an `object` whose `init` calls `Logger.setLogWriters(…)`,
+ * THUNKS, never method references. `UploadExtensionRoot` is an `object` whose `init` installs the log's writers,
  * and a bound method reference FORCES that object where it is written — here, at boot. Measured 2026-08-26: with
  * `::processRawValue` the extension's boot banner appeared at hook-construction time and `SnapSyncRoot`'s own
  * `onLaunch` lines then landed in `ext-debug.log`, because the app's log destination had already been replaced before

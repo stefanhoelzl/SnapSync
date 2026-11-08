@@ -1,6 +1,8 @@
 package app.snapsync.download
 
 import app.snapsync.gallery.toNSDate
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ios.qos.qosLabel
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
@@ -11,7 +13,6 @@ import app.snapsync.ports.ImportPlaceholder
 import app.snapsync.ports.ImportSettled
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDate
@@ -51,7 +52,7 @@ import platform.Photos.PHPhotosErrorMissingResource
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal class IosPhotoLibraryImporter(
-    private val log: Logger = Logger.withTag("PhotoImporter"),
+    private val log: Log = Log("PhotoImporter"),
 ) {
 
     private val livePhotos = LivePhotoFromMotionPhoto(log)
@@ -67,7 +68,11 @@ internal class IosPhotoLibraryImporter(
                 val paired = commit(request, pair.resources, handlers)
                 if (paired is ImportOutcome.Imported) return paired
                 val reason = (paired as ImportOutcome.Failed).message
-                log.w { "${request.correlation}: Photos refused the Live Photo ($reason) — imported as its still" }
+                log.unlabelled.w(
+                    "<request.correlation>: Photos refused the Live Photo (<reason>) — imported as its still",
+                    "request.correlation" of request.correlation,
+                    "reason" of reason,
+                )
             } finally {
                 pair.delete()
             }
@@ -95,7 +100,12 @@ internal class IosPhotoLibraryImporter(
         val correlation = request.correlation
         val album = request.album?.value
         val captureDate = request.created?.toNSDate()
-        if (captureDate == null) log.w { "$correlation: no capture date — the library stamps the import time" }
+        if (captureDate == null) {
+            log.unlabelled.w(
+                "<correlation>: no capture date — the library stamps the import time",
+                "correlation" of correlation,
+            )
+        }
 
         // Resolved before the transaction: an album the member deleted files nothing and fails nothing.
         val collection = album?.let { id ->
@@ -105,7 +115,14 @@ internal class IosPhotoLibraryImporter(
                     null,
                 ).firstObject() as? PHAssetCollection
                 )
-                .also { if (it == null) log.w { "event album $id no longer resolves — camera roll only" } }
+                .also {
+                    if (it == null) {
+                        log.unlabelled.w(
+                            "event album <id> no longer resolves — camera roll only",
+                            "id" of id,
+                        )
+                    }
+                }
         }
         val created = CreatedAsset()
         // The class `performChanges` is called at — read here, on the caller's thread, for the block's trace.
@@ -215,10 +232,13 @@ internal class IosPhotoLibraryImporter(
         //
         // With both QoS classes: the thread that asked for the commit, and the one PhotoKit runs this block on —
         // the class the request propagated at (commits at QOS_CLASS_BACKGROUND measured 6–7× slower, SE2).
-        log.i {
-            "import: change block running for $correlation (${typed.size} resource(s)); " +
-                "qos caller=$callerQos block=${qosLabel()}"
-        }
+        log.unlabelled.i(
+            "import: change block running",
+            "correlation" of correlation,
+            "resources" of typed.size,
+            "callerQos" of callerQos,
+            "blockQos" of qosLabel(),
+        )
         val request = PHAssetCreationRequest.creationRequestForAsset()
         for ((type, path, filename) in typed) {
             // Name the resource EXPLICITLY. With a nil options argument PhotoKit names it
@@ -285,7 +305,13 @@ internal class IosPhotoLibraryImporter(
         // The commit's own verdict, logged before it is interpreted: a failed commit and a missing placeholder both
         // reduce to one `Failed`, and only this line tells them apart after the fact.
         val id = created.localId
-        log.i { "import: commit for $correlation success=$success created=$id error=${error?.localizedDescription}" }
+        log.unlabelled.i(
+            "import: commit for <correlation> success=<success> created=<id> error=<value>",
+            "correlation" of correlation,
+            "success" of success,
+            "id" of id,
+            "value" of (error?.localizedDescription),
+        )
         // The settle (the caller's `onImportSettled`, called with this verdict before anyone is resumed) writes the
         // row FIRST; the requester forgets its claim only after this returns. Forgetting is what re-enables the
         // adjudicator's absent branch for this ref, so it must not happen while the row still looks unconfirmed

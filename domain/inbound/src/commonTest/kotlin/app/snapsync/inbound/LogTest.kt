@@ -27,7 +27,9 @@ class LogTest {
     }
 
     @AfterTest
-    fun uninstall() = Log.install(emptyList())
+    fun uninstall() {
+        Log.install(emptyList())
+    }
 
     @Test
     fun `a line carries the trigger of the work that wrote it`() = runTest {
@@ -57,13 +59,17 @@ class LogTest {
     @Test
     fun `non-suspend code writes the same lines - unlabelled`() {
         val cause = IllegalStateException("x")
+        log.unlabelled.d("zero")
         log.unlabelled.i("one", "a" of 1)
         log.unlabelled.w("two", cause = cause)
         log.unlabelled.e("three", cause = cause)
         log.unlabelled.e("four")
-        assertEquals(listOf("one", "two", "three", "four"), lines.map { it.event })
-        assertEquals(listOf(LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR, LogLevel.ERROR), lines.map { it.level })
-        assertEquals(listOf(null, null, null, null), lines.map { it.trigger })
+        assertEquals(listOf("zero", "one", "two", "three", "four"), lines.map { it.event })
+        assertEquals(
+            listOf(LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR, LogLevel.ERROR),
+            lines.map { it.level },
+        )
+        assertEquals(listOf(null, null, null, null, null), lines.map { it.trigger })
         assertEquals(null, lines.last().cause)
     }
 

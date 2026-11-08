@@ -3,8 +3,8 @@
 package app.snapsync.ios.urlsession
 
 import app.snapsync.inbound.Completion
+import app.snapsync.inbound.Log
 import app.snapsync.objc.onQueue
-import co.touchlab.kermit.Logger
 import platform.darwin.dispatch_get_main_queue
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicInt
@@ -42,7 +42,7 @@ internal fun interface HandlerRelease {
 
 /** On the main queue, where UIKit requires a session relaunch's handler to be called. */
 internal object MainThreadRelease : HandlerRelease {
-    private val log = Logger.withTag("SessionCompletion")
+    private val log = Log("SessionCompletion")
 
     override fun release(handler: () -> Unit) = onQueue(
         dispatch_get_main_queue(),

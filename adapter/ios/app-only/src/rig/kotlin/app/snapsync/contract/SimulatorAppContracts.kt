@@ -55,6 +55,7 @@ import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
@@ -68,7 +69,6 @@ import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.ResourceKind
 import app.snapsync.protection.IosProcessInfo
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
@@ -175,7 +175,7 @@ internal fun seedPhotos(seedDate: String): List<String> = memScoped {
 /** The app's real gallery, as a contract run builds it: its own scope, never the app's. */
 internal fun contractGallery(): IosGallery =
     IosGallery(
-        IosGalleryReader(Logger.withTag("contract")),
+        IosGalleryReader(Log("contract")),
         PhotoLibraryPermission(),
         CoroutineScope(Dispatchers.Default),
     )
@@ -222,7 +222,7 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
         val files = ClauseFiles({ "$scratch/$it" }, { path -> NSData.dataWithContentsOfFile(path)?.toByteArray() })
         val rename = { album: PlatformAlbumId, title: String -> renameCollection(album.value, title) }
         return Entered.Ready(
-            SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log), ids, files, renameAlbum = rename),
+            SeededLibrary(IosGalleryReader(Log("contract")).recorded(log), ids, files, renameAlbum = rename),
         )
     }
 }
@@ -296,14 +296,14 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
 
             // Through the reader's resource read — the same read a later install's join makes.
             override suspend fun primaryFilename(id: PlatformAssetId): String? =
-                (IosGalleryReader(Logger.withTag("contract")).resources(setOf(id)) as? GalleryRead.Read)
+                (IosGalleryReader(Log("contract")).resources(setOf(id)) as? GalleryRead.Read)
                     ?.value?.firstOrNull()?.resources?.firstOrNull { it.kind == ResourceKind.PHOTO }?.originalFilename
         }
         // An album made as Photos makes one, its members read through the reader's own album read.
         val album = if (state == GalleryImportState.GRANTED_VALID_STAGED_WITH_AN_ALBUM) {
             val id = PlatformAlbumId(createCollection("contract $clauseId"))
             ImportAlbum(id) { asset ->
-                (IosGalleryReader(Logger.withTag("contract")).albumMembers(id, null) as? GalleryRead.Read)
+                (IosGalleryReader(Log("contract")).albumMembers(id, null) as? GalleryRead.Read)
                     ?.value?.contains(asset) == true
             }
         } else {
@@ -347,7 +347,7 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
 
             // Through the reader's resource read — the same read a later install's join makes.
             override suspend fun primaryFilename(id: PlatformAssetId): String? =
-                (IosGalleryReader(Logger.withTag("contract")).resources(setOf(id)) as? GalleryRead.Read)
+                (IosGalleryReader(Log("contract")).resources(setOf(id)) as? GalleryRead.Read)
                     ?.value?.firstOrNull()?.resources?.firstOrNull { it.kind == ResourceKind.PHOTO }?.originalFilename
 
             override suspend fun isLivePhoto(id: PlatformAssetId): Boolean? =
@@ -435,7 +435,7 @@ class SimAppBackgroundTimeBinding : Binding<BackgroundTimeState, BackgroundTime>
 
     override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =
         if (state in reaches) {
-            Entered.Ready(IosBackgroundTime(Logger.withTag("contract")).recorded(log))
+            Entered.Ready(IosBackgroundTime(Log("contract")).recorded(log))
         } else {
             Entered.Unreachable("the rig drives the simulator app in the foreground, where its time does not run out")
         }

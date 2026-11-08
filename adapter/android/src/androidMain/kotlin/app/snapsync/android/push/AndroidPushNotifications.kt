@@ -6,6 +6,8 @@ import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.PlatformError
 import app.snapsync.ports.PushHandlers
@@ -13,7 +15,6 @@ import app.snapsync.ports.PushKind
 import app.snapsync.ports.PushMessage
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.PushToken
-import co.touchlab.kermit.Logger
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.messaging.FirebaseMessaging
@@ -56,7 +57,7 @@ class FirebaseConfig(
 class AndroidPushNotifications(
     context: Context,
     private val config: FirebaseConfig,
-    private val log: Logger = Logger.withTag("push"),
+    private val log: Log = Log("push"),
 ) : PushNotifications {
 
     private val appContext = context.applicationContext
@@ -67,7 +68,7 @@ class AndroidPushNotifications(
 
     private val messaging: FirebaseMessaging? by lazy {
         if (!config.isConfigured) {
-            log.i { "this build names no Firebase project — it gets no push" }
+            log.unlabelled.i("this build names no Firebase project — it gets no push")
             return@lazy null
         }
         PlatformCalls.attempt {
@@ -83,7 +84,7 @@ class AndroidPushNotifications(
                 )
             }
             FirebaseMessaging.getInstance()
-        }.onFailure { log.w(it) { "Firebase could not be started" } }.getOrNull()
+        }.onFailure { log.unlabelled.w("Firebase could not be started", cause = it) }.getOrNull()
     }
 
     @CompositionOnly
@@ -127,7 +128,7 @@ class AndroidPushNotifications(
     }
 
     private fun failure(reason: String) {
-        log.w { "no push token: $reason" }
+        log.unlabelled.w("no push token: <reason>", "reason" of reason)
         handlers.orNull("a token failure")?.onTokenFailure?.deliver(PlatformError(reason))
     }
 
@@ -146,12 +147,12 @@ class AndroidPushNotifications(
  * here. None — a build that refused at start, or a rig launch whose push service is mocked — runs nothing.
  */
 class SnapSyncMessagingService : FirebaseMessagingService() {
-    private val log = Logger.withTag("push")
+    private val log = Log("push")
 
     // Deprecated with `getToken()` (see `AndroidPushNotifications.register`), and kept with it.
     @Suppress("OVERRIDE_DEPRECATION")
     override fun onNewToken(token: String) {
-        run { AndroidPushNotifications.registration.value?.deliverToken(token) }.also { log.i { "onNewToken" } }
+        run { AndroidPushNotifications.registration.value?.deliverToken(token) }.also { log.unlabelled.i("onNewToken") }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
@@ -161,8 +162,14 @@ class SnapSyncMessagingService : FirebaseMessagingService() {
             val push = AndroidPushNotifications.registration.value ?: return@body null
             val released = CountDownLatch(1)
             PlatformCalls.attempt { push.deliverMessage(message.data, OnceCompletion { released.countDown() }) }
-                .onFailure { log.w(it) { "the push could not be handed over" } }
+                .onFailure { log.unlabelled.w("the push could not be handed over", cause = it) }
             released.await(AndroidPushNotifications.MESSAGE_BUDGET_MILLIS, TimeUnit.MILLISECONDS)
-        }.also { log.i { "onMessageReceived(keys=${message.data.keys}) = ${if (it == null) "no composition" else "it=$it"}" } }
+        }.also {
+            log.unlabelled.i(
+                "onMessageReceived(keys=<message.data.keys>) = <value>",
+                "message.data.keys" of message.data.keys,
+                "value" of (if (it == null) "no composition" else "it=$it"),
+            )
+        }
     }
 }

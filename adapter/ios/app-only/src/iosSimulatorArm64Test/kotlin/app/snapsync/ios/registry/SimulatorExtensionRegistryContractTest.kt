@@ -9,8 +9,8 @@ import app.snapsync.contracts.ExtensionRegistryState
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.Log
 import app.snapsync.ports.ExtensionRegistry
-import co.touchlab.kermit.Logger
 import kotlin.test.Test
 
 /**
@@ -46,7 +46,7 @@ class SimulatorExtensionRegistryContractTest {
                     SimulatorRecord(registered = true, partialGrant = true)
                 ExtensionRegistryState.NO_MECHANISM -> SimulatorRecord(mechanism = false)
             }
-            return Entered.Ready(SimulatorExtensionRegistry(Logger.withTag("contract"), record).recorded(log))
+            return Entered.Ready(SimulatorExtensionRegistry(Log("contract"), record).recorded(log))
         }
     }
 

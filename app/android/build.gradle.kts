@@ -174,7 +174,6 @@ dependencies {
     implementation(project(":adapter:generic:sentry"))
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)
-    implementation(libs.kermit)
     // The cutoff formatter's zone, and the status host's Orbit supertype — neither exported by the zones naming them.
     implementation(libs.kotlinx.datetime)
     implementation(libs.orbit.core)

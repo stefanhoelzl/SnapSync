@@ -1,5 +1,7 @@
 package app.snapsync.download
 
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.motionphoto.locateMotionVideo
 import app.snapsync.motionphoto.motionPresentationTimestampUs
 import app.snapsync.motionphoto.withExtension
@@ -9,7 +11,6 @@ import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.ImportFile
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -116,7 +117,7 @@ import platform.posix.usleep
  * on the same volume as the staged files, which the importer deletes after the attempt and the OS purges.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-internal class LivePhotoFromMotionPhoto(private val log: Logger) {
+internal class LivePhotoFromMotionPhoto(private val log: Log) {
 
     /** The two files of a Live Photo, ready for one creation request, and the names they are saved under. */
     class Pair(val still: String, val stillName: String, val video: String, val videoName: String) {
@@ -135,19 +136,21 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
         // here, and only a motion photo is worth reading whole.
         val xmp = xmpOf(primary.path)?.takeIf { MOTION_MARK in it || LEGACY_MOTION_MARK in it } ?: return@withContext null
         val file = checkedObjCValue("dataWithContentsOfFile") { NSData.dataWithContentsOfFile(primary.path, 0u, it) }
-            .onFailure { log.w(it) { "$assetId: the staged photo is unreadable — imported as it is" } }
+            .onFailure {
+                log.unlabelled.w("<assetId>: the staged photo is unreadable — imported as it is", "assetId" of assetId, cause = it)
+            }
             .getOrNull()?.toByteArray() ?: return@withContext null
         // Said aloud: an XMP that names a motion photo whose video is not found is a still the member will not see move,
         // and nothing else reports it — every real Pixel and Samsung file fell here, unseen, until a journey showed it.
         val video = locateMotionVideo(xmp, file) ?: return@withContext null.also {
-            log.w { "$assetId: motion-photo XMP, but no video where it says — imported as its still" }
+            log.unlabelled.w("<assetId>: motion-photo XMP, but no video where it says — imported as its still", "assetId" of assetId)
         }
         val identifier = NSUUID().UUIDString
         val dir = NSTemporaryDirectory() + "motion-photo/"
         checkedObjC("createDirectoryAtPath") {
             NSFileManager.defaultManager.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = it)
         }.onFailure {
-            log.w(it) { "$assetId: no scratch directory — imported as it is" }
+            log.unlabelled.w("<assetId>: no scratch directory — imported as it is", "assetId" of assetId, cause = it)
         }.getOrNull() ?: return@withContext null
         val name = primary.name
         val stillIn = "$dir$identifier-in.${extensionOf(name)}"
@@ -161,12 +164,19 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
             val route = tagStill(stillIn, stillOut, identifier) ?: return@attemptSuspending null
             val keyFrameUs = motionPresentationTimestampUs(xmp) ?: 0L
             if (!rewrapVideo(mp4, mov, identifier, keyFrameUs)) return@attemptSuspending null
-            log.i {
-                "$assetId: a motion photo taken apart into a Live Photo (still $route, video ${video.count()} B passed through)"
-            }
+            log.unlabelled.i(
+                "<assetId>: a motion photo taken apart into a Live Photo (still <route>, video <video.count> B passed through)",
+                "assetId" of assetId,
+                "route" of route,
+                "video.count" of video.count(),
+            )
             pair
         }.getOrElse {
-            log.w(it) { "$assetId: the motion photo could not be taken apart — imported as its still" }
+            log.unlabelled.w(
+                "<assetId>: the motion photo could not be taken apart — imported as its still",
+                "assetId" of assetId,
+                cause = it,
+            )
             null
         }
         listOf(stillIn, mp4).forEach(::remove)
@@ -208,7 +218,7 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
         try {
             if (copyLosslessly(source, output, identifier) && makerNoteIdentifier(output) == identifier) return "kept losslessly"
             if (reencode(source, output, identifier) && makerNoteIdentifier(output) == identifier) return "re-encoded at quality 1.0"
-            log.w { "the still did not keep its content identifier on either route" }
+            log.unlabelled.w("the still did not keep its content identifier on either route")
             return null
         } finally {
             CFRelease(source)

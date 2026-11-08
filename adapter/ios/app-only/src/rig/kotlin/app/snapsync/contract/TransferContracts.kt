@@ -27,6 +27,7 @@ import app.snapsync.download.IosDownload
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
@@ -35,7 +36,6 @@ import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.WriteOutcome
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
@@ -169,7 +169,7 @@ class SimAppSessionBinding : Binding<TransferSessionState, SessionUnderTest>, Ru
         val base = fixture.require()
         val contract = TransferSessionContract.name
         val adapter = IosUrlSessionUploadPlatform(
-            log = Logger.withTag("contract"),
+            log = Log("contract"),
             sessionIdentifier = "app.snapsync.contract.upload.$clauseId",
             cap = CAP,
         )
@@ -249,7 +249,7 @@ class SimAppDownloadBinding : Binding<DownloadState, DownloadUnderTest>, RunPara
         } else {
             Entered.Ready(
                 DownloadUnderTest(
-                    open = { IosDownload(Logger.withTag("contract")).recorded(log) },
+                    open = { IosDownload(Log("contract")).recorded(log) },
                     base = fixture.require(),
                     readTemp = { path -> NSData.dataWithContentsOfFile(path)?.toByteArray() },
                 ),

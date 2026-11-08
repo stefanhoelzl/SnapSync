@@ -4,10 +4,11 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.levers.MovingPhoto
 import app.snapsync.motionphoto.locateMotionVideo
 import app.snapsync.rig.refused
-import co.touchlab.kermit.Logger
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -23,7 +24,7 @@ import java.time.format.DateTimeFormatter
  * rewritten IN PLACE ([retimed]) — the same 19 characters — so no offset moves and the motion photo stays the camera's
  * file in every other byte. Answers the item's MediaStore id.
  */
-fun addMotionPhoto(context: Context, log: Logger, photo: MovingPhoto): String {
+fun addMotionPhoto(context: Context, log: Log, photo: MovingPhoto): String {
     val file = photo.files.singleOrNull()?.takeUnless { it.isMovie }
         ?: refused("an Android motion photo is one image file; was ${photo.files.map { it.name }}")
     val taken = runCatching { Instant.parse(photo.date) }.getOrNull()
@@ -44,7 +45,13 @@ fun addMotionPhoto(context: Context, log: Logger, photo: MovingPhoto): String {
     check(resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null) == 1) {
         "publishing ${file.name} failed"
     }
-    log.i { "added motion photo ${file.name} (${bytes.size} B) as $uri, taken $taken" }
+    log.unlabelled.i(
+        "added motion photo <file.name> (<bytes.size> B) as <uri>, taken <taken>",
+        "file.name" of file.name,
+        "bytes.size" of bytes.size,
+        "uri" of uri,
+        "taken" of taken,
+    )
     return uri.lastPathSegment.orEmpty()
 }
 

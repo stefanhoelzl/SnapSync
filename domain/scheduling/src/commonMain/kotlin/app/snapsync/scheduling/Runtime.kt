@@ -377,7 +377,7 @@ internal fun endProcess(state: InvalidProgramState): Nothing {
 
 /**
  * The composition lane, with each dispatched task's [Trigger] in the thread's [ThreadLabel] for its duration — so a
- * Kermit line written inside a run is labelled like a `Log` line. A lane that schedules its own delays keeps doing so
+ * line written unlabelled inside a run is labelled like any other. A lane that schedules its own delays keeps doing so
  * ([labelling]): `delay` asks the context's dispatcher, and a wrapper that did not pass it on would move every delay
  * of the core onto the coroutines library's own timer thread.
  */

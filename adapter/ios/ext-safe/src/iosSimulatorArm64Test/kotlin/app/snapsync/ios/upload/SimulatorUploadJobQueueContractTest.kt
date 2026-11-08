@@ -19,6 +19,7 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.data.upload.Destinations
+import app.snapsync.inbound.Log
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
@@ -27,7 +28,6 @@ import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
-import co.touchlab.kermit.Logger
 import kotlin.test.Test
 
 /**
@@ -67,7 +67,7 @@ class SimulatorUploadJobQueueContractTest {
             // A state this host does not present: another platform's fact, or one no binding here enters.
             if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
             val jobs = SimulatorJobSets()
-            val queue = SimulatorUploadJobQueue(Logger.withTag("contract"), jobs, payloadType = StandInPhoto::class)
+            val queue = SimulatorUploadJobQueue(Log("contract"), jobs, payloadType = StandInPhoto::class)
             // The played OS settles what the substitute creates; it wraps the substitute's proxy, so what the clause
             // sees through it is recorded as the substitute's own answers.
             val os = PlayedOs(queue.recorded(log), jobs)

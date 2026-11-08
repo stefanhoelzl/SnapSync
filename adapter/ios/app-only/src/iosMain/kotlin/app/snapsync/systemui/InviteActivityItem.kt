@@ -1,7 +1,7 @@
 package app.snapsync.systemui
 
+import app.snapsync.inbound.Log
 import app.snapsync.objc.objcBoundary
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSURL
 import platform.LinkPresentation.LPLinkMetadata
@@ -22,7 +22,7 @@ internal class InviteActivityItem(private val text: String, private val title: S
     UIActivityItemSourceProtocol {
 
     private val url: NSURL? = NSURL.URLWithString(text)
-    private val log = Logger.withTag("shareSheet")
+    private val log = Log("shareSheet")
 
     // UIKit calls each of these: every body is contained, and a throw answers the plain text (or no metadata).
     override fun activityViewControllerPlaceholderItem(activityViewController: UIActivityViewController): Any =

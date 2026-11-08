@@ -17,7 +17,6 @@ import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadTarget
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 import platform.Foundation.NSURL
@@ -46,15 +45,15 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 @OptIn(ExperimentalForeignApi::class)
 @NeverAnswers(Never(member = "takesResources", answer = "true"))
 class IosUrlSessionUploadPlatform internal constructor(
-    private val log: Logger,
+    private val log: Log,
     sessionIdentifier: String,
     private val cap: Int,
     // The operating-system boundary; production always passes the real one.
     private val api: UploadSessionApi,
 ) : TransferSession {
 
-    constructor(log: Logger, sessionIdentifier: String, cap: Int = 4) :
-        this(log, sessionIdentifier, cap, SystemUploadSessionApi(Logger.withTag("urlSessionUpload")))
+    constructor(log: Log, sessionIdentifier: String, cap: Int = 4) :
+        this(log, sessionIdentifier, cap, SystemUploadSessionApi(Log("urlSessionUpload")))
 
     override val takesResources: Boolean = false
 
@@ -94,21 +93,19 @@ class IosUrlSessionUploadPlatform internal constructor(
         val registered = handlers.load()
         if (registered == null) {
             // Never silent: without handlers there is no one to hold the handler; answering it at once costs nothing.
-            Log(
-                log.tag,
-            ).unlabelled.e("upload session events arrived before the composition registered — released at once")
+            log.unlabelled.e("upload session events arrived before the composition registered — released at once")
             SessionCompletion(completion, api).complete()
         } else {
             registered.onBackgroundEvents.handle(SessionRelaunch(drains.now), SessionCompletion(completion, api))
         }
         session
-        log.i { "upload.handleEvents" }
+        log.unlabelled.i("upload.handleEvents")
     }
 
     override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome =
         run body@{
             val whole = source as? TransferSource.File ?: run {
-                log.w { "create: this uploader sends a file, not a resource handle — not creating" }
+                log.unlabelled.w("create: this uploader sends a file, not a resource handle — not creating")
                 return@body CreateOutcome.FAILED
             }
             // The cap is measured against the SESSION's live tasks, not an in-process count — the OS owns the transfers
@@ -120,19 +117,23 @@ class IosUrlSessionUploadPlatform internal constructor(
                 whole.path
             } else {
                 UploadSlices.cut(whole.path, whole.from, tag) ?: run {
-                    log.w { "create: the rest of $tag from ${whole.from} could not be copied out — not creating" }
+                    log.unlabelled.w(
+                        "create: the rest could not be copied out — not creating",
+                        "tag" of tag,
+                        "from" of whole.from,
+                    )
                     return@body CreateOutcome.FAILED
                 }
             }
             // Tagged with the ledger key — the only field present across the lifecycle. A file that cannot be read is no
             // transfer: refused now, never one that fails later.
             if (!session.upload(uploadUrlRequest(url, target), file, tag)) {
-                log.w { "create: $file cannot be read — not creating" }
+                log.unlabelled.w("create: <file> cannot be read — not creating", "file" of file)
                 if (whole.from > 0) UploadSlices.release(tag)
                 return@body CreateOutcome.FAILED
             }
             CreateOutcome.CREATED
-        }.also { log.i { "urlSession.create(tag=$tag) = $it" } }
+        }.also { log.unlabelled.i("urlSession.create(tag=<tag>) = <it>", "tag" of tag, "it" of it) }
 
     override suspend fun live(): List<Transfer> = session.tasks().map { Transfer(it, it.tag) }
 
@@ -148,11 +149,11 @@ class IosUrlSessionUploadPlatform internal constructor(
     private fun finished(task: TransferTask, statusCode: Long, error: NSError?) {
         task.tag?.let(UploadSlices::release)
         when (val outcome = classifyUrlSessionCompletion(task.tag, statusCode, error)) {
-            TaskCompletion.NoLedgerKey -> log.w { "upload task carried no description — nothing to record" }
+            TaskCompletion.NoLedgerKey -> log.unlabelled.w("upload task carried no description — nothing to record")
             is TaskCompletion.Record -> {
                 val registered = handlers.load()
                 if (registered == null) {
-                    Log(log.tag).unlabelled.e(
+                    log.unlabelled.e(
                         "an upload ended before the composition listened — its outcome is not recorded",
                         "key" of outcome.key,
                     )

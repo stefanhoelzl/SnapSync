@@ -37,7 +37,6 @@ kotlin {
             implementation(project(":adapter:generic:mock"))
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
-            implementation(libs.kermit)
             implementation(libs.kotlinx.datetime)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.sqldelight.runtime)

@@ -22,9 +22,9 @@ internal class CrashLines(private val channel: CrashChannel, private val label: 
 
     /** A line's level as the channel distinguishes it: four levels, `Assert` an error. */
     private fun level(level: LogLevel): CrashLevel = when (level) {
-        LogLevel.VERBOSE, LogLevel.DEBUG -> CrashLevel.DEBUG
+        LogLevel.DEBUG -> CrashLevel.DEBUG
         LogLevel.INFO -> CrashLevel.INFO
         LogLevel.WARN -> CrashLevel.WARNING
-        LogLevel.ERROR, LogLevel.ASSERT -> CrashLevel.ERROR
+        LogLevel.ERROR -> CrashLevel.ERROR
     }
 }

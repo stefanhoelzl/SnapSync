@@ -16,10 +16,10 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.dates.DateLocales
 import app.snapsync.dates.IosDateFormatting
+import app.snapsync.inbound.Log
 import app.snapsync.tour.StatusScreenTour
 import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.ScreenDates
-import co.touchlab.kermit.Logger
 import kotlin.test.Test
 import kotlin.time.Duration.Companion.minutes
 
@@ -40,7 +40,7 @@ class IosUiContractTest : StatusScreenTour() {
             val device = dates.deviceLocale()
             DateFormatter(dates.formats(DateLocales.resolve(tag, device.language, device.region))::format)
         },
-        log = Logger.withTag("contract"),
+        log = Log("contract"),
     )
 
     override fun content() = ui.liveContent()

@@ -5,7 +5,6 @@ package app.snapsync.objc
 import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -46,13 +45,13 @@ import kotlin.native.terminateWithUnhandledException
  * not log: whether a failure is a fault, a warning or expected (removing a file that is already gone) is the call
  * site's to say — and a log writer rolling its own file cannot log at all.
  */
-inline fun <R> objcBoundary(log: Logger, name: String, fallback: R, block: () -> R): R =
+inline fun <R> objcBoundary(log: Log, name: String, fallback: R, block: () -> R): R =
     try {
         block()
     } catch (fatal: InvalidProgramState) {
         endProcess(fatal)
     } catch (t: Throwable) {
-        Log(log.tag).unlabelled.e(
+        log.unlabelled.e(
             "a throw reached the Objective-C boundary — contained, returning the fallback",
             "at" of name,
             cause = t,
@@ -74,7 +73,7 @@ fun endProcess(state: InvalidProgramState): Nothing {
 }
 
 /** [objcBoundary] for a block or delegate method that returns nothing. */
-inline fun objcBoundary(log: Logger, name: String, block: () -> Unit) = objcBoundary(log, name, Unit, block)
+inline fun objcBoundary(log: Log, name: String, block: () -> Unit) = objcBoundary(log, name, Unit, block)
 
 /**
  * Suspend until an Objective-C completion answers — the one coroutine bridge every completion-handler API goes
@@ -87,14 +86,14 @@ inline fun objcBoundary(log: Logger, name: String, block: () -> Unit) = objcBoun
  *   and dropped instead of throwing `Already resumed` into Objective-C.
  */
 suspend inline fun <T> objcCallback(
-    log: Logger,
+    log: Log,
     name: String,
     crossinline register: (ObjCCallback<T>) -> Unit,
 ): T = suspendCancellableCoroutine { cont -> register(ObjCCallback(log, name, cont)) }
 
 /** The caller [objcCallback] suspends, as a completion body answers it: resumed at most once. */
 class ObjCCallback<T> @PublishedApi internal constructor(
-    @PublishedApi internal val log: Logger,
+    @PublishedApi internal val log: Log,
     @PublishedApi internal val name: String,
     private val cont: CancellableContinuation<T>,
 ) {
@@ -108,7 +107,7 @@ class ObjCCallback<T> @PublishedApi internal constructor(
         if (answered.compareAndSet(expectedValue = false, newValue = true)) {
             cont.resumeWith(outcome)
         } else {
-            log.w { "$name: answered twice — the second answer is dropped" }
+            log.unlabelled.w("<name>: answered twice — the second answer is dropped", "name" of name)
         }
     }
 }

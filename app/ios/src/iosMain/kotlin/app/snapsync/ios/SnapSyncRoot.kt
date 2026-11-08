@@ -24,6 +24,8 @@ import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.identity.NoPlatformDeviceId
 import app.snapsync.inbound.Inbound
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ios.qos.newUserInitiatedLane
 import app.snapsync.ios.urlsession.BackgroundSessions
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
@@ -55,8 +57,6 @@ import app.snapsync.systemui.IosSystemUi
 import app.snapsync.time.SystemClock
 import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.ScreenDates
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -122,7 +122,7 @@ object SnapSyncRoot {
      */
     private val processMetrics: MetricKitProcessMetrics = MetricKitProcessMetrics()
 
-    private val log = Logger.withTag("SnapSyncRoot")
+    private val log = Log("SnapSyncRoot")
 
     // ── The OS fact → upload-mechanism PRESENCE (`docs/architecture.md`, "The composition layer") ──
 
@@ -344,7 +344,7 @@ object SnapSyncRoot {
             reduction = Dispatchers.Default,
             cutoffFormatter = cutoffFormatter,
             ports = ports.appPorts(processPorts, adapters.devControls, adapters.ui.value),
-        ).also { adapters.bootLines.forEach { line -> log.i { line } } }
+        ).also { adapters.bootLines.forEach { line -> log.unlabelled.i("boot", "line" of line) } }
     }
 
     // A silent push's own work (the download arm) and the wake's work after it are both composed in the app graph
@@ -368,7 +368,7 @@ object SnapSyncRoot {
     @PlatformEntry
     fun onLaunch() {
         adapters.launch { composed }
-        log.i { "onLaunch" }
+        log.unlabelled.i("onLaunch")
     }
 
     /** The app became active, as SwiftUI observes it — the scene generation SwiftUI binds to `.id(…)` ([IosUi]). */
@@ -461,10 +461,9 @@ object SnapSyncRoot {
      */
     @PlatformEntry
     fun onSceneDidFailToContinueActivity(activityType: String, description: String) =
-        lifecycle.deliverSceneEvent(
+        lifecycle.deliverSceneFailure(
             "onSceneDidFailToContinueActivity",
             params = "type=$activityType error=$description",
-            severity = Severity.Warn,
         )
 
     /**

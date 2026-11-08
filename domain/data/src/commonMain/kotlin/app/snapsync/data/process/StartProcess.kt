@@ -21,9 +21,9 @@ class StartedProcess internal constructor(
  * **The first act of every process**, before it composes anything else and exactly once (`docs/architecture.md`, "The
  * composition layer"). In order, each for a reason:
  * 1. The log's writers, where this process owns the logging globals: **a process that supplies log sinks owns them** —
- *    `Log`'s writers and Kermit's, whose one writer is the `KermitBridge` onto `Log`'s — so nothing below logs into the
- *    void. A process that supplies none leaves them alone: a JVM hosts many "processes" in one VM, where both are
- *    VM-global, and a composition there must not take them over ([ProcessLogging]).
+ *    `Log`'s writers — so nothing below logs into the void. A process that supplies none leaves them alone: a JVM
+ *    hosts many "processes" in one VM, where they are VM-global, and a composition there must not take them over
+ *    ([ProcessLogging]).
  * 2. Crash reporting starts, as the process's first act that can fail: it must be live before any other wiring can
  *    fail, and it reads only this build's own configuration, so it is safe on a locked background launch.
  * 3. The boot banner — the process and its build, then the backend it talks to — so it is the process's first line

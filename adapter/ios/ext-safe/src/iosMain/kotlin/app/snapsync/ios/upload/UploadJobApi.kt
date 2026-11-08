@@ -3,13 +3,13 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.gallery.PhotoKitResource
+import app.snapsync.inbound.Log
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.UploadJobState
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
@@ -65,7 +65,7 @@ internal interface UploadJobApi {
 }
 
 /** The real PhotoKit calls. */
-internal class SystemUploadJobApi(private val log: Logger) : UploadJobApi {
+internal class SystemUploadJobApi(private val log: Log) : UploadJobApi {
 
     private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
 

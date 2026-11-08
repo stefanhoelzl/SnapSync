@@ -1,9 +1,10 @@
 package app.snapsync.ios.registry
 
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
-import co.touchlab.kermit.Logger
 
 /**
  * The simulator target's binding: **the registration record, held here instead of by the OS.**
@@ -14,7 +15,7 @@ import co.touchlab.kermit.Logger
  * destroying the "zero Error/Assert lines" health assertion that is the cheapest check a scripted scenario
  * has. Holding the record instead makes the tier's own contract drivable rather than merely quiet.
  */
-actual fun extensionRegistry(log: Logger): ExtensionRegistry = SimulatorExtensionRegistry(log)
+actual fun extensionRegistry(log: Log): ExtensionRegistry = SimulatorExtensionRegistry(log)
 
 /**
  * The record, and the levers that make its failure modes reachable.
@@ -79,7 +80,7 @@ open class SimulatorRecord(
  * the same code path identically, which is the one place a substitute could quietly lie.
  */
 internal class SimulatorExtensionRegistry(
-    private val log: Logger,
+    private val log: Log,
     private val record: SimulatorRecord = SimulatorExtensionRecord,
 ) : ExtensionRegistry {
 
@@ -95,7 +96,11 @@ internal class SimulatorExtensionRegistry(
         val naturalFailure = if (!enabled && !record.registered) PHOTOS_IDENTIFIER_NOT_FOUND else null
         val code = forced ?: naturalFailure
         if (code == null) record.setRegistered(enabled)
-        log.d { "simulated registration write (enable=$enabled) -> ${code ?: "ok"}" }
+        log.unlabelled.d(
+            "simulated registration write (enable=<enabled>) -> <value>",
+            "enabled" of enabled,
+            "value" of (code ?: "ok"),
+        )
         return RegistrationAnswer.Answered(ok = code == null, domain = code?.let { PHOTOS_ERROR_DOMAIN }, code = code)
     }
 

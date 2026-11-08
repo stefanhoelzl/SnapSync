@@ -1,8 +1,9 @@
 package app.snapsync.rig
 
 import app.snapsync.data.logs.SinkLines
-import app.snapsync.inbound.LogLevel
-import app.snapsync.inbound.LogLine
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.LogWriter
+import app.snapsync.inbound.of
 import app.snapsync.levers.ExtensionAnswer
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.UploadJobLevers
@@ -10,9 +11,6 @@ import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.IosThreadLabel
 import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.extensionLogDestination
-import co.touchlab.kermit.LogWriter
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.newSingleThreadContext
@@ -59,32 +57,33 @@ internal expect suspend fun beginUnscriptedCycle()
  * cycle over it, and the extension root's own admission (a full grant, read in its entry gate) decides what it
  * may do — exactly as it does when the OS invokes it (decision record `changes/both-uploaders-active`, D8).
  *
- * Kermit's writer list is process-global and BOTH composition roots set it in their `init`, so touching the
+ * The log's writers are process-global and BOTH composition roots set it in their `init`, so touching the
  * extension root redirects the app's own log into `ext-debug.log` and would silence the app's log for the rest of the
  * process. Snapshot and restore around the call. The cycle's own lines still land in `ext-debug.log`, which is where
  * they belong — `DeviceLogTails` already serves that file as the extension process's log.
  */
-internal suspend fun runExtensionCycle(process: () -> Int, log: Logger = Logger.withTag("rig")): Int =
+@OptIn(app.snapsync.inbound.CompositionOnly::class)
+internal suspend fun runExtensionCycle(process: () -> Int, log: Log = Log("rig")): Int =
     withContext(extensionLane) {
-        val saved = Logger.config.logWriterList
+        var saved: List<LogWriter> = emptyList()
         val raw = try {
-            // Point Kermit at the EXTENSION's log for the duration, then hand the app's writers back.
+            // Point the log at the EXTENSION's for the duration, then hand the app's writers back.
             //
             // Restoring alone is not enough, and the difference was measured. The extension root installs its
             // writers in its `init`, which runs **once** — so with only a restore, the first invoked cycle
             // wrote `ext-debug.log` and every cycle after it wrote the app's `debug.log`, because by then the
             // object was already initialised and nothing re-pointed the writers. Setting them per call makes every
             // invoked cycle land where an extension's cycle lands.
-            Logger.setLogWriters(
-                ExtensionLog(
+            saved = Log.install(
+                listOf(
                     SinkLines(listOf(PublicNSLogSink(), FileLogSink(extensionLogDestination().path)), IosThreadLabel),
                 ),
             )
             process()
         } finally {
-            Logger.setLogWriters(saved)
+            Log.install(saved)
         }
-        log.i { "photokit-ext cycle finished: raw=$raw" }
+        log.unlabelled.i("photokit-ext cycle finished: raw=<raw>", "raw" of raw)
         raw
     }
 
@@ -95,7 +94,7 @@ internal suspend fun runExtensionCycle(process: () -> Int, log: Logger = Logger.
 internal fun extensionHost(
     process: () -> Int,
     terminate: () -> Unit,
-    log: Logger = Logger.withTag("rig"),
+    log: Log = Log("rig"),
 ): ExtensionHostLevers = object : ExtensionHostLevers {
     override suspend fun process(): ExtensionAnswer {
         beginUnscriptedCycle()
@@ -134,19 +133,4 @@ internal fun processingResultName(raw: Int): String = when (raw) {
     1 -> "processing"
     2 -> "completed"
     else -> "unknown($raw)"
-}
-
-/** The cycle's Kermit lines, written to the extension's own log as the extension process writes them. */
-private class ExtensionLog(private val lines: SinkLines) : LogWriter() {
-    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) =
-        lines.write(LogLine(severity.level(), tag, null, message, emptyList(), throwable))
-
-    private fun Severity.level(): LogLevel = when (this) {
-        Severity.Verbose -> LogLevel.VERBOSE
-        Severity.Debug -> LogLevel.DEBUG
-        Severity.Info -> LogLevel.INFO
-        Severity.Warn -> LogLevel.WARN
-        Severity.Error -> LogLevel.ERROR
-        Severity.Assert -> LogLevel.ASSERT
-    }
 }

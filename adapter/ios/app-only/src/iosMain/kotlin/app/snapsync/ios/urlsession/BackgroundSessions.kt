@@ -3,7 +3,8 @@
 package app.snapsync.ios.urlsession
 
 import app.snapsync.download.IosDownload
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
@@ -23,11 +24,11 @@ const val UPLOAD_SESSION_ID = "app.snapsync.upload.session"
 class BackgroundSessions(
     private val upload: IosUrlSessionUploadPlatform,
     private val download: IosDownload,
-    private val log: Logger = Logger.withTag("BackgroundSessions"),
+    private val log: Log = Log("BackgroundSessions"),
 ) {
     /** The operating system relaunched (or woke) the app for the session [identifier], handing [completion]. */
     fun handleEvents(identifier: String, completion: () -> Unit) {
-        log.i { "background session events for '$identifier'" }
+        log.unlabelled.i("background session events for '<identifier>'", "identifier" of identifier)
         val claimed = claims.load()[identifier]
         when {
             claimed != null -> claimed(completion)

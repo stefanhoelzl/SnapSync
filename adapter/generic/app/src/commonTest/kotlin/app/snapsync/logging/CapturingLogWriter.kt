@@ -1,23 +1,26 @@
 package app.snapsync.logging
 
-import co.touchlab.kermit.LogWriter
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
-import co.touchlab.kermit.loggerConfigInit
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.LogLevel
+import app.snapsync.inbound.LogLine
+import app.snapsync.inbound.LogWriter
 
 /**
- * A Kermit writer that keeps every line it is handed, with its severity — what a test asserts a unit's logging by.
- * One per test module: a test source set reaches no other module's.
+ * A log writer that keeps every line it is handed — what a test asserts a unit's logging by. [install] makes it the
+ * process's one writer. One per test module: a test source set reaches no other module's.
  */
-class CapturingLogWriter : LogWriter() {
-    val lines: MutableList<Pair<Severity, String>> = mutableListOf()
+class CapturingLogWriter : LogWriter {
+    val lines: MutableList<LogLine> = mutableListOf()
 
-    val severities: List<Severity> get() = lines.map { it.first }
+    /** Each line as its level and its text — event, then fields. */
+    val written: List<Pair<LogLevel, String>> get() = lines.map { it.level to it.text() }
 
-    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-        lines += severity to message
+    override fun write(line: LogLine) {
+        lines += line
     }
 
-    /** A logger writing only here, at every severity. */
-    fun logger(tag: String = "test"): Logger = Logger(loggerConfigInit(this), tag)
+    /** This writer, as the process's only one. */
+    @OptIn(CompositionOnly::class)
+    fun install(): CapturingLogWriter = also { Log.install(listOf(it)) }
 }

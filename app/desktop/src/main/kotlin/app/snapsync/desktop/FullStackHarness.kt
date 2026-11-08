@@ -19,9 +19,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
-import co.touchlab.kermit.LogWriter
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.LogLine
+import app.snapsync.inbound.LogWriter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -78,10 +79,11 @@ fun WorldHarnessRoot() {
     // `key(generation)` block below so a preset (fresh app) does not reset it.
     var dark by remember { mutableStateOf(false) }
 
-    // Engine console tap: funnel the real stack's Kermit output into the inspector footer. Installed
-    // once; a pure read of existing log output (no change to the app).
+    // Engine console tap: funnel the real stack's log into the inspector footer. Installed once; a pure read of
+    // existing log output (no change to the app).
     remember {
-        Logger.setLogWriters(ConsoleLogWriter(controller::appendConsole))
+        @OptIn(CompositionOnly::class)
+        Log.install(listOf(ConsoleLogWriter(controller::appendConsole)))
         Unit
     }
 
@@ -109,13 +111,13 @@ fun WorldHarnessRoot() {
     }
 }
 
-/** A Kermit [LogWriter] that forwards each formatted line to the engine console. */
-private class ConsoleLogWriter(private val onLine: (String) -> Unit) : LogWriter() {
-    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-        val line = buildString {
-            append('[').append(severity.name.first()).append('/').append(tag).append("] ").append(message)
-            throwable?.message?.let { append(" | ").append(it) }
+/** A [LogWriter] that forwards each formatted line to the engine console. */
+private class ConsoleLogWriter(private val onLine: (String) -> Unit) : LogWriter {
+    override fun write(line: LogLine) {
+        val text = buildString {
+            append('[').append(line.level.name.first()).append('/').append(line.tag).append("] ").append(line.text())
+            line.cause?.message?.let { append(" | ").append(it) }
         }
-        onLine(line)
+        onLine(text)
     }
 }

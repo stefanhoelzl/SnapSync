@@ -18,7 +18,6 @@ kotlin {
             implementation(project(":test:contracts"))
             implementation(project(":domain:ports"))
             implementation(libs.coroutines.core)
-            implementation(libs.kermit)
             // The run's bindings call the platform's own test levers (the shell's grant).
             implementation(libs.androidx.test.runner)
         }

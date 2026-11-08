@@ -5,9 +5,10 @@ package app.snapsync.rig
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.currentHost
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.levers.DeviceAdvertisement
 import app.snapsync.levers.LeverService
-import co.touchlab.kermit.Logger
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -101,7 +102,7 @@ private val json = Json {
 class RigServer(
     private val hooks: RigHooks,
     private val port: Int = DEFAULT_RIG_PORT,
-    private val log: Logger = Logger.withTag("rig"),
+    private val log: Log = Log("rig"),
 ) {
 
     // Delicate because a thread pool must be closed by hand: `stop()` does, for the one host that outlives
@@ -147,7 +148,7 @@ class RigServer(
                 server.start(wait = false)
                 val bound = server.engine.resolvedConnectors().first().port
                 boundPort = bound
-                log.i { "listening on $LOOPBACK:$bound" }
+                log.unlabelled.i("listening on <LOOPBACK>:<bound>", "LOOPBACK" of LOOPBACK, "bound" of bound)
                 hooks.publishBoundPort(bound)
                 // Suspends rather than blocks, so this lane stays free for the engine's own coroutines.
                 awaitCancellation()
@@ -156,18 +157,22 @@ class RigServer(
                 // the coroutine rather than of the exception's type, so a bind failure that surfaces as a
                 // cancellation of the engine's own job is still reported below.
                 if (!currentCoroutineContext().isActive) {
-                    log.i { boundPort?.let { "stopped listening on $LOOPBACK:$it" } ?: "stopped before binding $LOOPBACK:$port" }
+                    boundPort?.let { log.unlabelled.i("stopped listening", "host" of LOOPBACK, "port" of it) }
+                        ?: log.unlabelled.i("stopped before binding", "host" of LOOPBACK, "port" of port)
                     return@launch
                 }
-                log.e(t) {
-                    "bind $LOOPBACK:$port FAILED — the rig is NOT listening, and NO port file was " +
+                log.unlabelled.e(
+                    "bind <host>:<port> FAILED — the rig is NOT listening, and NO port file was " +
                         "published. On a SIMULATOR the usual cause is a second instance left on the " +
                         "default port: all simulators share the host's loopback, so another instance " +
                         "holds it and would answer a curl aimed here. On a device a previous instance " +
                         "of the app is probably still alive holding the port; SIGKILL it " +
                         "(`dvt process-id-for-bundle-id app.snapsync`, then `dvt signal <pid> 9`). " +
-                        "The app itself is unaffected."
-                }
+                        "The app itself is unaffected.",
+                    "host" of LOOPBACK,
+                    "port" of port,
+                    cause = t,
+                )
                 // Only once the line is written: a host that fails its start on this (the JVM host) must find the
                 // reason already in the log, not racing it from this thread.
                 hooks.reportBindFailure(t)
@@ -209,7 +214,7 @@ class RigServer(
     }
 
     /**
-     * Every request writes a `[rig]` enter/exit pair through Kermit, exactly as every `@PlatformEntry`
+     * Every request writes a `[rig]` enter/exit pair through the log, exactly as every `@PlatformEntry`
      * member does.
      *
      * Two payoffs. Attribution: a rig-driven trigger is otherwise indistinguishable in `debug.log` from an
@@ -218,7 +223,7 @@ class RigServer(
      * trigger" is everything after the marker, so no caller needs rig-side offset state to read `/logs`.
      */
     private suspend fun ApplicationCall.traced(block: suspend () -> Unit) {
-        log.i { "→ ${request.uri}" }
+        log.unlabelled.i("→ <request.uri>", "request.uri" of request.uri)
         val mark = TimeSource.Monotonic.markNow()
         try {
             // A request that moves the device is an act; one that reads it is not (`docs/testing.md`, "How a test waits").
@@ -228,10 +233,14 @@ class RigServer(
                 hooks.world.acts.read { block() }
             }
         } catch (t: Throwable) {
-            log.w(t) { "request failed: ${request.uri}" }
+            log.unlabelled.w("request failed: <request.uri>", "request.uri" of request.uri, cause = t)
             respondText("rig error: ${t.message ?: t}\n", status = HttpStatusCode.InternalServerError)
         } finally {
-            log.i { "← ${request.uri} (${mark.elapsedNow().inWholeMilliseconds}ms)" }
+            log.unlabelled.i(
+                "← <request.uri> (<value>ms)",
+                "request.uri" of request.uri,
+                "value" of (mark.elapsedNow().inWholeMilliseconds),
+            )
         }
     }
 
@@ -253,7 +262,13 @@ class RigServer(
         val route = request.path().removePrefix(UPLOAD_BASE_PATH)
         val answer = TransferFixture.answerOf(route)
         val bytes = runCatching { receive<ByteArray>().size }.getOrElse { -1 }
-        log.i { "[upload-receiver] ${request.httpMethod.value} $route bytes=$bytes -> $answer" }
+        log.unlabelled.i(
+            "[upload-receiver] <request.httpMethod.value> <route> bytes=<bytes> -> <answer>",
+            "request.httpMethod.value" of request.httpMethod.value,
+            "route" of route,
+            "bytes" of bytes,
+            "answer" of answer,
+        )
         when (answer) {
             // Never answered: the transfer stays open until the OS gives up or the job is cancelled.
             FixtureAnswer.Hold -> awaitCancellation()

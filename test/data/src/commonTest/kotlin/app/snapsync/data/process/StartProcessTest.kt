@@ -15,8 +15,6 @@ import app.snapsync.inbound.ProcessLogging
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.ThreadLabelMock
 import app.snapsync.ports.CrashReporter
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.platformLogWriter
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -58,7 +56,6 @@ class StartProcessTest {
     @AfterTest
     fun handBackTheLoggingGlobals() {
         Log.install(emptyList())
-        Logger.setLogWriters(platformLogWriter())
     }
 
     @Test

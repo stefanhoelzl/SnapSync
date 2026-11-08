@@ -9,6 +9,8 @@ import app.snapsync.annotations.PlatformEntry
 import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
 import app.snapsync.ui.StatusScreen
@@ -17,7 +19,6 @@ import app.snapsync.ui.components.ScreenDates
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import app.snapsync.ui.statusActions
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import platform.UIKit.UIAccessibilityIsReduceMotionEnabled
 import platform.UIKit.UIApplication
@@ -48,7 +49,7 @@ import platform.UIKit.systemBackgroundColor
 class IosUi(
     private val record: SceneRecord,
     private val dates: ScreenDates,
-    private val log: Logger,
+    private val log: Log,
 ) : Ui<UiState, UiIntent> {
     private val shown = MutableStateFlow<UiState?>(null)
     private val handlers = HandlerSlot<UiHandlers<UiState, UiIntent>>("Ui", BeforeListen.Logged(log))
@@ -72,7 +73,12 @@ class IosUi(
                 // fault, logged and answered with the placeholder rather than a throw across the ObjC boundary.
                 handlers.orNull("a live scene's pull")?.let(::liveScreen) ?: placeholder()
             }
-        }.also { log.i { "MainViewController(mode=${mode.diagnosticName})" } }
+        }.also {
+            log.unlabelled.i(
+                "MainViewController(mode=<mode.diagnosticName>)",
+                "mode.diagnosticName" of mode.diagnosticName,
+            )
+        }
     }
 
     /**
@@ -84,7 +90,7 @@ class IosUi(
     fun onSceneActive(): Int = run {
         record.markActive()
         record.generation
-    }.also { log.i { "onSceneActive = generation=$it" } }
+    }.also { log.unlabelled.i("onSceneActive = generation=<it>", "it" of it) }
 
     private fun placeholder(): UIViewController {
         val placeholder = UIViewController(nibName = null, bundle = null)

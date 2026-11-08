@@ -2,12 +2,13 @@ package app.snapsync.metrics
 
 import app.snapsync.annotations.PlatformEntry
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.MetricNode
 import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.ProcessMetrics
-import co.touchlab.kermit.Logger
 import platform.MetricKit.MXDiagnosticPayload
 import platform.MetricKit.MXMetricManager
 import platform.MetricKit.MXMetricManagerSubscriberProtocol
@@ -67,7 +68,7 @@ class MetricKitProcessMetrics internal constructor(
 
     constructor() : this(SystemMetricKitApi())
 
-    private val log: Logger = Logger.withTag("processMetrics")
+    private val log: Log = Log("processMetrics")
 
     @CompositionOnly
     override fun inbound(handlers: MetricHandlers) {
@@ -78,10 +79,11 @@ class MetricKitProcessMetrics internal constructor(
         // one thing four days of silence could not distinguish: an empty queue reads the same as a
         // subscriber that cannot be reached. Measured to be 0 on a fresh process even moments before a
         // delivery, so a non-zero reading here would be news.
-        log.i {
-            "process metrics: observing (pastPayloads=${queue.pastPayloads} " +
-                "pastDiagnosticPayloads=${queue.pastDiagnosticPayloads})"
-        }
+        log.unlabelled.i(
+            "process metrics: observing",
+            "pastPayloads" of queue.pastPayloads,
+            "pastDiagnosticPayloads" of queue.pastDiagnosticPayloads,
+        )
     }
 }
 
@@ -103,7 +105,7 @@ internal class MetricQueue(val pastPayloads: Int, val pastDiagnosticPayloads: In
 /** The real one. */
 internal class SystemMetricKitApi : MetricKitApi {
 
-    private val log: Logger = Logger.withTag("processMetrics")
+    private val log: Log = Log("processMetrics")
 
     /**
      * The ObjC subscriber this retains, built around where it delivers — its constructor argument, not a slot assigned
@@ -144,7 +146,7 @@ internal class SystemMetricKitApi : MetricKitApi {
  * module is a small nudge against quietly nesting it again.
  */
 internal class MetricKitSubscriber(
-    private val log: Logger,
+    private val log: Log,
     /** Where each payload's dictionary goes; supplied through [SystemMetricKitApi.subscribe]. */
     private val deliver: (raw: Map<Any?, *>) -> Unit,
 ) : NSObject(), MXMetricManagerSubscriberProtocol {
@@ -155,7 +157,7 @@ internal class MetricKitSubscriber(
             payloads.forEach { payload ->
                 (payload as? MXMetricPayload)?.let { deliver(it.dictionaryRepresentation()) }
             }
-        }.also { log.i { "didReceiveMetricPayloads(count=${payloads.size})" } }
+        }.also { log.unlabelled.i("didReceiveMetricPayloads(count=<payloads.size>)", "payloads.size" of payloads.size) }
     }
 
     @PlatformEntry
@@ -164,7 +166,12 @@ internal class MetricKitSubscriber(
             payloads.forEach { payload ->
                 (payload as? MXDiagnosticPayload)?.let { deliver(it.dictionaryRepresentation()) }
             }
-        }.also { log.i { "didReceiveDiagnosticPayloads(count=${payloads.size})" } }
+        }.also {
+            log.unlabelled.i(
+                "didReceiveDiagnosticPayloads(count=<payloads.size>)",
+                "payloads.size" of payloads.size,
+            )
+        }
     }
 }
 

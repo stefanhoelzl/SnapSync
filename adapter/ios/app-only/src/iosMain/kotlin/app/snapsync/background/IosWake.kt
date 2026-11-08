@@ -17,7 +17,6 @@ import app.snapsync.ports.WakeHandlers
 import app.snapsync.ports.WakeId
 import app.snapsync.ports.WakeNetwork
 import app.snapsync.ports.WakeTrigger
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.BackgroundTasks.BGAppRefreshTaskRequest
 import platform.BackgroundTasks.BGProcessingTaskRequest
@@ -62,13 +61,13 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 @OptIn(ExperimentalForeignApi::class)
 @NeverAnswers(Never(handler = "onWake", answer = "WakeId.LibraryChanged"))
 class IosWake internal constructor(
-    private val log: Logger,
+    private val log: Log,
     // The operating-system boundary, so a recording taken on a device can replay against this code (`WakeContract`).
     // Production always passes the real one.
     private val tasks: BackgroundTaskApi,
 ) : Wake {
 
-    constructor(log: Logger) : this(log, SystemBackgroundTaskApi)
+    constructor(log: Log) : this(log, SystemBackgroundTaskApi)
 
     private val handlers = AtomicReference<WakeHandlers?>(null)
 
@@ -78,7 +77,7 @@ class IosWake internal constructor(
         // One explicit registration per identifier: `RuntimeIdentityTest` reads each one's constant against the plist.
         registered(HEARTBEAT_TASK_IDENTIFIER, tasks.register(HEARTBEAT_TASK_IDENTIFIER) { launched(it) })
         registered(IDLE_TASK_IDENTIFIER, tasks.register(IDLE_TASK_IDENTIFIER) { launched(it) })
-    }.also { log.i { "wake.inbound" } }
+    }.also { log.unlabelled.i("wake.inbound") }
 
     private fun launched(task: LaunchedTask) {
         val completion = TaskCompletion(task, log)
@@ -88,9 +87,7 @@ class IosWake internal constructor(
     /** Never silent: an unregistered task is a heartbeat the OS can never run, and nothing else would say so. */
     private fun registered(identifier: String, accepted: Boolean) {
         if (!accepted) {
-            Log(
-                log.tag,
-            ).unlabelled.e("a background task was not registered — is it in Info.plist?", "identifier" of identifier)
+            log.unlabelled.e("a background task was not registered — is it in Info.plist?", "identifier" of identifier)
         }
     }
 
@@ -100,14 +97,14 @@ class IosWake internal constructor(
                 WakeId.Heartbeat -> submit(trigger)
                 WakeId.LibraryChanged -> ScheduleResult.Unsupported
             }
-        }.also { log.i { "wake.schedule(id=$id)" } }
+        }.also { log.unlabelled.i("wake.schedule(id=<id>)", "id" of id) }
 
     override fun cancel(id: WakeId) = run {
         when (id) {
             WakeId.Heartbeat -> TASK_IDENTIFIERS.forEach(tasks::cancel)
             WakeId.LibraryChanged -> Unit
         }
-    }.also { log.i { "wake.cancel(id=$id)" } }
+    }.also { log.unlabelled.i("wake.cancel(id=<id>)", "id" of id) }
 
     /**
      * The operating system launched the background task [identifier] — its own identifier, never one the shell chose —
@@ -118,19 +115,25 @@ class IosWake internal constructor(
      * Public for the control channel, which plays the operating system (`/os onBackgroundTask`).
      */
     fun onTaskLaunched(identifier: String, completion: Completion): Running? =
-        route(identifier, completion).also { log.i { "wake.onTaskLaunched(identifier=$identifier)" } }
+        route(
+            identifier,
+            completion,
+        ).also { log.unlabelled.i("wake.onTaskLaunched(identifier=<identifier>)", "identifier" of identifier) }
 
     private fun route(identifier: String, completion: Completion): Running? {
         val id = if (identifier in TASK_IDENTIFIERS) WakeId.Heartbeat else null
         val registered = handlers.load()
         return when {
             id == null -> {
-                log.w { "unknown background task '$identifier' — completed without work" }
+                log.unlabelled.w(
+                    "unknown background task '<identifier>' — completed without work",
+                    "identifier" of identifier,
+                )
                 completion.complete()
                 null
             }
             registered == null -> {
-                Log(log.tag).unlabelled.e(
+                log.unlabelled.e(
                     "a background task launched before the composition registered — completed at once",
                     "identifier" of identifier,
                 )
@@ -166,7 +169,7 @@ class IosWake internal constructor(
     private fun answerOf(submitted: Result<Unit>): ScheduleResult = submitted.fold(
         onSuccess = { ScheduleResult.Scheduled },
         onFailure = {
-            log.w(it) { "BGTask submit failed" }
+            log.unlabelled.w("BGTask submit failed", cause = it)
             ScheduleResult.Refused(it.message ?: "BGTask submit failed")
         },
     )
@@ -190,7 +193,7 @@ class IosWake internal constructor(
  * the run the task started — also when the expiry came before the run did ([ran]).
  */
 @OptIn(ExperimentalForeignApi::class)
-private class TaskCompletion(private val task: LaunchedTask, private val log: Logger) : Completion {
+private class TaskCompletion(private val task: LaunchedTask, private val log: Log) : Completion {
     private val completed = AtomicBoolean(false)
     private val expired = AtomicBoolean(false)
     private val expiredRun = AtomicBoolean(false)

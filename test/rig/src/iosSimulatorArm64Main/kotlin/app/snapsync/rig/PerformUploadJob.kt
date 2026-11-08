@@ -3,10 +3,11 @@
 package app.snapsync.rig
 
 import app.snapsync.gallery.PhotoKitResource
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ios.upload.SimulatorUploadJobs
 import app.snapsync.levers.PerformedJob
 import app.snapsync.levers.PlayedJob
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -51,12 +52,16 @@ import kotlin.coroutines.resume
 internal suspend fun performUploadJob(
     job: PlayedJob,
     fail: String?,
-    log: Logger = Logger.withTag(
+    log: Log = Log(
         "rig",
     ),
 ): PerformedJob {
     if (fail != null) {
-        log.i { "perform ${job.destination}: forced failure ($fail) — no request was sent" }
+        log.unlabelled.i(
+            "perform <job.destination>: forced failure (<fail>) — no request was sent",
+            "job.destination" of job.destination,
+            "fail" of fail,
+        )
         return PerformedJob(job.destination, performed = false, forcedFailure = fail)
     }
     val resource = resourceOf(job.destination) ?: throw IllegalArgumentException(
@@ -84,7 +89,7 @@ internal suspend fun performUploadJob(
  * process, where the OS's own genuinely survive. That is a divergence from the system being impersonated,
  * and it is stated in the `ios-simulator` skill rather than papered over.
  */
-private suspend fun put(request: PlayedJob, file: NSURL, log: Logger): PerformedJob {
+private suspend fun put(request: PlayedJob, file: NSURL, log: Log): PerformedJob {
     val url = NSURL.URLWithString(request.destination)
         ?: return PerformedJob(request.destination, performed = false, error = "the destination is not a URL this platform accepts")
     val http = NSMutableURLRequest.requestWithURL(url)
@@ -100,7 +105,12 @@ private suspend fun put(request: PlayedJob, file: NSURL, log: Logger): Performed
     }
     val (response, error) = result
     val status = response?.statusCode?.toInt()
-    log.i { "perform ${request.destination}: status=${status ?: "none"} error=${error?.localizedDescription ?: "none"}" }
+    log.unlabelled.i(
+        "perform <request.destination>: status=<value> error=<value2>",
+        "request.destination" of request.destination,
+        "value" of (status ?: "none"),
+        "value2" of (error?.localizedDescription ?: "none"),
+    )
     return PerformedJob(request.destination, performed = true, status = status, error = error?.localizedDescription)
 }
 

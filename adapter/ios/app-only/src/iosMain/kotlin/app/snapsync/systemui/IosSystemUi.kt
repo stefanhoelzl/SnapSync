@@ -1,5 +1,6 @@
 package app.snapsync.systemui
 
+import app.snapsync.inbound.Log
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
 import app.snapsync.objc.objcBoundary
@@ -7,7 +8,6 @@ import app.snapsync.objc.objcCallback
 import app.snapsync.objc.onQueue
 import app.snapsync.ports.Handoff
 import app.snapsync.ports.SystemUi
-import co.touchlab.kermit.Logger
 import platform.Foundation.NSURL
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
@@ -35,7 +35,7 @@ internal fun interface ShareSheetApi {
  * technology mechanics: UIKit rejects presentation from a covered controller.
  */
 internal object SystemShareSheetApi : ShareSheetApi {
-    private val log = Logger.withTag("shareSheet")
+    private val log = Log("shareSheet")
 
     override fun present(text: String, title: String, answered: (Boolean) -> Unit) {
         onQueue(dispatch_get_main_queue(), log, "share") {
@@ -78,9 +78,9 @@ class IosSystemUi internal constructor(
 
     constructor() : this(SystemUrlOpenerApi)
 
-    private val shareLog = Logger.withTag("shareSheet")
-    private val linkLog = Logger.withTag("linkOpener")
-    private val settingsLog = Logger.withTag("photoPermission")
+    private val shareLog = Log("shareSheet")
+    private val linkLog = Log("linkOpener")
+    private val settingsLog = Log("photoPermission")
 
     /**
      * Presents `UIActivityViewController` carrying [text] — as a URL titled [title] ([InviteActivityItem]) — from the
@@ -129,6 +129,6 @@ class IosSystemUi internal constructor(
      */
     override fun openSettings() {
         val url = NSURL.URLWithString(UIApplicationOpenSettingsURLString) ?: return
-        urls.open(url) { opened -> if (!opened) settingsLog.w { "iOS did not open this app's Settings page" } }
+        urls.open(url) { opened -> if (!opened) settingsLog.unlabelled.w("iOS did not open this app's Settings page") }
     }
 }

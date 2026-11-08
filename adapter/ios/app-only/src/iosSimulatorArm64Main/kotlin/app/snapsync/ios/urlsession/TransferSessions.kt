@@ -1,6 +1,7 @@
 package app.snapsync.ios.urlsession
 
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import platform.Foundation.NSURLSessionConfiguration
 
 /**
@@ -40,12 +41,13 @@ actual val transferSessionBinding: String = "default"
  * Logged at INFO and once per session construction (each transport builds exactly one), not per transfer.
  */
 private fun announceBinding(identifier: String) {
-    Logger.withTag("TransferSessions").i {
-        "transfer session '$identifier': DEFAULT configuration (identifier ignored) — this is " +
+    Log("TransferSessions").unlabelled.i(
+        "transfer session <identifier>: DEFAULT configuration (identifier ignored) — this is " +
             "iosSimulatorArm64. Transfers run in-process and die with it. This session never reports " +
             "didFinishEventsForBackgroundURLSession, so a handleEventsForBackgroundURLSession wake holds " +
             "its completion handler until the background time's expiry: that expiry is this host, not a " +
             "fault. Suspension " +
-            "survival, OS relaunch and task reattachment are device-only and are not exercised here."
-    }
+            "survival, OS relaunch and task reattachment are device-only and are not exercised here.",
+        "identifier" of identifier,
+    )
 }

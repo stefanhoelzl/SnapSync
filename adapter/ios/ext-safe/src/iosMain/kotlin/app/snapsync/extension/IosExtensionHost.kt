@@ -4,10 +4,10 @@ import app.snapsync.annotations.PlatformEntry
 import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.ProcessingAnswer
-import co.touchlab.kermit.Logger
 
 /**
  * The iOS [ExtensionHost]: the PhotoKit background-upload extension's `process()`
@@ -17,7 +17,7 @@ import co.touchlab.kermit.Logger
  * [deliverProcess] asks the handler for its answer on its own thread — the core's answered entry point blocks it — and
  * answers the platform's raw result ([processingResultRawValue]).
  */
-class IosExtensionHost(private val log: Logger) : ExtensionHost {
+class IosExtensionHost(private val log: Log) : ExtensionHost {
     private val handlers = HandlerSlot<ExtensionHandlers>("ExtensionHost", BeforeListen.Logged(log))
 
     @CompositionOnly

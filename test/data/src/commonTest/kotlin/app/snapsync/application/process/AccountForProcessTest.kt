@@ -54,7 +54,9 @@ class AccountForProcessTest {
     }
 
     @AfterTest
-    fun uninstall() = Log.install(emptyList())
+    fun uninstall() {
+        Log.install(emptyList())
+    }
 
     private fun account(fields: Map<String, String>) = AccountForProcess(
         footprints,

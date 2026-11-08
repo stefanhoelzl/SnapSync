@@ -2,7 +2,8 @@
 
 package app.snapsync.ios.qos
 
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -56,14 +57,20 @@ private val QOS_LABELS = mapOf(
  * `@DelicateCoroutinesApi` flags a context that is never closed. That is the requirement: each lane lives as long
  * as the process.
  */
-fun newUserInitiatedLane(name: String, log: Logger = Logger.withTag("qos")): CoroutineDispatcher {
+fun newUserInitiatedLane(name: String, log: Log = Log("qos")): CoroutineDispatcher {
     val lane = newFixedThreadPoolContext(nThreads = 1, name = name)
     lane.dispatch(
         EmptyCoroutineContext,
         Runnable {
             val before = qosLabel()
             val rc = pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0)
-            log.i { "qos: lane '$name' pinned to USER_INITIATED (was $before, now ${qosLabel()}, rc=$rc)" }
+            log.unlabelled.i(
+                "qos: lane '<name>' pinned to USER_INITIATED (was <before>, now <qosLabel>, rc=<rc>)",
+                "name" of name,
+                "before" of before,
+                "qosLabel" of qosLabel(),
+                "rc" of rc,
+            )
         },
     )
     return lane

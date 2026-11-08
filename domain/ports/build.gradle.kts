@@ -23,7 +23,7 @@ kotlin {
             implementation(project(":domain:inbound"))
             // The per-zone library allowlist (`docs/architecture.md`, "Core purity is closed by
             // default"): coroutines (StateFlow/Flow port shapes), serialization + datetime (the
-            // config/manifest vocabulary and cutoff codecs), kermit (the engine's diagnostics).
+            // config/manifest vocabulary and cutoff codecs).
             api(libs.coroutines.core)
             // The one SQLDelight surface a port carries: `Databases` opens with a schema and answers a driver.
             // Runtime interfaces only — no driver, no plugin, no generated code (those are `:domain:services`'
@@ -31,7 +31,6 @@ kotlin {
             api(libs.sqldelight.runtime)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.datetime)
-            implementation(libs.kermit)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

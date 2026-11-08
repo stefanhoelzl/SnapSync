@@ -10,6 +10,7 @@ import app.snapsync.annotations.PlatformEntry
 import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
 import app.snapsync.ui.StatusScreen
@@ -18,7 +19,6 @@ import app.snapsync.ui.components.ScreenDates
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import app.snapsync.ui.statusActions
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -37,7 +37,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  */
 class AndroidUi(
     private val dates: ScreenDates,
-    private val log: Logger,
+    private val log: Log,
 ) : Ui<UiState, UiIntent> {
     private val shown = MutableStateFlow<UiState?>(null)
     private val handlers = HandlerSlot<UiHandlers<UiState, UiIntent>>("Ui", BeforeListen.Thrown)
@@ -68,7 +68,7 @@ class AndroidUi(
             }
         }
         screen
-    }.also { log.i { "onCreateActivity" } }
+    }.also { log.unlabelled.i("onCreateActivity") }
 
     /** Whether the person switched animations off — the platform's "remove animations" sets the animator scale to 0. */
     @Composable

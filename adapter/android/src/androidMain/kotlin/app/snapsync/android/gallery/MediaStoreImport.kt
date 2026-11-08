@@ -10,13 +10,14 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportFile
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
-import co.touchlab.kermit.Logger
 import java.io.File
 import java.io.IOException
 import kotlin.time.Instant
@@ -50,7 +51,7 @@ import kotlin.time.Instant
  * neither an image nor a video, are refused for good ([ImportOutcome.Failed] with `consumedResources`), so the photo is
  * settled rather than retried forever and never lands in the camera roll broken.
  */
-internal class MediaStoreImport(context: Context, private val log: Logger) {
+internal class MediaStoreImport(context: Context, private val log: Log) {
 
     private val resolver: ContentResolver = context.applicationContext.contentResolver
     private val packageName: String = context.applicationContext.packageName
@@ -95,7 +96,9 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         onPlaceholder: (PlatformAssetId) -> Unit,
     ): ImportOutcome {
         val uri = PlatformCalls.attempt { resolver.insert(collection, pendingValues(primary, folder)) }
-            .onFailure { log.w(it) { "${request.correlation}: the insert was refused" } }
+            .onFailure {
+                log.unlabelled.w("<request.correlation>: the insert was refused", "request.correlation" of request.correlation, cause = it)
+            }
             .getOrNull()
             ?: return ImportOutcome.Failed("MediaStore refused the insert")
         val id = PlatformAssetId(ContentUris.parseId(uri).toString())
@@ -115,7 +118,12 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
             discard(uri)
             return ImportOutcome.Failed("the item could not be published", placeholder = id)
         }
-        log.i { "${request.correlation}: imported as $id into $folder" }
+        log.unlabelled.i(
+            "<request.correlation>: imported as <id> into <folder>",
+            "request.correlation" of request.correlation,
+            "id" of id,
+            "folder" of folder,
+        )
         return ImportOutcome.Imported(id)
     }
 
@@ -124,7 +132,12 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         orphansCleaned = true
         motionPhotos.clean()
         val removed = COLLECTIONS.sumOf { collection -> cleanOrphans(collection) }
-        if (removed > 0) log.i { "deleted $removed pending item(s) a killed import left behind" }
+        if (removed > 0) {
+            log.unlabelled.i(
+                "deleted <removed> pending item(s) a killed import left behind",
+                "removed" of removed,
+            )
+        }
     }
 
     /** Delete this app's pending items in the folders it imports into — only ever a killed import's leftovers. */
@@ -145,7 +158,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
             buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) }
         }.orEmpty()
         ids.count { resolver.delete(ContentUris.withAppendedId(collection, it), null) == 1 }
-    }.onFailure { log.w(it) { "the leftover pending items could not be cleaned" } }.getOrDefault(0)
+    }.onFailure { log.unlabelled.w("the leftover pending items could not be cleaned", cause = it) }.getOrDefault(0)
 
     private fun copy(resource: ImportFile, uri: Uri) {
         val out = resolver.openOutputStream(uri, "w") ?: throw IOException("MediaStore opened no stream")
@@ -169,7 +182,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
     private fun discard(uri: Uri) {
         PlatformCalls.attempt {
             resolver.delete(uri, null)
-        }.onFailure { log.w(it) { "the unfinished item $uri stays pending" } }
+        }.onFailure { log.unlabelled.w("the unfinished item <uri> stays pending", "uri" of uri, cause = it) }
     }
 
     private fun pendingValues(resource: ImportFile, folder: String) = ContentValues().apply {
@@ -195,15 +208,29 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
                 ?.use { if (it.moveToFirst()) it.getString(0) else null }
             path != null && File(path).setLastModified(millis)
         } catch (e: SecurityException) {
-            false.also { log.w { "$uri: ${e::class.simpleName}: ${e.message}" } }
+            false.also {
+                log.unlabelled.w(
+                    "<uri>: <value>: <e.message>",
+                    "uri" of uri,
+                    "value" of (e::class.simpleName),
+                    "e.message" of e.message,
+                )
+            }
         } catch (e: SQLiteException) {
-            false.also { log.w { "$uri: ${e::class.simpleName}: ${e.message}" } }
+            false.also {
+                log.unlabelled.w(
+                    "<uri>: <value>: <e.message>",
+                    "uri" of uri,
+                    "value" of (e::class.simpleName),
+                    "e.message" of e.message,
+                )
+            }
         }
-        if (!stamped) log.w { "$uri: the modification time could not be set" }
+        if (!stamped) log.unlabelled.w("<uri>: the modification time could not be set", "uri" of uri)
     }
 
     private fun refused(reason: String) = ImportOutcome.Failed(reason, consumedResources = true)
-        .also { log.w { "import refused for good: $reason" } }
+        .also { log.unlabelled.w("import refused for good: <reason>", "reason" of reason) }
 
     companion object {
         /** Where received photos land with no event album: the camera folder, among the member's own camera photos. */

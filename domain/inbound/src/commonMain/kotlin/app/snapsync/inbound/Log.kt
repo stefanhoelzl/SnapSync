@@ -13,7 +13,7 @@ class Field(val name: String, val value: Any?)
 infix fun String.of(value: Any?): Field = Field(this, value)
 
 /** A line's level — the core's own, so no layer that writes or reads a line names the logging library. */
-enum class LogLevel { VERBOSE, DEBUG, INFO, WARN, ERROR, ASSERT }
+enum class LogLevel { DEBUG, INFO, WARN, ERROR }
 
 /**
  * One structured line: what happened ([event], a short fixed phrase — a literal, `EventNameLiteralTest`) and the values
@@ -66,6 +66,8 @@ class Log(private val tag: String) {
 
     /** [Log] for non-suspend code: no trigger is read. */
     class Unlabelled internal constructor(private val tag: String) {
+        fun d(event: String, vararg fields: Field) = emit(LogLevel.DEBUG, event, fields, null)
+
         fun i(event: String, vararg fields: Field) = emit(LogLevel.INFO, event, fields, null)
 
         fun w(event: String, vararg fields: Field, cause: Throwable? = null) = emit(LogLevel.WARN, event, fields, cause)
@@ -87,14 +89,13 @@ class Log(private val tag: String) {
         private val writers = AtomicReference<List<LogWriter>>(emptyList())
 
         /**
-         * Installs the process's writers, replacing any before. Called once per process, by its composition — the
-         * one global the log has, beside Kermit's own writer list, whose one writer then is the [KermitBridge] onto
-         * these.
+         * Installs the process's writers, replacing any before, and answers those it replaced. Called once per process,
+         * by its composition — the one global the log has.
          */
         @CompositionOnly
-        fun install(installed: List<LogWriter>) = writers.store(installed)
+        fun install(installed: List<LogWriter>): List<LogWriter> = writers.exchange(installed)
 
-        /** [line] to the installed writers — the [KermitBridge]'s way in, beside the calls above. */
+        /** [line] to the installed writers. */
         internal fun write(line: LogLine) = writers.load().forEach { it.write(line) }
     }
 }

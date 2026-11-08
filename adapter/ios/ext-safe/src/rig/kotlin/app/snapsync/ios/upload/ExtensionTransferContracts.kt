@@ -30,12 +30,13 @@ import app.snapsync.contracts.uploadTarget
 import app.snapsync.data.upload.Destinations
 import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadTarget
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDate
 import platform.Foundation.NSISO8601DateFormatter
@@ -111,7 +112,7 @@ internal fun prepareCall(
     api: UploadJobApi,
     photo: GalleryResourceHandle,
 ) = runEntry {
-    val queue = IosPhotoKitUploadPlatform(Logger.withTag("contract"), api)
+    val queue = IosPhotoKitUploadPlatform(Log("contract"), api)
     val target = preparedTarget(clauseId, state)
     when (call) {
         1 -> check(queue.create(photo, target) == CreateOutcome.CREATED) {
@@ -143,13 +144,13 @@ internal fun photoKitUploadInState(
 ): Entered<QueueUnderTest> {
     if (state !in EXTENSION_RECORDED) return Entered.Unreachable(NOT_RECORDED_IN_THE_EXTENSION)
     if (state == OsUploadQueueState.AT_CAP) {
-        val made = fillToTheLimit(IosPhotoKitUploadPlatform(Logger.withTag("contract"), api), photo)
+        val made = fillToTheLimit(IosPhotoKitUploadPlatform(Log("contract"), api), photo)
             ?: return Entered.Unreachable("PhotoKit made $CAP_SEARCH_BOUND jobs without refusing one: no limit reached")
-        Logger.withTag("contract").i { "PhotoKit's in-flight limit reached after $made job(s)" }
+        Log("contract").unlabelled.i("PhotoKit's in-flight limit reached after <made> job(s)", "made" of made)
     }
     return Entered.Ready(
         QueueUnderTest(
-            queue = IosPhotoKitUploadPlatform(Logger.withTag("contract"), api).recorded(log),
+            queue = IosPhotoKitUploadPlatform(Log("contract"), api).recorded(log),
             base = CONTRACT_UPLOAD_BASE,
             usable = { photo },
             // Not a PhotoKit resource, which is all the PhotoKit queue takes.
@@ -216,7 +217,7 @@ internal class ExtensionPhotoKitUploadBinding(
         if (callsFor(state) == 1) recorder.open(clauseId) else recorder.resume(clauseId)
         return photoKitUploadInState(
             state = state,
-            api = RecordingUploadJobApi(SystemUploadJobApi(Logger.withTag("contract")), recorder),
+            api = RecordingUploadJobApi(SystemUploadJobApi(Log("contract")), recorder),
             objects = recordingFixtureObjects(
                 recorder,
             ) { route -> landedAt(route)?.let { Landed(it.ifEmpty { null }) } },
@@ -255,7 +256,7 @@ internal fun transferRunStep(clauseId: String, call: Int, tape: String?): Step {
     val recorder = Recorder(tape?.let(Recording::parse))
     if (call < callsFor(clause.state)) {
         if (call == 1) recorder.open(clauseId) else recorder.resume(clauseId)
-        val api = RecordingUploadJobApi(SystemUploadJobApi(Logger.withTag("contract")), recorder)
+        val api = RecordingUploadJobApi(SystemUploadJobApi(Log("contract")), recorder)
         prepareCall(clause.state, clauseId, call, api, PhotoKitResource(newestPhotoResource()))
         return Step.Continue(recorder.recording(emptyList()).render())
     }

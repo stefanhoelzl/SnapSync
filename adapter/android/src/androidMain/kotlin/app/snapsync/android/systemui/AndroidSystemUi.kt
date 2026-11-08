@@ -6,10 +6,11 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import app.snapsync.android.scene.ForegroundActivity
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.Handoff
 import app.snapsync.ports.SystemUi
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -21,7 +22,7 @@ import kotlinx.coroutines.withContext
 class AndroidSystemUi(
     context: Context,
     private val foreground: ForegroundActivity,
-    private val log: Logger = Logger.withTag("systemUi"),
+    private val log: Log = Log("systemUi"),
 ) : SystemUi {
 
     private val appContext = context.applicationContext
@@ -44,9 +45,13 @@ class AndroidSystemUi(
             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             Uri.fromParts("package", appContext.packageName, null),
         )
-        PlatformCalls.attempt { launch(settings) }.onFailure { log.w(it) { "openSettings: the platform refused" } }
+        PlatformCalls.attempt {
+            launch(
+                settings,
+            )
+        }.onFailure { log.unlabelled.w("openSettings: the platform refused", cause = it) }
         Unit
-    }.also { log.i { "systemUi.openSettings" } }
+    }.also { log.unlabelled.i("systemUi.openSettings") }
 
     private suspend fun start(name: String, intent: Intent): Handoff = withContext(Dispatchers.Main) {
         run {
@@ -59,7 +64,7 @@ class AndroidSystemUi(
                 // The app that claims it guards the activity with a permission this app does not hold.
                 Handoff.Refused("the app that claims it refused: ${e.message}")
             }
-        }.also { log.i { "systemUi.$name = $it" } }
+        }.also { log.unlabelled.i("systemUi.<name> = <it>", "name" of name, "it" of it) }
     }
 
     private fun launch(intent: Intent) {

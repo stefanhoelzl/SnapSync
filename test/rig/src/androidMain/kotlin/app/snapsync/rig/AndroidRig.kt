@@ -10,6 +10,7 @@ import app.snapsync.composition.app.AppGraph
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.domain.upload.OsSupport
 import app.snapsync.format.UploadersCarriedText
+import app.snapsync.inbound.Log
 import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFacts
 import app.snapsync.launchadapters.AdapterFiles
@@ -25,7 +26,6 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.addMotionPhoto
 import app.snapsync.rig.gallery.androidGalleryReader
 import app.snapsync.rig.gallery.seedMediaStore
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -348,7 +348,7 @@ private val ANDROID_DEFAULT = AdapterChoice(
 /** Why a mock lever over a real backend is refused. */
 private const val REAL_BACKEND = "the backend is real on this launch; its state is the real api's, not a mock's"
 
-private val log = Logger.withTag("rig")
+private val log = Log("rig")
 
 /** The device-facing base the mocked backend is addressed at, carrying exactly one version prefix. */
 private const val MOCK_BASE = "https://in-memory.backend/api/v2"

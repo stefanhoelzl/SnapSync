@@ -1,6 +1,7 @@
 package app.snapsync.entry
 
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import kotlin.concurrent.Volatile
 
 /**
@@ -14,7 +15,7 @@ sealed interface BeforeListen {
     data object Dropped : BeforeListen
 
     /** Dropped, and logged on [log] as an error. */
-    class Logged(val log: Logger) : BeforeListen
+    class Logged(val log: Log) : BeforeListen
 
     /** Thrown: whoever delivers has no answer without the handlers (an operator playing the platform). */
     data object Thrown : BeforeListen
@@ -45,7 +46,12 @@ class HandlerSlot<H : Any>(private val port: String, private val beforeListen: B
         if (current == null) {
             when (beforeListen) {
                 BeforeListen.Dropped -> Unit
-                is BeforeListen.Logged -> beforeListen.log.e { unheard(event) }
+                is BeforeListen.Logged ->
+                    beforeListen.log.unlabelled.e(
+                        "arrived before the port was listened to",
+                        "event" of event,
+                        "port" of port,
+                    )
                 BeforeListen.Thrown -> error(unheard(event))
             }
         }

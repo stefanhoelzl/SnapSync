@@ -10,9 +10,9 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.Log
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
-import co.touchlab.kermit.Logger
 import kotlin.test.Test
 
 /**
@@ -47,7 +47,7 @@ class PhotoKitNoGrantContractTest {
             if (state == GalleryReaderState.REFUSED && currentPhotoPermission() != LibraryGrant.DENIED) {
                 return Entered.Unreachable(unreachable)
             }
-            return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log)))
+            return Entered.Ready(SeededLibrary(IosGalleryReader(Log("contract")).recorded(log)))
         }
     }
 

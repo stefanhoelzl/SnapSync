@@ -11,7 +11,7 @@ import app.snapsync.contracts.PushState
 import app.snapsync.contracts.PushUnderTest
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
 import kotlin.test.Test
 
 /**
@@ -29,7 +29,7 @@ class IosPushContractTest {
         override val reaches = setOf(PushState.DELIVERING)
         override fun create(state: PushState, clauseId: String, log: CallLog): Entered<PushUnderTest> {
             if (state !in reaches) return Entered.Unreachable("asking APNs for a token needs a running app")
-            val push = IosPushNotifications(Logger.withTag("contract"))
+            val push = IosPushNotifications(Log("contract"))
             val os = PushOs(
                 issueToken = { push.deliverToken(it) },
                 deliver = { data ->

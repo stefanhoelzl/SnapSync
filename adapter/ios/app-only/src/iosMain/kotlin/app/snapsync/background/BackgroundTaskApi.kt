@@ -7,7 +7,6 @@ import app.snapsync.inbound.of
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.BackgroundTasks.BGTask
 import platform.BackgroundTasks.BGTaskRequest
@@ -46,7 +45,7 @@ internal interface BackgroundTaskApi {
 
 /** The real `BGTaskScheduler`. The only implementation a production build contains. */
 internal object SystemBackgroundTaskApi : BackgroundTaskApi {
-    private val log = Logger.withTag("BackgroundTaskApi")
+    private val log = Log("BackgroundTaskApi")
 
     override fun register(identifier: String, launch: (LaunchedTask) -> Unit): Boolean =
         BGTaskScheduler.sharedScheduler.registerForTaskWithIdentifier(identifier, usingQueue = null) { task ->
@@ -56,9 +55,10 @@ internal object SystemBackgroundTaskApi : BackgroundTaskApi {
                         SystemLaunchedTask(task),
                     )
                 } else {
-                    Log(
-                        log.tag,
-                    ).unlabelled.e("the system launched a background task without its task", "identifier" of identifier)
+                    log.unlabelled.e(
+                        "the system launched a background task without its task",
+                        "identifier" of identifier,
+                    )
                 }
             }
         }

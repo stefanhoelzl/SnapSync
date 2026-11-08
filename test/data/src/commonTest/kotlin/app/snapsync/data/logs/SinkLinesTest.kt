@@ -56,7 +56,7 @@ class SinkLinesTest {
     fun `every level is written as the device log has always written it`() {
         LogLevel.entries.forEach { SinkLines(listOf(file), ThreadLabelMock()).write(line(it, null)) }
         assertEquals(
-            listOf("Verbose", "Debug", "Info", "Warn", "Error", "Assert"),
+            listOf("Debug", "Info", "Warn", "Error"),
             file.written.map { it.third.substringAfter('[').substringBefore('/') },
         )
     }

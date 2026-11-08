@@ -4,7 +4,7 @@ import app.snapsync.android.link.AndroidInstallReferrer
 import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.dev.InertDevControls
 import app.snapsync.entry.NoEntryEvents
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
 
 /**
  * A production build's adapter set: the root's real adapters as they are — the Compose screen as the UI among them —
@@ -21,6 +21,6 @@ internal fun platformAdapters(root: SnapSyncRoot, real: AppDevicePorts): Platfor
     bootLines = listOf("[boot] adapters = all real"),
     afterLaunch = {},
     installReferrer = {
-        AndroidInstallReferrer(root.application, root.links, Logger.withTag("InstallReferrer")).deliverOnce()
+        AndroidInstallReferrer(root.application, root.links, Log("InstallReferrer")).deliverOnce()
     },
 )

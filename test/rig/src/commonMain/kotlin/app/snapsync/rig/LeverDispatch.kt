@@ -1,6 +1,8 @@
 package app.snapsync.rig
 
 import app.snapsync.domain.version.Store
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.BackgroundTimeLevers
 import app.snapsync.levers.BuildLevers
@@ -47,7 +49,6 @@ import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.StorePage
 import app.snapsync.ports.LibraryGrant
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -414,7 +415,11 @@ private class Resolving(
     private val resolve: Resolve?,
 ) : RpcClient {
     override suspend fun <T> call(call: RpcCall): T {
-        log.i { "→ ${service.name}.${call.callableName}" }
+        log.unlabelled.i(
+            "→ <service.name>.<call.callableName>",
+            "service.name" of service.name,
+            "call.callableName" of call.callableName,
+        )
         refuseIfRefused(call)
         val arguments = arguments(call)
         val name = "${service.name}.${call.callableName}"
@@ -428,7 +433,11 @@ private class Resolving(
 
     /** A method returning a `Flow`: the implementation's flow, invoked once it is collected. */
     override fun <T> callServerStreaming(call: RpcCall): Flow<T> = flow {
-        log.i { "→ ${service.name}.${call.callableName} (stream)" }
+        log.unlabelled.i(
+            "→ <service.name>.<call.callableName> (stream)",
+            "service.name" of service.name,
+            "call.callableName" of call.callableName,
+        )
         refuseIfRefused(call)
         @Suppress("UNCHECKED_CAST")
         emitAll(invoke(call, arguments(call)) as Flow<T>)
@@ -461,6 +470,6 @@ private class Resolving(
     }
 
     private companion object {
-        val log = Logger.withTag("rig")
+        val log = Log("rig")
     }
 }

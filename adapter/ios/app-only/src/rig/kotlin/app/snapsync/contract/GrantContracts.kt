@@ -21,11 +21,11 @@ import app.snapsync.contracts.simulatorAppContract
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.inbound.Log
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
-import co.touchlab.kermit.Logger
 import platform.posix.usleep
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -133,7 +133,7 @@ class SimAppNeverAskedGalleryReaderBinding : Binding<GalleryReaderState, SeededL
         clauseId: String,
         log: CallLog,
     ): Entered<SeededLibrary<GalleryReader>> = if (state in reaches) {
-        Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log)))
+        Entered.Ready(SeededLibrary(IosGalleryReader(Log("contract")).recorded(log)))
     } else {
         Entered.Unreachable("this launch was never asked for photo access")
     }
@@ -198,7 +198,7 @@ class SimAppPartialGalleryReaderBinding : Binding<GalleryReaderState, SeededLibr
 
     override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> =
         if (state in reaches) {
-            Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log)))
+            Entered.Ready(SeededLibrary(IosGalleryReader(Log("contract")).recorded(log)))
         } else {
             Entered.Unreachable("this launch holds a partial grant")
         }

@@ -10,7 +10,7 @@ import app.snapsync.ports.ThreadLabel
 /**
  * Every line to the process's [sinks] — the device-log file and the platform's log — rendered ONCE in the device log's
  * text, with its trigger, or the one the calling thread is labelled with when it was written by code that could not
- * read one (a non-suspend caller, or a Kermit line through the bridge).
+ * read one (a non-suspend caller — an adapter's platform callback).
  */
 class SinkLines(private val sinks: List<LogSink>, private val label: ThreadLabel) : LogWriter {
     override fun write(line: LogLine) {
@@ -26,11 +26,9 @@ class SinkLines(private val sinks: List<LogSink>, private val label: ThreadLabel
 
     /** A level as the device log has always written it — `[Info/tag]` — so a reader's searches keep working. */
     private fun word(level: LogLevel): String = when (level) {
-        LogLevel.VERBOSE -> "Verbose"
         LogLevel.DEBUG -> "Debug"
         LogLevel.INFO -> "Info"
         LogLevel.WARN -> "Warn"
         LogLevel.ERROR -> "Error"
-        LogLevel.ASSERT -> "Assert"
     }
 }

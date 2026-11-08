@@ -3,11 +3,12 @@ package app.snapsync.android.gallery
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.media.ExifInterface
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.motionphoto.motionPhotoStill
 import app.snapsync.motionphoto.withExtension
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.ImportFile
-import co.touchlab.kermit.Logger
 import java.io.File
 
 /**
@@ -25,7 +26,7 @@ import java.io.File
  * exception, and an `OutOfMemoryError` on the ~48 MB bitmap — creates nothing: [build] answers null and the still is
  * imported exactly as before (D6). [MediaStoreImport] is `@Synchronized`, so at most one bitmap is alive per process.
  */
-internal class MotionPhotoBuilder(private val scratchDir: File, private val log: Logger) {
+internal class MotionPhotoBuilder(private val scratchDir: File, private val log: Log) {
 
     /**
      * The motion photo built from [still] and [video], as a JPEG in the scratch directory — or null, and the still is
@@ -44,7 +45,10 @@ internal class MotionPhotoBuilder(private val scratchDir: File, private val log:
         val videoFile = File(video.path)
         val withXmp = motionPhotoStill(if (isJpeg) source.readBytes() else out.readBytes(), videoFile.length())
         if (withXmp == null) {
-            log.w { "$assetId: the still cannot carry motion-photo XMP — imported as its still" }
+            log.unlabelled.w(
+                "<assetId>: the still cannot carry motion-photo XMP — imported as its still",
+                "assetId" of assetId,
+            )
             out.delete()
             return null
         }
@@ -52,9 +56,12 @@ internal class MotionPhotoBuilder(private val scratchDir: File, private val log:
             stream.write(withXmp)
             videoFile.inputStream().use { it.copyTo(stream) }
         }
-        log.i {
-            "$assetId: built a motion photo (${if (isJpeg) "JPEG kept" else "re-encoded to JPEG"}, video ${videoFile.length()} B)"
-        }
+        log.unlabelled.i(
+            "<assetId>: built a motion photo (<value>, video <videoFile.length> B)",
+            "assetId" of assetId,
+            "value" of (if (isJpeg) "JPEG kept" else "re-encoded to JPEG"),
+            "videoFile.length" of videoFile.length(),
+        )
         // The still's name, its extension following the bytes.
         return ImportFile(
             path = out.path,
@@ -88,7 +95,11 @@ internal class MotionPhotoBuilder(private val scratchDir: File, private val log:
     }
 
     private fun fallBack(assetId: String, e: Throwable): ImportFile? {
-        log.w(e) { "$assetId: the motion photo could not be built — imported as its still" }
+        log.unlabelled.w(
+            "<assetId>: the motion photo could not be built — imported as its still",
+            "assetId" of assetId,
+            cause = e,
+        )
         File(scratchDir, SCRATCH_NAME).delete()
         return null
     }

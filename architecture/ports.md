@@ -153,7 +153,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ListingRead` | `:domain:data` | `:domain:data` Listed, Unavailable, Unreadable | no |
 | `Located` | `:domain:data` | `:domain:data` At, Unreachable | no |
 | `LogSink` | `:domain:ports` | `:adapter:android` FileLogSink, LogcatSink; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink; `:test:contracts` LogSinkProxy; `:test:data` Recorded; `:test:rig` RecordedLog | yes |
-| `LogWriter` | `:domain:inbound` | `:adapter:generic:app` CapturingLogWriter; `:adapter:ios:app-only` Capturing; `:app:desktop` ConsoleLogWriter; `:domain:data` CrashLines, SinkLines; `:domain:presentation` TestLog; `:domain:scheduling` RecordingLog; `:test:feature` CapturingLogWriter; `:test:rig` ExtensionLog | yes |
+| `LogWriter` | `:domain:inbound` | `:adapter:generic:app` CapturingLogWriter; `:adapter:ios:app-only` Capturing; `:app:desktop` ConsoleLogWriter; `:domain:data` CrashLines, SinkLines; `:domain:presentation` TestLog; `:domain:scheduling` RecordingLog | no |
 | `MarkResult` | `:domain:data` | `:domain:data` Failed, Marked, Superseded | no |
 | `MarkedRead` | `:domain:data` | `:domain:data` Found, NotReadable | no |
 | `MarkerWrite` | `:domain:data` | `:domain:data` Applied, Failed, NoRow, Unknown | no |

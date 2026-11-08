@@ -5,12 +5,11 @@ import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.logging.logAt
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.LifecycleHandlers
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
@@ -30,7 +29,7 @@ import platform.UIKit.UIApplicationWillResignActiveNotification
  * them — the record of which of UIKit's paths ran is what a delivery investigation
  * reads.
  */
-class IosLifecycle(private val record: SceneRecord, private val log: Logger) : Lifecycle {
+class IosLifecycle(private val record: SceneRecord, private val log: Log) : Lifecycle {
     private val handlers = HandlerSlot<LifecycleHandlers>("Lifecycle", BeforeListen.Dropped)
 
     @CompositionOnly
@@ -65,6 +64,10 @@ class IosLifecycle(private val record: SceneRecord, private val log: Logger) : L
     }
 
     /** A scene-delegate callback that only records that it ran, with what the platform handed it. */
-    fun deliverSceneEvent(name: String, params: String = "", severity: Severity = Severity.Info) =
-        run { }.also { log.logAt(severity) { "$name($params)" } }
+    fun deliverSceneEvent(name: String, params: String = "") =
+        log.unlabelled.i("scene callback", "callback" of name, "params" of params)
+
+    /** A scene-delegate callback that reports a failure the platform handed it — recorded as a warning. */
+    fun deliverSceneFailure(name: String, params: String) =
+        log.unlabelled.w("scene callback failed", "callback" of name, "params" of params)
 }

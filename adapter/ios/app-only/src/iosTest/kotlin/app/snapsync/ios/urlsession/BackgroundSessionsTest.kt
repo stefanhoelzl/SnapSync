@@ -7,9 +7,9 @@ import app.snapsync.contracts.inboundOf
 import app.snapsync.download.DOWNLOAD_SESSION_ID
 import app.snapsync.download.IosDownload
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.TransferHandlers
-import co.touchlab.kermit.Logger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -24,7 +24,7 @@ class BackgroundSessionsTest {
     @Test
     fun `each session's events reach the handlers of the session the operating system named`() {
         val handedTo = mutableListOf<String>()
-        val upload = IosUrlSessionUploadPlatform(Logger.withTag("test"), "app.snapsync.test.upload")
+        val upload = IosUrlSessionUploadPlatform(Log("test"), "app.snapsync.test.upload")
         upload.inbound(
             TransferHandlers(
                 onFinished = inboundOf {},
@@ -32,7 +32,7 @@ class BackgroundSessionsTest {
                 onEventsDrained = inboundOf {},
             ),
         )
-        val download = IosDownload(Logger.withTag("test"))
+        val download = IosDownload(Log("test"))
         download.inbound(
             DownloadHandlers(
                 onFinished = inboundOf {},

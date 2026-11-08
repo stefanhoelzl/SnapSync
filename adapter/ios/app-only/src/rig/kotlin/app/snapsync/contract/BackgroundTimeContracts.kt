@@ -15,8 +15,8 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.proxy.recorded
+import app.snapsync.inbound.Log
 import app.snapsync.ports.BackgroundTime
-import co.touchlab.kermit.Logger
 import platform.darwin.DISPATCH_QUEUE_PRIORITY_DEFAULT
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_global_queue
@@ -105,7 +105,7 @@ internal class DeviceBackgroundTimeBinding(
         recorder.open(clauseId)
         return Entered.Ready(
             IosBackgroundTime(
-                Logger.withTag("contract"),
+                Log("contract"),
                 RecordingBackgroundTimeApi(SystemBackgroundTimeApi, recorder),
             ).recorded(log),
         )

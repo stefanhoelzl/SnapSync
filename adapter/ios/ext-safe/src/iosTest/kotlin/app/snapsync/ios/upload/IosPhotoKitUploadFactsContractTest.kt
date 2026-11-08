@@ -11,8 +11,8 @@ import app.snapsync.contracts.OsUploadQueueState
 import app.snapsync.contracts.QueueUnderTest
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.Log
 import app.snapsync.ports.GalleryResourceHandle
-import co.touchlab.kermit.Logger
 import kotlin.test.Test
 
 /**
@@ -32,7 +32,7 @@ class IosPhotoKitUploadFactsContractTest {
             if (state !in reaches) return Entered.Unreachable("the PhotoKit queue runs only in the upload extension")
             return Entered.Ready(
                 QueueUnderTest(
-                    queue = IosPhotoKitUploadPlatform(Logger.withTag("contract")).recorded(log),
+                    queue = IosPhotoKitUploadPlatform(Log("contract")).recorded(log),
                     base = "",
                     usable = { error("this state creates nothing") },
                     unusable = { object : GalleryResourceHandle {} },

@@ -30,7 +30,6 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.domain.crash.CrashOptions
 import app.snapsync.domain.crash.CrashShaping
-import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
 import java.io.File
 import java.lang.ref.Reference
@@ -63,7 +62,6 @@ class SentryProcessDeathContractTest {
 
         override fun create(state: CrashReporterState, clauseId: String, log: CallLog): Entered<CrashReporterSubject> {
             if (state !in reaches) return Entered.Unreachable("SentryCrashReporterContractTest's, in one process")
-            val writers = Logger.config.logWriterList
             resetChannel()
             val ingest = LoopbackIngest().also { it.open() }
             val death = object : ProcessDeath {
@@ -93,7 +91,6 @@ class SentryProcessDeathContractTest {
             return Entered.Ready(subject) {
                 resetChannel()
                 ingest.stop()
-                Logger.setLogWriters(writers)
             }
         }
     }

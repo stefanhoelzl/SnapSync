@@ -18,12 +18,10 @@ class LogcatSink : LogSink {
         const val TAG = "SnapSync"
 
         fun priorityOf(level: LogLevel): Int = when (level) {
-            LogLevel.VERBOSE -> Log.VERBOSE
             LogLevel.DEBUG -> Log.DEBUG
             LogLevel.INFO -> Log.INFO
             LogLevel.WARN -> Log.WARN
             LogLevel.ERROR -> Log.ERROR
-            LogLevel.ASSERT -> Log.ASSERT
         }
     }
 }

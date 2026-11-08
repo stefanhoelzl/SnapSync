@@ -5,10 +5,11 @@ import app.snapsync.annotations.PlatformEntry
 import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.Links
-import co.touchlab.kermit.Logger
 
 /**
  * The Android [Links]: the intent an App Link opens the activity with — at its creation (a
@@ -21,7 +22,7 @@ import co.touchlab.kermit.Logger
  * is — a VIEW carrying no URI, or another intent named by its action (the launcher's `MAIN`) — so a device log tells
  * "started with no link" from "never started".
  */
-class AndroidLinks(private val log: Logger) : Links {
+class AndroidLinks(private val log: Log) : Links {
     private val handlers = HandlerSlot<LinkHandlers>("Links", BeforeListen.Logged(log))
 
     @CompositionOnly
@@ -41,7 +42,14 @@ class AndroidLinks(private val log: Logger) : Links {
     fun deliverIntent(hook: String, intent: Intent?) =
         run {
             deliver(deliveryOf(hook, intent))
-        }.also { log.i { "$hook(action=${intent?.action} data=${intent?.data != null})" } }
+        }.also {
+            log.unlabelled.i(
+                "<hook>(action=<value> data=<value2>)",
+                "hook" of hook,
+                "value" of (intent?.action),
+                "value2" of (intent?.data != null),
+            )
+        }
 
     /** The referrer a Google Play install carried ([AndroidInstallReferrer]), raw: whether it is an invite is the core's. */
     @PlatformEntry

@@ -112,7 +112,6 @@ kotlin {
             implementation(libs.kotlinx.rpc.krpc.serialization.json)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.coroutines.core)
-            implementation(libs.kermit)
         }
 
         // The iOS half — the `/device` verbs and the gallery read. This is where the module stopped being

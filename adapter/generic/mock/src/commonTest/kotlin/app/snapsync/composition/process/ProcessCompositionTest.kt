@@ -28,8 +28,6 @@ import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.platformLogWriter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.AfterTest
@@ -101,7 +99,6 @@ class ProcessCompositionTest {
     @AfterTest
     fun handBackTheLoggingGlobals() {
         Log.install(emptyList())
-        Logger.setLogWriters(platformLogWriter())
     }
 
     private fun ports(

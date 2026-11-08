@@ -90,7 +90,6 @@ kotlin {
                 implementation(project(":domain:scheduling"))
                 implementation(project(":adapter:ios:ext-safe"))
                 implementation(libs.kotlinx.serialization.json)
-                implementation(libs.kermit)
             }
         }
         getByName("androidDeviceTest") {
@@ -102,7 +101,6 @@ kotlin {
                 // …composed as a shipped build composes it (`NoEntryEvents`).
                 implementation(project(":adapter:generic:app"))
                 implementation(libs.kotlinx.serialization.json)
-                implementation(libs.kermit)
             }
         }
     }

@@ -1,10 +1,8 @@
 package app.snapsync.permission
 
 import app.snapsync.annotations.PlatformEntry
-import app.snapsync.logging.logAt
+import app.snapsync.inbound.Log
 import app.snapsync.objc.objcBoundary
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
 import platform.Photos.PHChange
 import platform.Photos.PHPhotoLibrary
 import platform.Photos.PHPhotoLibraryChangeObserverProtocol
@@ -24,7 +22,7 @@ import platform.darwin.NSObject
  * the hop.
  */
 class PhotoSelectionObserver(
-    private val log: Logger = Logger.withTag("photoSelection"),
+    private val log: Log = Log("photoSelection"),
     // Last, so the single call site keeps its trailing-lambda form.
     private val onChange: (PHChange) -> Unit,
 ) : NSObject(), PHPhotoLibraryChangeObserverProtocol {
@@ -44,6 +42,6 @@ class PhotoSelectionObserver(
     @PlatformEntry
     override fun photoLibraryDidChange(changeInstance: PHChange) =
         objcBoundary(log, "photoLibraryDidChange") {
-            run { onChange(changeInstance) }.also { log.logAt(Severity.Debug) { "photoLibraryDidChange" } }
+            run { onChange(changeInstance) }.also { log.unlabelled.d("photoLibraryDidChange") }
         }
 }
