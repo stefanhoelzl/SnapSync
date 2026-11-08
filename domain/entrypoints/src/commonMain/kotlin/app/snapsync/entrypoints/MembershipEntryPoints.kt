@@ -59,10 +59,10 @@ import app.snapsync.query.membership.MembershipQuery
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.membership.SwitchLookup
 import app.snapsync.scheduling.BackgroundEntryPoint
+import app.snapsync.scheduling.Exclusion
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Steps
-import app.snapsync.services.membership.MembershipTransition
 
 // ── The membership: what a member's requests do, and how every trigger reads the membership ─────────────────────────
 //
@@ -186,11 +186,11 @@ class OnRenameRequested(
 
 /**
  * A join the server admitted: what it keeps of the membership BEFORE the membership is written — its key, its share
- * set, the photos an earlier install received — then the membership itself, and what follows. A join in progress is
- * held from the key on ([MembershipTransition]), so no sweep of a failed leave's leftovers takes what is the join's.
+ * set, the photos an earlier install received — then the membership itself, and what follows. The join holds the
+ * membership [change] from the key on, so no sweep of a failed leave's leftovers takes what is the join's.
  */
 class Joining(
-    private val transition: MembershipTransition,
+    private val change: Exclusion,
     private val shareSet: LoadShareSet,
     private val forgetOtherEvents: ForgetOtherEvents,
     private val recognize: RecognizeReceivedPhotos,
@@ -200,8 +200,8 @@ class Joining(
 ) {
     @OptIn(EntryPointCall::class)
     suspend fun run(id: RequestId, enrolled: Enrolled, on: Run) = on.steps {
-        ensure("transition") { transition.end() }
-        required { transition.begin() }
+        ensure("membership change") { change.release() }
+        required { change.hold() }
         // The share set before the membership: no cycle ever sees the new membership over the previous one's ledger.
         required { shareSet(enrolled.membership.event.id) }
         // The photos an earlier install received are recognised before any uploader sees the membership — against
@@ -316,23 +316,25 @@ class EventAlbum(
 
 /**
  * What a leave that failed half-way may have left — a key, downloads, an upload registration — swept while no
- * membership is held, and never while a join is keeping its own.
+ * membership is held, and never while a join holds the membership [change]: what it would sweep is the join's own —
+ * then nothing, and the next opening sweeps again.
  */
 class SweepLeftovers(
     private val membership: MembershipBranch,
     private val keys: EventKeyStore,
     private val receiving: StopReceiving,
     private val stop: StopUploads,
-    private val transition: MembershipTransition,
+    private val change: Exclusion,
 ) {
     @OptIn(EntryPointCall::class)
     suspend fun run(on: Run) = on.steps {
         membership(membership, Freshness.Cached) {
             notJoined { none ->
-                isolated("leftover key") { transition.unlessJoining { keys.forget(none) } }
-                // Unless a join is in progress, whose own downloads these may already be.
-                isolated("leftover downloads") { transition.unlessJoining { receiving(StopReason.NotJoined(none)) } }
-                isolated("leftover registration") { transition.unlessJoining { stop(none) } }
+                isolated("leftover key") { change.unlessHeld("leftover key") { keys.forget(none) } }
+                isolated("leftover downloads") {
+                    change.unlessHeld("leftover downloads") { receiving(StopReason.NotJoined(none)) }
+                }
+                isolated("leftover registration") { change.unlessHeld("leftover registration") { stop(none) } }
             }
         }
     }
