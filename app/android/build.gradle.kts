@@ -157,12 +157,12 @@ kotlin {
 dependencies {
     // Both together, or neither: the contributed hook and the module it names cannot be half-present.
     if (rigEnabled) implementation(project(":test:rig"))
-    implementation(project(":domain:model"))
     implementation(project(":domain:ports"))
     implementation(project(":domain:inbound"))
+    // The root scope's handler (`RootScopeFailures`), the parent of the runtime's.
+    implementation(project(":domain:scheduling"))
     implementation(project(":domain:compose"))
     implementation(project(":domain:composition:process"))
-    implementation(project(":domain:services"))
     implementation(project(":domain:presentation"))
     // The shared host composition: the core and the status host over it (`snapSyncHost`).
     implementation(project(":domain:host"))

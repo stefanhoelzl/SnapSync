@@ -1,9 +1,10 @@
 package app.snapsync.contracts
 
+import app.snapsync.data.upload.Destinations
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
-import app.snapsync.model.destinationPathOf
-import app.snapsync.model.uploadKey
+import app.snapsync.domain.upload.UploadKey
+import app.snapsync.format.UploadKeyText
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadTarget
 
@@ -12,7 +13,9 @@ import app.snapsync.ports.UploadTarget
 
 /** The ledger key an upload clause uploads under (`<assetId>-<role>.<ext>`), distinct per clause and per [n]. */
 fun uploadClauseKey(clauseId: String, n: Int = 1): String =
-    uploadKey(AssetId.parse("contract-${clauseId.lowercase()}-$n")!!, ResourceRole.PRIMARY, "IMG_0001.JPG")
+    UploadKeyText.of(
+        UploadKey.of(AssetId.parse("contract-${clauseId.lowercase()}-$n")!!, ResourceRole.PRIMARY, "IMG_0001.JPG"),
+    )
 
 /** The route [contract]'s clause [clauseId] sends its upload [n] to. */
 fun uploadClausePath(contract: String, clauseId: String, answer: FixtureAnswer, n: Int = 1): String =
@@ -32,4 +35,4 @@ fun uploadTarget(base: String, route: String, network: TransferNetwork = Transfe
     UploadTarget(base + route, mapOf("Content-Type" to UPLOAD_CONTENT_TYPE), network)
 
 /** The path the destination of [route] on the fixture at [base] names — what a job is known by. */
-fun uploadDestination(base: String, route: String): String = destinationPathOf(base + route)
+fun uploadDestination(base: String, route: String): String = Destinations.pathOf(base + route).path

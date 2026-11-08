@@ -91,8 +91,7 @@ import app.snapsync.query.sharing.ShareableCountLookup
 import app.snapsync.scheduling.Observation
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
-import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.transfer.SessionDrains
+import app.snapsync.scheduling.SessionDrains
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
@@ -495,7 +494,10 @@ class AppCore internal constructor(
         // With one sweep per process and no re-arm, a sweep that ran before a partial grant's selection was read
         // would defer every inherited row to the next launch — and on a URLSession-driven relaunch that never
         // foregrounds, potentially every launch. So it waits until the presence source can answer.
-        observation.follow(selection.answerableOnce(PhotoGrants.of(ports.gallery.access()).access), work.selectionAnswerable)
+        observation.follow(
+            selection.answerableOnce(PhotoGrants.of(ports.gallery.access()).access),
+            work.selectionAnswerable,
+        )
     }
 
     /**

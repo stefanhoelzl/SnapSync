@@ -1,5 +1,6 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.annotations.PlatformEntry
 import app.snapsync.composition.extension.ExtensionDevicePorts
 import app.snapsync.composition.extension.ExtensionGraph
 import app.snapsync.composition.extension.ExtensionPorts
@@ -23,7 +24,6 @@ import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.logging.removeStaleExtensionDocumentsLog
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.metrics.NoProcessMetrics
-import app.snapsync.model.PlatformEntry
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.time.SystemClock

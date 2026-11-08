@@ -19,13 +19,13 @@ import app.snapsync.contracts.backgroundOf
 import app.snapsync.contracts.inboundOf
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.data.push.PushPayload
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.PUSH_KIND_FCM
-import app.snapsync.model.PlatformError
-import app.snapsync.model.pushEventId
+import app.snapsync.ports.PlatformError
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.PushHandlers
+import app.snapsync.ports.PushKind
 import app.snapsync.ports.PushToken
 import com.google.firebase.messaging.RemoteMessage
 import java.util.Collections
@@ -57,7 +57,7 @@ class AndroidPushTest {
             PushHandlers(
                 onToken = inboundOf { tokens += it },
                 onTokenFailure = inboundOf { failures += it },
-                onMessage = backgroundOf { message, completion -> messages += pushEventId(message.payload)?.value to completion },
+                onMessage = backgroundOf { message, completion -> messages += PushPayload.eventId(message)?.value to completion },
             ),
         )
     }
@@ -116,7 +116,7 @@ class AndroidPushTest {
 
     @Test
     fun `the adapter speaks FCM`() {
-        assertEquals(PUSH_KIND_FCM, adapter().kind)
+        assertEquals(PushKind.FCM.value, adapter().kind)
     }
 
     @Test

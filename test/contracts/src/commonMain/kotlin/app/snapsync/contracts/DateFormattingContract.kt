@@ -1,8 +1,8 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.DateFormats
-import app.snapsync.model.DateLocale
+import app.snapsync.ports.DateFormats
 import app.snapsync.ports.DateFormatting
+import app.snapsync.ports.DateLocale
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -30,7 +30,12 @@ object DateFormattingContract : Contract<DateFormattingState, DateFormatting>("D
     /** Monday, 5 October 2026, 14:30 — a day, a month and an hour that read differently in every locale here. */
     private val AT = LocalDateTime(2026, 10, 5, 14, 30)
 
-    private val covers = cells { on<DateFormatting>().answers(DateFormatting::formats).returns() }
+    private val covers = cells {
+        on<DateFormatting> {
+            answers(DateFormatting::formats).returns()
+            handle<DateFormats>().answers(DateFormats::format).returns()
+        }
+    }
 
     private fun DateFormatting.formats(language: String, region: String? = null) =
         formats(DateLocale.Explicit(language, region))

@@ -6,8 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import app.snapsync.android.scene.ForegroundActivity
-import app.snapsync.model.Handoff
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
+import app.snapsync.ports.Handoff
 import app.snapsync.ports.SystemUi
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +44,7 @@ class AndroidSystemUi(
             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             Uri.fromParts("package", appContext.packageName, null),
         )
-        runCatchingCancellable { launch(settings) }.onFailure { log.w(it) { "openSettings: the platform refused" } }
+        PlatformCalls.attempt { launch(settings) }.onFailure { log.w(it) { "openSettings: the platform refused" } }
         Unit
     }.also { log.i { "systemUi.openSettings" } }
 

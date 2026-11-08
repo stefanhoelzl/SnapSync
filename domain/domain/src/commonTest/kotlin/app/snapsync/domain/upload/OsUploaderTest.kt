@@ -54,4 +54,10 @@ class OsUploaderTest {
             OsUploaderStanding.of(OsUploaderAdmission.NOT_REGISTRABLE, OsRegistration.REGISTERED),
         )
     }
+
+    @Test
+    fun `the OS carries the extension where the platform says so`() {
+        assertEquals(OsSupport.CARRIED, OsSupport.of(carried = true))
+        assertEquals(OsSupport.NOT_CARRIED, OsSupport.of(carried = false))
+    }
 }

@@ -1,8 +1,8 @@
 package app.snapsync.permission
 
+import app.snapsync.annotations.ConfinedTo
 import app.snapsync.gallery.photoKitAssetResources
 import app.snapsync.ios.qos.photoKitReadLane
-import app.snapsync.model.ConfinedTo
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.SelectionSnapshot
 import app.snapsync.selection.SelectionPlatform

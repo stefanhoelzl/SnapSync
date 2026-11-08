@@ -5,7 +5,7 @@ import app.snapsync.domain.report.Charging
 import app.snapsync.domain.report.DeviceConditionsReading
 import app.snapsync.domain.report.Fact
 import app.snapsync.domain.report.Thermal
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.DeviceConditions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -72,8 +72,8 @@ private class MainThreadFacts(
     }
 }
 
-private inline fun <T> fact(read: () -> T): Fact<T> =
-    runCatchingCancellable {
+private fun <T> fact(read: () -> T): Fact<T> =
+    PlatformCalls.attempt {
         Fact.Known(
             read(),
         )

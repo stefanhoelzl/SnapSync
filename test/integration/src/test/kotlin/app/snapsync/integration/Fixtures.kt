@@ -2,7 +2,8 @@ package app.snapsync.integration
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
-import app.snapsync.model.uploadKey
+import app.snapsync.domain.upload.UploadKey
+import app.snapsync.format.UploadKeyText
 import app.snapsync.testids.testAssetId
 
 // The fixed values the behaviours share: the default event, the members they play, and the names the operating system
@@ -34,7 +35,7 @@ const val GUEST_DEVICE = "9e570000-0000-4000-8000-0000000000a1"
 
 /** The primary upload key of an own photo [assetId] with the default capture name — what the backend lists. */
 fun primaryKey(assetId: String, filename: String = "IMG.JPG"): String =
-    uploadKey(testAssetId(assetId), ResourceRole.PRIMARY, filename)
+    UploadKeyText.of(UploadKey.of(testAssetId(assetId), ResourceRole.PRIMARY, filename))
 
 /**
  * The OS's upload job for an own photo [assetId]'s primary: named by its destination's last two segments, as the OS

@@ -1,5 +1,6 @@
 package app.snapsync.ios
 
+import app.snapsync.annotations.PlatformEntry
 import app.snapsync.attest.IosDeviceIntegrity
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.background.IosWake
@@ -11,6 +12,7 @@ import app.snapsync.config.IosBuildInfo
 import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.crypto.IosCrypto
 import app.snapsync.databases.IosDatabases
+import app.snapsync.dates.DateLocales
 import app.snapsync.dates.IosDateFormatting
 import app.snapsync.device.IosDeviceConditions
 import app.snapsync.download.IosDownload
@@ -35,8 +37,6 @@ import app.snapsync.logging.appLogDestination
 import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.metrics.MetricKitProcessMetrics
-import app.snapsync.model.PlatformEntry
-import app.snapsync.model.uncaughtInRootScope
 import app.snapsync.network.IosNetworkMonitor
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.ExtensionRegistry
@@ -49,8 +49,8 @@ import app.snapsync.push.IosPushNotifications
 import app.snapsync.scene.IosLifecycle
 import app.snapsync.scene.IosUi
 import app.snapsync.scene.SceneRecord
+import app.snapsync.scheduling.RootScopeFailures
 import app.snapsync.sentry.SentryCrashReporter
-import app.snapsync.services.dates.formatsFor
 import app.snapsync.systemui.IosSystemUi
 import app.snapsync.time.SystemClock
 import app.snapsync.ui.components.DateFormatter
@@ -164,7 +164,7 @@ object SnapSyncRoot {
 
     /** The process's date formatting as the screen renders through it — over the `DateFormatting` port. */
     private val screenDates: ScreenDates by lazy {
-        ScreenDates { tag -> DateFormatter(ports.dateFormatting.value.formatsFor(tag)::format) }
+        ScreenDates { tag -> DateFormatter(DateLocales.forScreen(ports.dateFormatting.value, tag)::format) }
     }
 
     /** What this process knows about its scenes — shared by the UI and the lifecycle adapters, on the main thread. */
@@ -315,8 +315,8 @@ object SnapSyncRoot {
     // otherwise-unhandled failure land in `debug.log` (the un-redacted channel) instead of aborting the
     // process, honouring the rule that errors reduce into state and never crash the shell. Every feature
     // reduces its own domain errors into `UiState`; this catches only what nothing else did — except an
-    // `InvalidProgramState`, which ends the process with its crash report (`uncaughtInRootScope`).
-    private val scope = CoroutineScope(SupervisorJob() + compositionLane + uncaughtInRootScope(log))
+    // `InvalidProgramState`, which ends the process with its crash report (`RootScopeFailures`).
+    private val scope = CoroutineScope(SupervisorJob() + compositionLane + RootScopeFailures())
 
     /**
      * The composed app graph (`docs/architecture.md`, "The composition layer"): this root

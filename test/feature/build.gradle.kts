@@ -25,11 +25,9 @@ kotlin {
     }
     sourceSets {
         commonTest.dependencies {
-            implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
             implementation(project(":domain:format"))
             implementation(project(":domain:ports"))
-            implementation(project(":domain:services"))
             implementation(project(":domain:data"))
             // The status total's use case, which the cross-consumer ceiling fixture asks like every other consumer.
             implementation(project(":domain:application"))

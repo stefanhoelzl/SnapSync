@@ -47,6 +47,7 @@ import app.snapsync.feature.support.receivingCounts
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
 import app.snapsync.format.DeviceLogText
+import app.snapsync.format.LegacyMembership
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DevControlsMock
@@ -59,7 +60,6 @@ import app.snapsync.mock.inMemoryExtensionRegistry
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryNetworkMonitor
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.model.EventConfig
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.FileArea
@@ -140,7 +140,7 @@ class AssembleBugReportTest {
     private fun assembly(
         appLog: String? = null,
         extLog: String? = null,
-        config: EventConfig? = null,
+        config: LegacyMembership? = null,
         permission: LibraryGrant = LibraryGrant.GRANTED,
         ledger: TestLedger = TestLedger(),
         downloads: ReceivingCounts = receivingCounts(inMemoryDatabases()),
@@ -656,7 +656,7 @@ class AssembleBugReportTest {
         name: String = "Picnic",
         direction: Direction = Direction.Both,
         album: Boolean = true,
-    ) = EventConfig(
+    ) = LegacyMembership(
         eventId = testEventId(event),
         name = name,
         minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z")),

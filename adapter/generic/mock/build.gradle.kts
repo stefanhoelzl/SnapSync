@@ -37,7 +37,6 @@ kotlin {
     }
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain:model"))
             api(project(":domain:domain"))
             api(project(":domain:ports"))
             // The inbound kinds the event ports deliver through, and the completion handles.
@@ -48,6 +47,8 @@ kotlin {
             // The slots trust keeps its items under (`TrustSlots`): the keychain mock is seeded at the device-id slot,
             // and its persisted state names the slots it restores.
             implementation(project(":domain:data"))
+            // The adapters' shared base: the event ports' handler cell and the boundary catch-all every adapter uses.
+            implementation(project(":adapter:generic:app"))
             // The backend's mock answers the device API as `api/openapi.yaml` declares it: the generated routes
             // and DTOs.
             implementation(project(":domain:wire"))
@@ -84,7 +85,6 @@ kotlin {
             // source set can construct an `internal` fake in a chosen state.
             implementation(project(":test:contracts"))
             // The storage services' fake-driven tests: the services over the storage mocks (`docs/testing.md`).
-            implementation(project(":domain:services"))
             // The process's log writers these tests install and read back (`ProcessLogging`).
             implementation(libs.kermit)
             // A process's composition takes its runtime (`ProcessGraph`, `ExtensionEntryTest`).

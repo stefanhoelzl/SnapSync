@@ -41,7 +41,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     "journeysImplementation"(project(":test:control"))
-    "journeysImplementation"(project(":domain:model"))
     "journeysImplementation"(project(":domain:domain"))
     // An invite link's text and an event key's: the codecs the app shares them in.
     "journeysImplementation"(project(":domain:format"))

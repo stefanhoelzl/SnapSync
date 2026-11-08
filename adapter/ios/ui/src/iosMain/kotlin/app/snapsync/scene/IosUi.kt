@@ -5,10 +5,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
+import app.snapsync.annotations.PlatformEntry
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.PlatformEntry
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
 import app.snapsync.ui.StatusScreen

@@ -1,6 +1,6 @@
 @file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 
-package app.snapsync.services.transfer
+package app.snapsync.scheduling
 
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent

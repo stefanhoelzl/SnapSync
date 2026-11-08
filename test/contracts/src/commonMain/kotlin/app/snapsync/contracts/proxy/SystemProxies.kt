@@ -2,9 +2,9 @@ package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
 import app.snapsync.inbound.LogLevel
-import app.snapsync.model.DateFormats
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
+import app.snapsync.ports.DateFormats
 import app.snapsync.ports.DateFormatting
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.EntryEvent
@@ -121,5 +121,12 @@ internal class DateFormattingProxy(private val inner: DateFormatting, log: CallL
     private val r = log.recorder("DateFormatting")
 
     override fun deviceLocale() = r.returns("deviceLocale", inner.deviceLocale())
-    override fun formats(locale: app.snapsync.model.DateLocale) = r.returns("formats", inner.formats(locale))
+    override fun formats(locale: app.snapsync.ports.DateLocale): DateFormats =
+        DateFormatsProxy(r.returns("formats", inner.formats(locale)), r.handle("DateFormats"))
+}
+
+/** The [DateFormats] handle a [DateFormatting] hands out, recorded under that port ([r] is its `DateFormats` recorder). */
+internal class DateFormatsProxy(private val inner: DateFormats, private val r: Recorder) : DateFormats {
+    override fun format(value: kotlinx.datetime.LocalDateTime, skeleton: String) =
+        r.returns("format", inner.format(value, skeleton))
 }

@@ -2,10 +2,10 @@
 
 package app.snapsync.gallery
 
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.ios.qos.qosLabel
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary

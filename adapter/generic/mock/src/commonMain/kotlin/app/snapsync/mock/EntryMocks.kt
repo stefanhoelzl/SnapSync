@@ -1,5 +1,7 @@
 package app.snapsync.mock
 
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.DevControlsLevers
@@ -11,10 +13,6 @@ import app.snapsync.levers.PushLevers
 import app.snapsync.levers.PushView
 import app.snapsync.levers.ScreenLevers
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.PUSH_KIND_APNS
-import app.snapsync.model.PlatformError
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
@@ -23,8 +21,10 @@ import app.snapsync.ports.LifecycleHandlers
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.Links
+import app.snapsync.ports.PlatformError
 import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.ports.PushHandlers
+import app.snapsync.ports.PushKind
 import app.snapsync.ports.PushMessage
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.PushToken
@@ -131,7 +131,7 @@ class PushServiceMock {
 
     @Volatile internal var registrations = 0
 
-    @Volatile internal var kind = PUSH_KIND_APNS
+    @Volatile internal var kind = PushKind.APNS.value
 
     /** The token this device was issued, and which process's handlers have been told it. */
     @Volatile internal var issued: String? = null

@@ -19,13 +19,14 @@ import app.snapsync.contract.extension.recordLanded
 import app.snapsync.contract.resumeContractRuns
 import app.snapsync.contract.simulatorAppContracts
 import app.snapsync.contracts.EntryDriver
+import app.snapsync.domain.upload.OsSupport
 import app.snapsync.files.IosFiles
+import app.snapsync.format.UploadersCarriedText
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ios.upload.UploadExtensionRoot
 import app.snapsync.ios.urlsession.transferSessionBinding
 import app.snapsync.keychain.contract.deviceContracts
 import app.snapsync.logging.documentsDirectory
-import app.snapsync.model.uploadersCarried
 import app.snapsync.rig.RigHooks
 import app.snapsync.rig.RigLaunch
 import app.snapsync.rig.RigServer
@@ -112,7 +113,7 @@ private fun startRig(launch: RigLaunch) = RigServer(
 private fun iosHooks(launch: RigLaunch) = RigHooks(
     bootedAt = NSDate().description,
     // Which uploaders this OS carries — a build constant. What each may do now varies with the grant.
-    uploadTier = { uploadersCarried(SnapSyncRoot.osSupportsOsDrivenUpload) },
+    uploadTier = { UploadersCarriedText.of(OsSupport.of(SnapSyncRoot.osSupportsOsDrivenUpload)) },
     uploadBase = bakedUploadBase(),
     // A compile-time fact, read rather than derived: the adapter that CHOSE the binding is the one that
     // reports it, so the rig cannot disagree with the transport about what this build does.

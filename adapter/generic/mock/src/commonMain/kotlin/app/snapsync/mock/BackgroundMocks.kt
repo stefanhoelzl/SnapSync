@@ -1,5 +1,7 @@
 package app.snapsync.mock
 
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Running
@@ -9,8 +11,6 @@ import app.snapsync.levers.PendingWake
 import app.snapsync.levers.WakeLevers
 import app.snapsync.levers.WakeView
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant

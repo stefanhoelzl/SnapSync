@@ -9,9 +9,9 @@ import android.database.sqlite.SQLiteException
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset
@@ -170,7 +170,7 @@ open class AndroidGalleryReader(
         }
         var skipped = 0
         items.filter { it.relativePath != album }.forEach { item ->
-            val moved = runCatchingCancellable {
+            val moved = PlatformCalls.attempt {
                 resolver.update(
                     item.uri,
                     ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, album) },
@@ -192,7 +192,7 @@ open class AndroidGalleryReader(
         val uri = (resource as? MediaStoreResource)?.uri
             ?: return@withContext WriteOutcome.Failed("$resource is not a media-store resource")
         val target = File(to)
-        runCatchingCancellable {
+        PlatformCalls.attempt {
             target.delete()
             val input = resolver.openInputStream(MediaOriginals.of(appContext, uri))
                 ?: error("the media provider opened no stream")

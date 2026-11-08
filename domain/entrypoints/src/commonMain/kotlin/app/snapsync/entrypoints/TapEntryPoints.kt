@@ -4,6 +4,8 @@ import app.snapsync.application.EntryPointCall
 import app.snapsync.application.event.CreateEvent
 import app.snapsync.application.report.AssembleBugReport
 import app.snapsync.application.report.SendBugReport
+import app.snapsync.data.system.PhotoAccessAsks
+import app.snapsync.data.system.SystemSurfaces
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.report.ReportOutcome
@@ -18,8 +20,6 @@ import app.snapsync.query.RequestStatusSink
 import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
-import app.snapsync.services.platform.PhotoAccessAsks
-import app.snapsync.services.platform.SystemSurfaces
 
 // ── The member's taps that hand something to the platform, or start work no other trigger starts ─────────────────────
 //

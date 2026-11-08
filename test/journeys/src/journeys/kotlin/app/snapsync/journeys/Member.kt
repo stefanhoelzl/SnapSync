@@ -9,12 +9,13 @@ import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.KeyMaterial
+import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.FileHead
 import app.snapsync.format.Hmac
 import app.snapsync.format.ResourceRoleText
+import app.snapsync.format.UploadKeyText
 import app.snapsync.http.KtorHttpTransport
-import app.snapsync.model.uploadKey
 import app.snapsync.wire.api.Limits
 import app.snapsync.wire.models.Manifest
 import app.snapsync.wire.models.ManifestAsset
@@ -110,7 +111,7 @@ class Member(private val http: HttpClient, backend: String) {
             ManifestResource(
                 role = Role.fromValue(ResourceRoleText.of(role)) ?: error("no described role for $role"),
                 contentType = contentType,
-                key = uploadKey(assetId, role, filename),
+                key = UploadKeyText.of(UploadKey.of(assetId, role, filename)),
                 filename = filename,
             )
     }

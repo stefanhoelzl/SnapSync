@@ -2,6 +2,7 @@ package app.snapsync.composition.extension
 
 import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.data.legacy.LegacyRecords
 import app.snapsync.data.receiving.DownloadDatabaseFile
 import app.snapsync.data.receiving.ReceivedPhotos
 import app.snapsync.data.store.SharedDatabase
@@ -39,7 +40,6 @@ import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetrics
-import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.Dispatchers

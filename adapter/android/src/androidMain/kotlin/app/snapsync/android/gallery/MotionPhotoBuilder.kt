@@ -3,9 +3,9 @@ package app.snapsync.android.gallery
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.media.ExifInterface
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.motionphoto.motionPhotoStill
 import app.snapsync.motionphoto.withExtension
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.ImportFile
 import co.touchlab.kermit.Logger
 import java.io.File
@@ -33,7 +33,7 @@ internal class MotionPhotoBuilder(private val scratchDir: File, private val log:
      */
     fun build(assetId: String, still: ImportFile, video: ImportFile): ImportFile? =
         // Catches an `OutOfMemoryError` too: the full-size bitmap is the one allocation here that can fail.
-        runCatchingCancellable { assemble(assetId, still, video) }.getOrElse { fallBack(assetId, it) }
+        PlatformCalls.attempt { assemble(assetId, still, video) }.getOrElse { fallBack(assetId, it) }
 
     private fun assemble(assetId: String, still: ImportFile, video: ImportFile): ImportFile? {
         scratchDir.mkdirs()

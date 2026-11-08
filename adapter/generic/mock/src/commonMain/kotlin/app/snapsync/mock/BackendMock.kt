@@ -19,8 +19,6 @@ import app.snapsync.levers.SettledEvent
 import app.snapsync.levers.StoredDeviceConfig
 import app.snapsync.levers.UnionFetch
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.DeviceFile
-import app.snapsync.model.MemberCounts
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Limits
@@ -579,9 +577,9 @@ internal class BackendState(
     }
 
     /** The event's present members, how many of them settled, and how many are still sharing. */
-    fun members(eventId: String): MemberCounts {
+    fun members(eventId: String): MemberTally {
         val active = present(eventId)
-        return MemberCounts(
+        return MemberTally(
             active.size,
             active.values.count { it.manifest?.final == true },
             active.count { (key, m) -> !sharedAll(eventId, key.second, m) },
@@ -863,3 +861,6 @@ internal fun BackendState.authorizes(token: String): Boolean =
 
 /** An operator's [fault] for one operation: answered to its next [left] requests, once [skipped] more have passed. */
 internal data class OperationFault(val fault: BackendFault, val left: Int, val skipped: Int)
+
+/** An event's present members, how many of them settled, and how many are still sharing — as the mock counts them. */
+class MemberTally(val active: Int, val settled: Int, val waitingFor: Int)

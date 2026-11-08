@@ -58,7 +58,7 @@ sealed interface JobOwner {
 }
 
 /** The path of an upload's URL, without its query — what a row records and a returned job is matched by. */
-internal object Destinations {
+object Destinations {
     fun pathOf(url: String): DestinationPath = DestinationPath(
         "/" + url.substringAfter("://").substringAfter('/', missingDelimiterValue = "").substringBefore('?'),
     )

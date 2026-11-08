@@ -2,8 +2,8 @@ package app.snapsync.android.attest
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.Proof
 import app.snapsync.ports.ProofFormat

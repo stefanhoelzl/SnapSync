@@ -10,8 +10,8 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.data.legacy.driver
 import app.snapsync.ports.DbOpen
-import app.snapsync.services.databases.driver
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals

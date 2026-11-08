@@ -27,9 +27,9 @@ import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.uploadTarget
+import app.snapsync.data.upload.Destinations
 import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.model.destinationPathOf
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryGrant
@@ -118,10 +118,12 @@ internal fun prepareCall(
             "preparing $clauseId: the transfer was not created"
         }
         else -> {
-            val destination = destinationPathOf(target.url)
+            val destination = Destinations.pathOf(target.url).path
             val offered =
                 checkNotNull(
-                    queue.retryOffered().firstOrNull { it.destinationUrl?.let(::destinationPathOf) == destination },
+                    queue.retryOffered().firstOrNull { job ->
+                        job.destinationUrl?.let { Destinations.pathOf(it).path } == destination
+                    },
                 ) {
                     "preparing $clauseId: the refused transfer was not offered for its free retry"
                 }

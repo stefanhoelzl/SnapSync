@@ -31,7 +31,6 @@ dependencies {
     // `@Verifies`, which every test driving the protocol carries: its own module so a Compose test can carry it too.
     api(project(":test:verifies"))
     // `RigState.ui` is the real `UiState` (`model/`), decoded by its compiler-generated serializer.
-    api(project(":domain:model"))
     // A person's choices name the domain's values (`Choices.direction`).
     api(project(":domain:domain"))
     api(project(":ui:state"))

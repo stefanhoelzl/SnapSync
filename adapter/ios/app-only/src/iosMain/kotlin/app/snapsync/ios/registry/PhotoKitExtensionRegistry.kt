@@ -3,7 +3,7 @@
 package app.snapsync.ios.registry
 
 import app.snapsync.config.osCarriesOsDrivenUpload
-import app.snapsync.model.logAt
+import app.snapsync.logging.logAt
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.ports.ExtensionRegistry
@@ -20,7 +20,7 @@ import platform.Photos.PHPhotoLibrary
  * `setUploadJobExtensionEnabled` or `isUploadJobExtensionEnabled`**.
  *
  * It reports the platform's three raw facts — did the write return true, and if not, which error domain and code —
- * and nothing else: what they mean is `model/registrationOutcome`, and the line that reports them is the feature's
+ * and nothing else: what they mean is the domain's `RegistrationVerdict`, and the line that reports them is the feature's
  * `OsDrivenRegistration` (phase 11f moved it out of here).
  *
  * ## Present on every OS; asks only where the selector exists

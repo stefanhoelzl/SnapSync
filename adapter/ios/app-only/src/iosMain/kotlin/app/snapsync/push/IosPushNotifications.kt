@@ -2,14 +2,14 @@
 
 package app.snapsync.push
 
+import app.snapsync.annotations.PlatformEntry
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.PUSH_KIND_APNS
-import app.snapsync.model.PlatformEntry
-import app.snapsync.model.PlatformError
+import app.snapsync.ports.PlatformError
 import app.snapsync.ports.PushHandlers
+import app.snapsync.ports.PushKind
 import app.snapsync.ports.PushMessage
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.PushToken
@@ -33,7 +33,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 class IosPushNotifications(private val log: Logger) : PushNotifications {
     private val handlers = HandlerSlot<PushHandlers>("PushNotifications", BeforeListen.Logged(log))
 
-    override val kind: String = PUSH_KIND_APNS
+    override val kind: String = PushKind.APNS.value
 
     @CompositionOnly
     override fun inbound(handlers: PushHandlers) = this.handlers.set(handlers)

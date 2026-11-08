@@ -7,9 +7,10 @@ import app.snapsync.contracts.InAppContract
 import app.snapsync.contracts.OsUploadQueueContract
 import app.snapsync.contracts.Recording
 import app.snapsync.contracts.runEntry
+import app.snapsync.domain.upload.RegistrationReply
+import app.snapsync.domain.upload.RegistrationVerdict
+import app.snapsync.domain.upload.RegistrationWrite
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.model.RegistrationOutcome
-import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.RegistrationAnswer
@@ -76,17 +77,17 @@ private fun requestRun(request: String, registry: () -> ExtensionRegistry): Stri
     clearRunProgress()
     clearLanded()
     if (!writeContractRunFile(requestPath, request)) return "could not write the run request"
-    var enabled: RegistrationOutcome? = null
+    var enabled: RegistrationVerdict? = null
     runEntry {
         registry().setEnabled(false)
         enabled = when (val answer = registry().setEnabled(true)) {
-            is RegistrationAnswer.Answered -> registrationOutcome(true, answer.ok, answer.domain, answer.code)
-            RegistrationAnswer.Unsupported -> RegistrationOutcome.Unsupported(enabling = true)
+            is RegistrationAnswer.Answered -> RegistrationVerdict.of(RegistrationWrite.ENABLE, replyOf(answer))
+            RegistrationAnswer.Unsupported -> RegistrationVerdict.Unsupported(RegistrationWrite.ENABLE)
         }
     }
-    if (enabled == RegistrationOutcome.Applied(enabling = true)) return null
+    if (enabled == RegistrationVerdict.Applied(RegistrationWrite.ENABLE)) return null
     deleteContractRunFile(requestPath)
-    return "re-registering the extension did not take (${enabled?.message}), so the OS will not invoke it"
+    return "re-registering the extension did not take ($enabled), so the OS will not invoke it"
 }
 
 /** Waits up to [bound] for the run's result, or answers a timeout naming where it stopped. */
@@ -128,4 +129,10 @@ private fun refusalFor(membershipRefusal: () -> String?, registry: () -> Extensi
         "the upload-job contract records under a full photo grant; this process holds ${currentPhotoPermission()}"
     registry().isEnabled() == RegistrationState.UNSUPPORTED -> "this OS carries no upload extension (below iOS 26.1)"
     else -> membershipRefusal()
+}
+
+/** The platform's raw facts of an [answer], as the domain's verdict reads them. */
+private fun replyOf(answer: RegistrationAnswer.Answered): RegistrationReply = when (answer.ok) {
+    true -> RegistrationReply.Took
+    false -> RegistrationReply.Refused(answer.code)
 }

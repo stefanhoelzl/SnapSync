@@ -3,8 +3,8 @@ package app.snapsync.android.storage
 import android.annotation.SuppressLint
 import android.content.Context
 import android.provider.Settings
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
 import app.snapsync.ports.PlatformDeviceId
 import java.nio.ByteBuffer
 import java.security.MessageDigest

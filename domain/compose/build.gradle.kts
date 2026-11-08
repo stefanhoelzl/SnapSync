@@ -17,12 +17,10 @@ plugins {
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
             implementation(project(":domain:query"))
             implementation(project(":domain:format"))
             implementation(project(":domain:ports"))
-            implementation(project(":domain:services"))
             // The composition layer's shared half: the process graph and the upload graph, which the app composes too.
             implementation(project(":domain:composition:process"))
             // MIGRATING: the layers phase 4 moves the work into — composed here like everything else.

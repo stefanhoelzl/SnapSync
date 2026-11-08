@@ -27,10 +27,7 @@ class OsUploader(
         OsUploaderAdmission.NOT_REGISTRABLE -> OsUploaderStanding.of(admission, OsRegistration.NOT_ASKED)
     }
 
-    private fun support(): OsSupport = when (registry.supported) {
-        true -> OsSupport.CARRIED
-        false -> OsSupport.NOT_CARRIED
-    }
+    private fun support(): OsSupport = OsSupport.of(registry.supported)
 
     private fun registration(): OsRegistration = when (registry.isEnabled()) {
         RegistrationState.REGISTERED -> OsRegistration.REGISTERED

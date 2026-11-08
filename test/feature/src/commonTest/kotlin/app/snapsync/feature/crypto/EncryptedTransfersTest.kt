@@ -32,11 +32,11 @@ import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.EventKeyText
 import app.snapsync.format.HeadRead
 import app.snapsync.format.Hmac
+import app.snapsync.format.LegacyMembership
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.EventConfig
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
@@ -69,7 +69,7 @@ class EncryptedTransfersTest {
     private val crypto: Crypto = fakeCrypto()
     private val photo = ByteArray(150_000) { (it * 11 + 2).toByte() }
 
-    private fun joined(keyId: String?) = EventConfig(
+    private fun joined(keyId: String?) = LegacyMembership(
         eventId = testEventId(EVENT),
         name = "Secret",
         minPhotoDate = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),

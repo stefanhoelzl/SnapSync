@@ -2,7 +2,8 @@ package app.snapsync.contracts
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
-import app.snapsync.model.uploadKey
+import app.snapsync.domain.upload.UploadKey
+import app.snapsync.format.UploadKeyText
 import app.snapsync.wire.api.DeviceFilesReply
 import app.snapsync.wire.api.EventFilesReply
 import app.snapsync.wire.api.EventNotFound
@@ -191,7 +192,7 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.listingClauses
         assertEquals(Role.PRIMARY, listed.role)
         assertEquals(
             asset.key(ResourceRole.PRIMARY),
-            uploadKey(AssetId.parse(listed.assetId)!!, ResourceRole.PRIMARY, listed.filename),
+            UploadKeyText.of(UploadKey.of(AssetId.parse(listed.assetId)!!, ResourceRole.PRIMARY, listed.filename)),
             "the key recomposes exactly",
         )
     }

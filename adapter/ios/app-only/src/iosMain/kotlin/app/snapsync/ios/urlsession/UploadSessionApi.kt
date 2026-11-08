@@ -1,7 +1,7 @@
 package app.snapsync.ios.urlsession
 
-import app.snapsync.model.PlatformEntry
-import app.snapsync.model.logAt
+import app.snapsync.annotations.PlatformEntry
+import app.snapsync.logging.logAt
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.TransferHandle
 import co.touchlab.kermit.Logger

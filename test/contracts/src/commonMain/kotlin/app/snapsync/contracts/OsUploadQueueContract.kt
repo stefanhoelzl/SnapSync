@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.destinationPathOf
+import app.snapsync.data.upload.Destinations
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
@@ -88,7 +88,7 @@ object OsUploadQueueContract : Contract<OsUploadQueueState, QueueUnderTest>("OsU
 
     /** Whether [job] was made towards [route]: by its destination, the one fact the OS keeps for it. */
     private fun QueueUnderTest.isAt(job: OsUploadJob, route: String) =
-        job.destinationUrl?.let(::destinationPathOf) == uploadDestination(base, route)
+        job.destinationUrl?.let { Destinations.pathOf(it).path } == uploadDestination(base, route)
 
     private suspend fun QueueUnderTest.presented(terminal: Boolean, route: String): OsUploadJob? =
         (if (terminal) queue.terminals() else queue.retryOffered()).firstOrNull { isAt(it, route) }

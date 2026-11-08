@@ -3,7 +3,9 @@
 package app.snapsync.rig
 
 import app.snapsync.data.logs.LoggingProcess
+import app.snapsync.domain.upload.OsSupport
 import app.snapsync.domain.version.Store
+import app.snapsync.format.UploadersCarriedText
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.levers.ExtensionAnswer
@@ -11,7 +13,6 @@ import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.StorePage
-import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.rig.time.LoopTime
 import kotlinx.coroutines.CompletableDeferred
@@ -209,7 +210,11 @@ class JvmRigHost private constructor(
                     ) + rig.world.servedHostServices(jvmHostServices(rig, hooks), rig.threads.acts)
                 },
                 // The running launch's fact: the played OS may carry the upload extension from a relaunch on.
-                uploadTier = { uploadersCarried(rig.app.ports.systems.extensionRegistry.supported) },
+                uploadTier = {
+                    UploadersCarriedText.of(
+                        OsSupport.of(rig.app.ports.systems.extensionRegistry.supported),
+                    )
+                },
                 uploadBase = rig.backend.base,
                 transferBinding = "mock",
                 world = HostWorld(servedWorld(JvmWorld(rig.threads), refusal = null), rig.threads.acts),

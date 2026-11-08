@@ -3,7 +3,19 @@ package app.snapsync.domain.upload
 import app.snapsync.domain.sharing.PhotoAccess
 
 /** Whether the OS carries the upload-extension mechanism at all: iOS 26.1 and later. */
-enum class OsSupport { CARRIED, NOT_CARRIED }
+enum class OsSupport {
+    CARRIED,
+    NOT_CARRIED,
+    ;
+
+    companion object {
+        /** What the platform said: whether it [carried] the mechanism. */
+        fun of(carried: Boolean): OsSupport = when (carried) {
+            true -> CARRIED
+            false -> NOT_CARRIED
+        }
+    }
+}
 
 /** The development switch for the extension: on everywhere but in a test build that turned it off. */
 enum class ExtensionSwitch { ON, OFF }

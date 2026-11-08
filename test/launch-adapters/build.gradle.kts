@@ -29,10 +29,11 @@ kotlin {
             api(project(":domain:compose"))
             api(project(":domain:composition:process"))
             api(project(":domain:composition:extension"))
-            implementation(project(":domain:model"))
             implementation(project(":ui:state"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:inbound"))
+            // The adapters' boundary catch-all, for the launch-time adapters' own platform calls.
+            implementation(project(":adapter:generic:app"))
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

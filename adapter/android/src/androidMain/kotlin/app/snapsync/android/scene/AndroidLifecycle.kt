@@ -3,11 +3,11 @@ package app.snapsync.android.scene
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import app.snapsync.annotations.PlatformEntry
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.PlatformEntry
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.LifecycleHandlers
 import co.touchlab.kermit.Logger

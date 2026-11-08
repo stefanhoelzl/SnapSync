@@ -41,11 +41,9 @@ kotlin {
             if (rigEnabled) {
                 implementation(project(":test:contracts"))
                 implementation(project(":domain:compose"))
-                implementation(project(":domain:services"))
             }
         }
         commonMain.dependencies {
-            api(project(":domain:model"))
             // The Motion Photo codec: an Android motion photo is taken apart into a Live Photo here.
             implementation(project(":adapter:generic:motionphoto"))
             api(project(":domain:ports"))
@@ -66,7 +64,6 @@ kotlin {
             implementation(project(":test:contracts"))
             implementation(project(":domain:compose"))
             // The transfer contracts record into the real ledger, which is a service over the `Databases` adapter.
-            implementation(project(":domain:services"))
         }
     }
 }

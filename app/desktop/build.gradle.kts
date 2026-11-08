@@ -14,8 +14,8 @@ kotlin {
 // reviewed without a device: each one is reachable through the inspector's levers, none is forged.
 dependencies {
     implementation(libs.ktor.client.core)
-    api(project(":domain:model"))
     api(project(":domain:domain"))
+    implementation(project(":domain:format"))
     api(project(":domain:ports"))
     // The screen pane and the mirror take the screen's `CutoffFormatter`.
     implementation(project(":domain:presentation"))
@@ -29,7 +29,6 @@ dependencies {
     // The full-stack harness: the JVM root, whose app IS the shared `snapSyncHost` composition over the mocks.
     implementation(project(":app:jvm"))
     // The inspector's policy badge reads the library mock through the same gallery services the cycle composes.
-    implementation(project(":domain:services"))
     // The inspector's "forget the event key" lever addresses the key's slot, which the data layer names.
     implementation(project(":domain:data"))
     // The inspector's policy badge reads the membership as the screen's query shows it.

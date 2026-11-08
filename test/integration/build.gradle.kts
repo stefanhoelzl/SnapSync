@@ -26,7 +26,6 @@ kotlin {
 dependencies {
     testImplementation(project(":test:control"))
     // Named explicitly, not received through the client: the core's zones export nothing transitively.
-    testImplementation(project(":domain:model"))
     testImplementation(project(":domain:domain"))
     // An invite link's text and an event key's: the codecs the app shares them in.
     testImplementation(project(":domain:format"))

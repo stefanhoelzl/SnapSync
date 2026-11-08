@@ -8,6 +8,8 @@ import app.snapsync.android.scene.AndroidLifecycle
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.contracts.EntryDriver
+import app.snapsync.domain.upload.OsSupport
+import app.snapsync.format.UploadersCarriedText
 import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFacts
 import app.snapsync.launchadapters.AdapterFiles
@@ -15,7 +17,6 @@ import app.snapsync.launchadapters.AdapterProcess
 import app.snapsync.launchadapters.LaunchAdapters
 import app.snapsync.launchadapters.randomDeviceId
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
@@ -167,7 +168,7 @@ private fun AndroidRigLaunch.hooks(
     context: Context,
 ): RigHooks = RigHooks(
     bootedAt = Clock.System.now().toString(),
-    uploadTier = { uploadersCarried(osSupportsOsDrivenUpload = false) },
+    uploadTier = { UploadersCarriedText.of(OsSupport.NOT_CARRIED) },
     uploadBase = uploadBase,
     transferBinding = "mock",
     deviceLog = deviceLogText(ports.files.value),

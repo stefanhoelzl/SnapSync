@@ -1,7 +1,7 @@
 package app.snapsync.data.receiving
 
-import app.snapsync.data.gallery.assetId
 import app.snapsync.data.gallery.PhotoGrants
+import app.snapsync.data.gallery.assetId
 import app.snapsync.data.gallery.platformId
 import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.data.sharing.SelectionState

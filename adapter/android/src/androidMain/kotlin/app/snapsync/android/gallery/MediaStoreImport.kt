@@ -10,7 +10,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportFile
 import app.snapsync.ports.ImportOutcome
@@ -94,7 +94,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         folder: String,
         onPlaceholder: (PlatformAssetId) -> Unit,
     ): ImportOutcome {
-        val uri = runCatchingCancellable { resolver.insert(collection, pendingValues(primary, folder)) }
+        val uri = PlatformCalls.attempt { resolver.insert(collection, pendingValues(primary, folder)) }
             .onFailure { log.w(it) { "${request.correlation}: the insert was refused" } }
             .getOrNull()
             ?: return ImportOutcome.Failed("MediaStore refused the insert")
@@ -110,7 +110,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
             return ImportOutcome.Failed("the item could not be opened for writing: ${e.message}", placeholder = id)
         }
         request.created?.let { stampModified(uri, it) }
-        val published = runCatchingCancellable { resolver.update(uri, publishedValues(), null) }.getOrDefault(0)
+        val published = PlatformCalls.attempt { resolver.update(uri, publishedValues(), null) }.getOrDefault(0)
         if (published != 1) {
             discard(uri)
             return ImportOutcome.Failed("the item could not be published", placeholder = id)
@@ -128,7 +128,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
     }
 
     /** Delete this app's pending items in the folders it imports into — only ever a killed import's leftovers. */
-    private fun cleanOrphans(collection: Uri): Int = runCatchingCancellable {
+    private fun cleanOrphans(collection: Uri): Int = PlatformCalls.attempt {
         val args = Bundle().apply {
             putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_ONLY)
             putString(
@@ -153,7 +153,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
     }
 
     /** Whether the staged original reads as what it claims to be: an image's bounds, a video's dimensions. */
-    private fun decodes(resource: ImportFile, collection: Uri): Boolean = runCatchingCancellable {
+    private fun decodes(resource: ImportFile, collection: Uri): Boolean = PlatformCalls.attempt {
         if (collection == IMAGES) {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(resource.path, bounds)
@@ -167,7 +167,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
     }.getOrDefault(false)
 
     private fun discard(uri: Uri) {
-        runCatchingCancellable {
+        PlatformCalls.attempt {
             resolver.delete(uri, null)
         }.onFailure { log.w(it) { "the unfinished item $uri stays pending" } }
     }

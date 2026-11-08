@@ -1,11 +1,11 @@
 package app.snapsync.gallery
 
 import app.snapsync.download.IosPhotoLibraryImporter
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ios.discovery.libraryChangeTokenOf
 import app.snapsync.ios.qos.photoKitReadLane
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
 import app.snapsync.permission.PhotoKitSelection
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.Gallery

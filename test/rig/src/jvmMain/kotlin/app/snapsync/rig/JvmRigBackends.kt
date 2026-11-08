@@ -9,7 +9,7 @@ import app.snapsync.jvm.JvmMocks
 import app.snapsync.liveedge.LiveEdge
 import app.snapsync.mock.BackendOperator
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.HttpTransport
 import io.ktor.client.HttpClient
@@ -105,7 +105,7 @@ internal sealed interface RigBackend {
 
 /** An OS upload over HTTP: the job's own request, a real `PUT` — no answer is `null`. */
 private fun httpNetwork(client: () -> HttpClient) = UploadNetwork { url, headers, bytes ->
-    runCatchingCancellable {
+    PlatformCalls.attemptSuspending {
         client().put(url) {
             headers { headers.forEach { (name, value) -> append(name, value) } }
             setBody(bytes)

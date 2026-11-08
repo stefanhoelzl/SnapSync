@@ -1,7 +1,7 @@
 package app.snapsync.permission
 
-import app.snapsync.model.PlatformEntry
-import app.snapsync.model.logAt
+import app.snapsync.annotations.PlatformEntry
+import app.snapsync.logging.logAt
 import app.snapsync.objc.objcBoundary
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity

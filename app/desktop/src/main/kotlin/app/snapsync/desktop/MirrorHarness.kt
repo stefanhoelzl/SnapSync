@@ -19,13 +19,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.client.RigClient
+import app.snapsync.dates.DateLocales
 import app.snapsync.dates.JvmDateFormatting
 import app.snapsync.levers.DeviceAdvertisement
 import app.snapsync.levers.RigLevers
 import app.snapsync.levers.RigState
 import app.snapsync.levers.ScreenLevers
-import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.dates.formatsFor
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ui.StatusActions
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.DateFormatter
@@ -62,10 +62,10 @@ fun MirrorHarnessRoot(url: String) {
         // Polled on a real dispatcher, never the composition's frame clock: a clock the scene drives (the headless
         // driver's is virtual) would pause the mirror between frames and show a host that moved on long ago.
         withContext(Dispatchers.IO) {
-            advertisement = runCatchingCancellable { client.levers(RigLevers).advertise() }
+            advertisement = PlatformCalls.attemptSuspending { client.levers(RigLevers).advertise() }
                 .onFailure { note("the advertisement failed: $it") }.getOrNull()
             while (true) {
-                state = runCatchingCancellable {
+                state = PlatformCalls.attemptSuspending {
                     client.state()
                 }.onFailure { note("the state read failed: $it") }.getOrNull() ?: state
                 delay(POLL_MS)
@@ -86,7 +86,7 @@ fun MirrorHarnessRoot(url: String) {
                     if (shown != null) {
                         StatusScreen(
                             state = shown.ui,
-                            dateFormats = { tag -> DateFormatter(dates.formatsFor(tag)::format) },
+                            dateFormats = { tag -> DateFormatter(DateLocales.forScreen(dates, tag)::format) },
                             actions = actions,
                         )
                     } else {
@@ -119,7 +119,8 @@ private fun mirrorActions(client: RigClient, scope: CoroutineScope, note: (Strin
     val screen = client.levers(ScreenLevers)
     return statusActions { intent ->
         scope.launch(Dispatchers.IO) {
-            val answer = runCatchingCancellable { screen.tap(intent) }.fold({ "handed over" }, { it.toString() })
+            val answer = PlatformCalls.attemptSuspending { screen.tap(intent) }
+                .fold({ "handed over" }, { it.toString() })
             note("tap $intent → $answer")
         }
     }

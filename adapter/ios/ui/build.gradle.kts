@@ -13,7 +13,6 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain:model"))
             api(project(":domain:ports"))
             api(project(":domain:inbound"))
             // The screen's vocabulary the Ui port is bound to here (`Ui<UiState, UiIntent>`); never presentation.

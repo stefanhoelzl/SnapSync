@@ -25,7 +25,7 @@ class CatchSitesTest {
     private val broad = listOf(
         Regex("""catch\s*\(\s*\w+\s*:\s*(?:Throwable|Exception)\s*\)"""),
         Regex("""\brunCatching\s*\{"""),
-        Regex("""\brunCatchingCancellable\b"""),
+        Regex("""\bPlatformCalls\.attempt(?:Suspending)?\b"""),
         Regex("""\.contained\("""),
     )
 
@@ -51,8 +51,8 @@ class CatchSitesTest {
             "a pass's end as a value for every waiter: its answer, its failure, or its cancellation",
         "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/objc/ObjCBoundary.kt" to
             "every Kotlin block and delegate method ObjC calls — nothing may unwind into ObjC frames",
-        "/domain/model/src/commonMain/kotlin/app/snapsync/model/Catching.kt" to
-            "the old zones' helpers themselves, deleted with their last use in phase 4",
+        "/adapter/generic/app/src/commonMain/kotlin/app/snapsync/platform/Catching.kt" to
+            "the adapters' helpers themselves",
     )
 
     private val roots = listOf("/domain/", "/adapter/", "/app/", "/ui/")
@@ -99,39 +99,34 @@ class CatchSitesTest {
     private companion object {
         /** Path → the catch-alls it still holds. May only shrink; phase 4 empties it. */
         val BASELINE: Map<String, Int> = mapOf(
-            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/device/AndroidDeviceConditions.kt" to 2,
-            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/download/AndroidDownload.kt" to 5,
-            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/gallery/AndroidGallery.kt" to 2,
-            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/gallery/AndroidGalleryReader.kt" to 3,
-            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/gallery/MediaStoreImport.kt" to 6,
-            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/gallery/MotionPhotoBuilder.kt" to 2,
-            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/push/AndroidPushNotifications.kt" to 3,
-            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/storage/AndroidDatabases.kt" to 2,
-            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/systemui/AndroidSystemUi.kt" to 2,
-            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/work/AndroidUpload.kt" to 3,
-            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/work/AndroidWake.kt" to 3,
+            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/device/AndroidDeviceConditions.kt" to 1,
+            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/download/AndroidDownload.kt" to 4,
+            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/gallery/AndroidGallery.kt" to 1,
+            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/gallery/AndroidGalleryReader.kt" to 2,
+            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/gallery/MediaStoreImport.kt" to 5,
+            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/gallery/MotionPhotoBuilder.kt" to 1,
+            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/push/AndroidPushNotifications.kt" to 2,
+            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/storage/AndroidDatabases.kt" to 1,
+            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/systemui/AndroidSystemUi.kt" to 1,
+            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/work/AndroidUpload.kt" to 2,
+            "/adapter/android/src/androidMain/kotlin/app/snapsync/android/work/AndroidWake.kt" to 2,
             "/adapter/generic/app/src/commonMain/kotlin/app/snapsync/http/KtorHttpTransport.kt" to 1,
-            "/adapter/generic/app/src/jvmMain/kotlin/app/snapsync/databases/JdbcDatabases.kt" to 2,
-            "/adapter/generic/mock/src/commonMain/kotlin/app/snapsync/mock/BackendRouter.kt" to 5,
-            "/adapter/generic/mock/src/commonMain/kotlin/app/snapsync/mock/EventKeyLedger.kt" to 3,
-            "/adapter/generic/mock/src/commonMain/kotlin/app/snapsync/mock/InMemoryDatabases.kt" to 2,
-            "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/device/IosDeviceConditions.kt" to 2,
-            "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/download/LivePhotoFromMotionPhoto.kt" to 4,
-            "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/crypto/IosCrypto.kt" to 2,
-            "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/databases/IosDatabases.kt" to 3,
-            "/app/desktop/src/main/kotlin/app/snapsync/desktop/MirrorHarness.kt" to 4,
-            "/app/desktop/src/main/kotlin/app/snapsync/desktop/WorldInspectorController.kt" to 2,
-            // Moved from EventCompletion with its read of the manifest record (phase 4.2): a record that does not decode
-            // is no settled share. Its own phase (4.4c) answers the decode as a value.
-            "/domain/model/src/commonMain/kotlin/app/snapsync/model/ConfigFile.kt" to 2,
-            // The invite link's codec moved from model with its catches (phase 4.2): a library's parse failure, read
-            // as "no invite".
+            "/adapter/generic/app/src/jvmMain/kotlin/app/snapsync/databases/JdbcDatabases.kt" to 1,
+            "/adapter/generic/mock/src/commonMain/kotlin/app/snapsync/mock/BackendRouter.kt" to 4,
+            "/adapter/generic/mock/src/commonMain/kotlin/app/snapsync/mock/EventKeyLedger.kt" to 2,
+            "/adapter/generic/mock/src/commonMain/kotlin/app/snapsync/mock/InMemoryDatabases.kt" to 1,
+            "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/device/IosDeviceConditions.kt" to 1,
+            "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/download/LivePhotoFromMotionPhoto.kt" to 1,
+            "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/crypto/IosCrypto.kt" to 1,
+            "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/databases/IosDatabases.kt" to 2,
+            "/app/desktop/src/main/kotlin/app/snapsync/desktop/MirrorHarness.kt" to 3,
+            "/app/desktop/src/main/kotlin/app/snapsync/desktop/WorldInspectorController.kt" to 1,
+            "/domain/data/src/commonMain/kotlin/app/snapsync/data/legacy/LegacyAlbumCopy.kt" to 2,
+            "/domain/data/src/commonMain/kotlin/app/snapsync/data/legacy/LegacyTextCopy.kt" to 1,
             "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to 1,
-            "/domain/format/src/commonMain/kotlin/app/snapsync/format/InviteLinkText.kt" to 2,
-            // The memory trail's codec moved from model with its catch (phase 4.10): a library's parse failure, read as
-            // "no trail".
             "/domain/format/src/commonMain/kotlin/app/snapsync/format/FootprintTrailText.kt" to 1,
-            "/domain/services/src/commonMain/kotlin/app/snapsync/services/databases/LegacyRecords.kt" to 5,
+            "/domain/format/src/commonMain/kotlin/app/snapsync/format/InviteLinkText.kt" to 2,
+            "/domain/format/src/commonMain/kotlin/app/snapsync/format/LegacyMembershipText.kt" to 2,
             "/domain/wire/src/commonMain/kotlin/app/snapsync/wire/runtime/Wire.kt" to 1,
         )
     }

@@ -1,4 +1,4 @@
-package app.snapsync.services.databases
+package app.snapsync.data.legacy
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver

@@ -1,6 +1,6 @@
 package app.snapsync.ios
 
-import app.snapsync.model.PlatformEntry
+import app.snapsync.annotations.PlatformEntry
 import platform.UIKit.UIViewController
 
 /**

@@ -12,7 +12,6 @@ import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.levers.SentPush
 import app.snapsync.levers.UnionFetch
-import app.snapsync.model.DeviceFile
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources

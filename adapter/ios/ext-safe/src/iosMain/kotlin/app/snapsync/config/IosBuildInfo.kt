@@ -2,11 +2,11 @@
 
 package app.snapsync.config
 
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
 import app.snapsync.domain.report.Platform
 import app.snapsync.domain.version.Store
 import app.snapsync.logging.appMarketingVersion
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
 import app.snapsync.ports.BuildInfo
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc

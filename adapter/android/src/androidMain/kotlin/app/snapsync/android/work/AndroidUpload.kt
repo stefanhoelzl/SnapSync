@@ -5,14 +5,14 @@ import android.content.res.AssetFileDescriptor
 import android.net.Uri
 import app.snapsync.android.gallery.MediaOriginals
 import app.snapsync.android.gallery.MediaStoreResource
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Running
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
-import app.snapsync.model.logAt
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.logging.logAt
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import app.snapsync.ports.CreateOutcome
@@ -152,7 +152,7 @@ class AndroidUpload(
         } ?: return CreateOutcome.FAILED.also {
             log.w { "$tag: the source is neither a MediaStore item nor a file here" }
         }
-        runCatchingCancellable { URI(target.url).rawPath }.getOrNull()
+        PlatformCalls.attempt { URI(target.url).rawPath }.getOrNull()
             ?: return CreateOutcome.FAILED.also { log.w { "$tag: the destination is not a URL" } }
         synchronized(live) {
             // A transfer still waiting for an unmetered network holds no slot: it sends nothing yet.
@@ -297,7 +297,7 @@ class AndroidUpload(
     ) : OutgoingContent.WriteChannelContent() {
         override val contentLength: Long? = length
         override val contentType: ContentType? = type?.let {
-            runCatchingCancellable {
+            PlatformCalls.attempt {
                 ContentType.parse(
                     it,
                 )

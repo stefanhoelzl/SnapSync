@@ -6,7 +6,9 @@ import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.ResourceRoleText
+import app.snapsync.format.UploadKeyText
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
@@ -15,8 +17,7 @@ import app.snapsync.mock.MockManifestResource
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.StorePage
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.uploadKey
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
@@ -128,7 +129,7 @@ class BackendReach(
 
     /** [deviceId]'s token, or `null` where the backend will not mint one (a refused build, a refused phone). */
     private suspend fun tokenFor(deviceId: String): String? =
-        ownToken(deviceId) ?: runCatchingCancellable { tokens.tokenFor(deviceId) }.getOrNull()
+        ownToken(deviceId) ?: PlatformCalls.attemptSuspending { tokens.tokenFor(deviceId) }.getOrNull()
 
     /** The object keys the backend lists for [deviceId] in [eventId] — each event holds its own. */
     suspend fun objectsOf(eventId: String, deviceId: String): Set<String> {
@@ -136,7 +137,7 @@ class BackendReach(
         val listed = reply as? DeviceFilesReply.Listed ?: refused("the listing", reply)
         return listed.items.mapTo(
             mutableSetOf(),
-        ) { uploadKey(AssetId.parse(it.assetId)!!, it.role.inApp(), it.filename) }
+        ) { UploadKeyText.of(UploadKey.of(AssetId.parse(it.assetId)!!, it.role.inApp(), it.filename)) }
     }
 
     /**

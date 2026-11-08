@@ -8,6 +8,8 @@ import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.upload.UploadKey
+import app.snapsync.format.UploadKeyText
 import app.snapsync.levers.CensusView
 import app.snapsync.levers.GalleryView
 import app.snapsync.levers.SeedKind
@@ -15,7 +17,6 @@ import app.snapsync.levers.SeedOutcome
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.MockManifestAsset
 import app.snapsync.mock.MockManifestResource
-import app.snapsync.model.uploadKey
 import app.snapsync.ports.SelectionSnapshot
 import app.snapsync.rig.gallery.GalleryReport
 import kotlinx.coroutines.flow.collect
@@ -105,7 +106,7 @@ internal fun foreignAsset(
     filename: String = "IMG.HEIC",
     contentType: String = "image/heic",
 ): MockManifestAsset {
-    val key = uploadKey(AssetId.parse(assetId)!!, ResourceRole.PRIMARY, filename)
+    val key = UploadKeyText.of(UploadKey.of(AssetId.parse(assetId)!!, ResourceRole.PRIMARY, filename))
     return MockManifestAsset(
         assetId = AssetId.parse(assetId)!!,
         creationDate = LibraryAssets.DEFAULT_DATE,

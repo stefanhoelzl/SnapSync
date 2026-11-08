@@ -6,9 +6,9 @@ import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.isNoSuchFile
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
@@ -88,7 +88,7 @@ class IosDatabases(private val basePath: String?) : Databases {
                     "missing or unprovisioned",
             )
         if (readOnly && !NSFileManager.defaultManager.fileExistsAtPath("$base/$name")) return DbOpen.Missing
-        val opened = runCatchingCancellable {
+        val opened = PlatformCalls.attempt {
             if (readOnly) openReadOnly(base, name, schema) else openReadWrite(base, name, schema)
         }.getOrElse { return DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
         return when (opened) {
@@ -100,7 +100,7 @@ class IosDatabases(private val basePath: String?) : Databases {
     // The commit signalling reads the database too (`PRAGMA data_version`), so it can fail like the open: then the open
     // failed, and the driver it would have wrapped is closed.
     private fun signalledOpen(name: String, driver: SqlDriver): DbOpen =
-        runCatchingCancellable { DbOpen.Opened(IosOpenDatabase(signalled(name, driver))) }.getOrElse {
+        PlatformCalls.attempt { DbOpen.Opened(IosOpenDatabase(signalled(name, driver))) }.getOrElse {
             driver.close()
             DbOpen.Failed("${it::class.simpleName}: ${it.message}")
         }

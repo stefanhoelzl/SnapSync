@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.feature.sharing
 
 import app.snapsync.application.EntryPointCall
 import app.snapsync.application.sharing.CountOwnPhotos
@@ -26,6 +26,7 @@ import app.snapsync.feature.support.OwnLibrary
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.captureRange
 import app.snapsync.feature.support.photo
+import app.snapsync.format.LegacyMembership
 import app.snapsync.format.TimestampText
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
@@ -103,7 +104,7 @@ class CeilingReachesEveryConsumerTest {
     private suspend fun counted(): Set<AssetId>? {
         val store = SharedStore().apply {
             persist(
-                EventConfig(
+                LegacyMembership(
                     eventId = testEventId("11111111-1111-4111-8111-111111111111"),
                     name = "Picnic",
                     minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z")),

@@ -5,7 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
@@ -45,7 +45,7 @@ class JdbcDatabases(private val directory: File) : Databases {
     override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen {
         val file = File(directory, name)
         if (readOnly && !file.exists()) return DbOpen.Missing
-        return runCatchingCancellable { if (readOnly) openReadOnly(file, schema) else openReadWrite(file, schema) }
+        return PlatformCalls.attempt { if (readOnly) openReadOnly(file, schema) else openReadWrite(file, schema) }
             .getOrElse { DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
     }
 

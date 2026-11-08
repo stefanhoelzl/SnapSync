@@ -1,7 +1,7 @@
 package app.snapsync.metrics
 
+import app.snapsync.annotations.PlatformEntry
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.PlatformEntry
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.MetricNode

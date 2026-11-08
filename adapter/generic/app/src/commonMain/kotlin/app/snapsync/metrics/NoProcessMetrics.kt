@@ -1,8 +1,8 @@
 package app.snapsync.metrics
 
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetrics
 

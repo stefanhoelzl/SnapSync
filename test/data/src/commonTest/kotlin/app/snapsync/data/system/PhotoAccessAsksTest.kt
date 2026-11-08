@@ -1,4 +1,4 @@
-package app.snapsync.services.platform
+package app.snapsync.data.system
 
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.ports.LibraryGrant
