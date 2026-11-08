@@ -69,10 +69,18 @@ abstract class SchemaStatementsTask : DefaultTask() {
 
     private fun render(q: ParsedQueries): String {
         val name = q.className.removeSuffix("Queries") + "Statements"
-        val used = q.statements.flatMap { s -> s.params.flatMap { NAME.findAll(baseType(it.type)).map { m -> m.value } } }
+        val used = q.statements.flatMap { s ->
+            s.params.flatMap {
+                NAME.findAll(
+                    baseType(it.type),
+                ).map { m -> m.value }
+            }
+        }
             .toSet()
-        val imports = (listOf("${q.packageName}.${q.className}") +
-            q.imports.filter { it.substringAfterLast('.') in used }).sorted()
+        val imports = (
+            listOf("${q.packageName}.${q.className}") +
+                q.imports.filter { it.substringAfterLast('.') in used }
+            ).sorted()
         fun calls(of: List<ParsedStatement>, run: String) = of.joinToString("") { s ->
             val args = s.params.joinToString(", ") { fixture(it.type, s.name) }
             "        SchemaStatement(\"${s.name.trim('`')}\") { it.${s.name}($args)$run },\n"
@@ -133,12 +141,15 @@ private val FUN = Regex("""public fun (<[^>]+> )?(`?\w+`?)\(""")
  * `mapper`, which repeats a read already listed. Anything else fails, so a new SQLDelight shape is noticed.
  */
 internal fun parseQueries(text: String, file: String): ParsedQueries {
-    val pkg = PACKAGE.find(text)?.groupValues?.get(1) ?: throw GradleException("$file: no package")
-    val cls = CLASS.find(text)?.groupValues?.get(1) ?: throw GradleException("$file: no *Queries class")
+    val pkg = PACKAGE.find(text)?.groupValues?.get(1) ?: unknownShape(file, "no package")
+    val cls = CLASS.find(text)?.groupValues?.get(1) ?: unknownShape(file, "no *Queries class")
     val statements = FUN.findAll(text).mapNotNull { match -> parseFun(text, match, file) }.toList()
-    if (statements.isEmpty()) throw GradleException("$file: no statements found — has SQLDelight's output changed?")
+    if (statements.isEmpty()) unknownShape(file, "no statements found — has SQLDelight's output changed?")
     return ParsedQueries(pkg, cls, IMPORT.findAll(text).map { it.groupValues[1] }.toList(), statements)
 }
+
+/** Fails the generation: [file] is not the `*Queries` source shape [parseQueries] knows, for the reason [why]. */
+private fun unknownShape(file: String, why: String): Nothing = throw GradleException("$file: $why")
 
 private fun parseFun(text: String, match: MatchResult, file: String): ParsedStatement? {
     val name = match.groupValues[2]
@@ -154,7 +165,9 @@ private fun parseFun(text: String, match: MatchResult, file: String): ParsedStat
         params.any { it.name == "mapper" } -> null
         returns.startsWith("Query<") || returns.startsWith("ExecutableQuery<") -> ParsedStatement(name, params, false)
         returns == "QueryResult<Long>" -> ParsedStatement(name, params, true)
-        else -> throw GradleException("$file: `$name` answers `$returns`, a shape generateSchemaStatements does not know")
+        else -> throw GradleException(
+            "$file: `$name` answers `$returns`, a shape generateSchemaStatements does not know",
+        )
     }
 }
 

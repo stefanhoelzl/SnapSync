@@ -165,9 +165,11 @@ abstract class CoverageZeroTask : DefaultTask() {
 
     @TaskAction
     fun judge() {
-        val classFiles = classes.files.flatMap { root -> root.walkTopDown().filter { it.extension == "class" }.toList() }
+        val classFiles = classes.files.flatMap { root ->
+            root.walkTopDown().filter { it.extension == "class" }.toList()
+        }
         val bytes = classFiles.map { it.readBytes() }
-        val glue = CoverageZero.serializationGlue(bytes) + CoverageZero.invalidProgramStateGlue(bytes)
+        val glue = SerializationGlue.find(bytes) + InvalidProgramStateGlue.find(bytes)
         val v = CoverageZero.judge(
             report.get().asFile.readText(),
             CoverageZero.index(sources.files),
@@ -183,15 +185,19 @@ abstract class CoverageZeroTask : DefaultTask() {
         val sites = v.composeGlue.map {
             "  excused ${it.file}:${it.line}  ${it.instructions} instr / ${it.branches} branch  (${it.shapes})"
         } + v.excusedGlue.map {
-            "  excused ${it.file}:${it.line}  ${it.instructions} instr / ${it.branches} branch  ${it.site} (${it.shape})"
+            "  excused ${it.file}:${it.line}  ${it.instructions} instr / ${it.branches} branch  " +
+                "${it.site} (${it.shape})"
         }
         sites.forEach { logger.lifecycle(it) }
         val detail = v.mismatches.map { "  scan/bytecode: $it" } +
-            v.misses.map { "  ${it.file}:${it.line}  missed ${it.instructions} instr / ${it.branches} branch  ${it.text}" }
+            v.misses.map {
+                "  ${it.file}:${it.line}  missed ${it.instructions} instr / ${it.branches} branch  ${it.text}"
+            }
         verdict.get().asFile.writeText((listOf(summary) + sites + detail).joinToString("\n", postfix = "\n"))
         if (!v.passes) {
             throw GradleException(
-                "$summary — the zero gate allows none (`docs/architecture.md`, \"Coverage\"):\n" + detail.joinToString("\n"),
+                "$summary — the zero gate allows none (`docs/architecture.md`, \"Coverage\"):\n" +
+                    detail.joinToString("\n"),
             )
         }
     }

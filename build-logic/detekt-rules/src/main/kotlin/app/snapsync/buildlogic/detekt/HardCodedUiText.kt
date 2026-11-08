@@ -36,9 +36,7 @@ class HardCodedUiText(config: Config = Config.empty) : Rule(config) {
 
     override fun visitStringTemplateExpression(expression: KtStringTemplateExpression) {
         super.visitStringTemplateExpression(expression)
-        if (!expression.hasWords() || expression.getParentOfType<KtAnnotationEntry>(true) != null) return
-        val call = expression.enclosingCall()?.calleeName()
-        if (call != null && (call in DEVELOPER_CALLS || call.startsWith("animate") || call.endsWith("Transition"))) return
+        if (!expression.hasWords() || expression.isForDevelopers()) return
         report(
             CodeSmell(
                 issue,
@@ -47,6 +45,15 @@ class HardCodedUiText(config: Config = Config.empty) : Rule(config) {
             ),
         )
     }
+
+    /** Whether no person reads this string: an annotation's argument, or written in a [isDeveloperCall]. */
+    private fun KtStringTemplateExpression.isForDevelopers(): Boolean =
+        getParentOfType<KtAnnotationEntry>(true) != null ||
+            enclosingCall()?.calleeName()?.let(::isDeveloperCall) == true
+
+    /** A message for a developer, a test tag, an animation's debug label or a date skeleton: see the class KDoc. */
+    private fun isDeveloperCall(name: String): Boolean =
+        name in DEVELOPER_CALLS || name.startsWith("animate") || name.endsWith("Transition")
 
     private companion object {
         val DEVELOPER_CALLS = setOf(
@@ -72,13 +79,17 @@ class HardCodedSystemText(config: Config = Config.empty) : Rule(config) {
 
     override fun visitStringTemplateExpression(expression: KtStringTemplateExpression) {
         super.visitStringTemplateExpression(expression)
-        if (!expression.hasWords()) return
-        val argument = expression.parent as? KtValueArgument ?: return
-        val call = argument.getParentOfType<KtCallExpression>(true) ?: return
-        val shown = SHOWN_ARGUMENTS[call.calleeName()] ?: return
-        if (call.valueArguments.indexOf(argument) in shown) {
+        if (expression.hasWords() && expression.isShownArgument()) {
             report(CodeSmell(issue, Entity.from(expression), "Hard-coded system text ${expression.text}."))
         }
+    }
+
+    /** Whether this string is an argument the OS shows: passed to one of [SHOWN_ARGUMENTS]' calls, at its position. */
+    private fun KtStringTemplateExpression.isShownArgument(): Boolean {
+        val argument = parent as? KtValueArgument ?: return false
+        return argument.getParentOfType<KtCallExpression>(true)?.let { call ->
+            SHOWN_ARGUMENTS[call.calleeName()]?.let { shown -> call.valueArguments.indexOf(argument) in shown }
+        } == true
     }
 
     private companion object {
@@ -102,4 +113,5 @@ private fun KtStringTemplateExpression.hasWords(): Boolean = entries.any { entry
 /** The nearest call this string is written in — an argument, or the lambda one takes (`require(ok) { "…" }`). */
 private fun KtStringTemplateExpression.enclosingCall(): KtCallExpression? = getParentOfType<KtCallExpression>(true)
 
-private fun KtCallExpression.calleeName(): String? = (calleeExpression as? KtNameReferenceExpression)?.getReferencedName()
+private fun KtCallExpression.calleeName(): String? =
+    (calleeExpression as? KtNameReferenceExpression)?.getReferencedName()

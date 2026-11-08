@@ -64,7 +64,9 @@ abstract class EntryNamesTask : DefaultTask() {
         val detail = v.removed.map { "  removed  $it" } +
             v.renamed.map { (from, to) -> "  RENAMED  $from -> $to" } +
             v.merged.map { "  MERGED   $it (into another class, whose name it would answer)" } +
-            v.unnamed.map { "  UNNAMED  $it (no InnerClass annotation naming it: simpleName answers the binary name)" } +
+            v.unnamed.map {
+                "  UNNAMED  $it (no InnerClass annotation naming it: simpleName answers the binary name)"
+            } +
             v.missingRoots.map { "  NO ROOT  $it (no compiled class declares it)" }
         logger.lifecycle(summary)
         verdict.get().asFile.writeText((listOf(summary) + detail).joinToString("\n", postfix = "\n"))
@@ -72,7 +74,7 @@ abstract class EntryNamesTask : DefaultTask() {
             throw GradleException(
                 "an entry point or tap intent would not tell its own name in this release " +
                     "(`app/android/proguard-rules.pro`):\n" + detail.filterNot { it.startsWith("  removed") }
-                    .joinToString("\n"),
+                        .joinToString("\n"),
             )
         }
     }

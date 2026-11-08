@@ -99,20 +99,30 @@ open class ModuleCoverage @Inject constructor(val path: String) : Measurement() 
     internal val declared: Boolean get() = skips.isNotEmpty() || units > 0 || integrations > 0
 
     /** Every problem with this entry, each a sentence naming the module; empty when it is well-formed. */
-    internal fun problems(exists: (String) -> Boolean): List<String> = buildList {
+    internal fun problems(exists: (String) -> Boolean): List<String> =
+        declarationProblems(exists) + if (wholeSkip != null) wholeSkipProblems() else measurementProblems(exists)
+
+    /** What is wrong with the entry however it settles its measurements: its module, its reasons, its repeats. */
+    private fun declarationProblems(exists: (String) -> Boolean): List<String> = buildList {
         if (!exists(path)) add("$path is not a module of this build")
         (skips + unit?.skips.orEmpty() + integration?.skips.orEmpty()).filter { it.reason.isBlank() }.forEach {
             add("$path skips ${it.packages.ifEmpty { listOf("everything") }} with no reason")
         }
         if (units > 1) add("$path declares unit() $units times")
         if (integrations > 1) add("$path declares integration() $integrations times")
-        val u = unit
-        val i = integration
-        if (wholeSkip != null) {
-            if (u != null) add("$path is skipped as a whole, yet declares unit()")
-            if (i != null) add("$path is skipped as a whole, yet declares integration()")
-            return@buildList
-        }
+    }
+
+    /** A module skipped as a whole settles every measurement, so it declares none. */
+    private fun wholeSkipProblems(): List<String> = listOfNotNull(
+        "$path is skipped as a whole, yet declares unit()".takeIf { unit != null },
+        "$path is skipped as a whole, yet declares integration()".takeIf { integration != null },
+    )
+
+    /** A module not skipped as a whole settles each measurement: a target, or a skip with its reason. */
+    private fun measurementProblems(exists: (String) -> Boolean): List<String> =
+        integrationProblems(integration) + unitProblems(unit, exists)
+
+    private fun integrationProblems(i: IntegrationCoverage?): List<String> = buildList {
         when {
             i == null -> add(
                 "$path does not settle its integration measurement: integration(…), or " +
@@ -122,13 +132,23 @@ open class ModuleCoverage @Inject constructor(val path: String) : Measurement() 
             !i.targeted && i.wholeSkip == null ->
                 add("$path declares integration { } with no target: skip it with a reason, or set one")
         }
-        listOfNotNull(i?.instructions, i?.branches).filter { it !in 0..100 }.forEach {
-            add("$path sets an integration target of $it %, outside 0..100")
+        listOfNotNull(i?.instructions, i?.branches).filter { it !in 0..WHOLE_PERCENT }.forEach {
+            add("$path sets an integration target of $it %, outside 0..$WHOLE_PERCENT")
         }
+    }
+
+    private fun unitProblems(u: UnitCoverage?, exists: (String) -> Boolean): List<String> = buildList {
         if (u == null) add("$path does not settle its unit measurement: unit(…), or unit { skipped(\"<reason>\") }")
         if (u != null && u.wholeSkip != null && u.alsoCoveredBy.isNotEmpty()) {
             add("$path skips its unit measurement, yet names modules that also cover it")
         }
-        u?.alsoCoveredBy?.filterNot(exists)?.forEach { add("$path is also covered by $it, which is not a module of this build") }
+        u?.alsoCoveredBy?.filterNot(exists)?.forEach {
+            add("$path is also covered by $it, which is not a module of this build")
+        }
+    }
+
+    private companion object {
+        /** The most a target may be: all of a measurement, in whole percentages. */
+        const val WHOLE_PERCENT = 100
     }
 }

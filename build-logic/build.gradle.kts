@@ -27,7 +27,8 @@ dependencies {
     // loaded.
     compileOnly(libs.dependency.analysis.gradle)
     // The zero coverage gate reads a module's compiled classes to recognise compiler glue by its bytecode shape
-    // (`CoverageZero`). An ordinary dependency: nothing else on this classpath loads ASM under its own name.
+    // (`ComposeGlue`, `SerializationGlue`, `InvalidProgramStateGlue`). An ordinary dependency: nothing else on this
+    // classpath loads ASM under its own name.
     implementation(libs.asm.tree)
     // The wire's route generator (`snapsync.wire`) is compiled against these but never loads them on this classpath:
     // it runs in a Gradle worker under PROCESS ISOLATION, over the `wireGenerator` configuration of the module applying

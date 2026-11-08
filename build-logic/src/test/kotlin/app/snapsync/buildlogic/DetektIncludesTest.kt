@@ -23,7 +23,11 @@ class DetektIncludesTest {
     @Test
     fun `a rule's includes are read in both list forms`() {
         assertEquals(
-            listOf("**/core/data/src/commonMain/**", "**/core/gone/src/commonMain/**", "**/ui/screens/src/commonMain/**"),
+            listOf(
+                "**/core/data/src/commonMain/**",
+                "**/core/gone/src/commonMain/**",
+                "**/ui/screens/src/commonMain/**",
+            ),
             DetektIncludes.globs(config),
         )
     }
@@ -34,6 +38,9 @@ class DetektIncludesTest {
             "/repo/core/data/src/commonMain/kotlin/app/snapsync/data/Store.kt",
             "/repo/ui/screens/src/commonMain/kotlin/app/snapsync/ui/Screen.kt",
         )
-        assertEquals(listOf("**/core/gone/src/commonMain/**"), DetektIncludes.unmatched(DetektIncludes.globs(config), files))
+        assertEquals(
+            listOf("**/core/gone/src/commonMain/**"),
+            DetektIncludes.unmatched(DetektIncludes.globs(config), files),
+        )
     }
 }

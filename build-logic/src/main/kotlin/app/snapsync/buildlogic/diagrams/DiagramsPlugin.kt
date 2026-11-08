@@ -1,6 +1,5 @@
 package app.snapsync.buildlogic.diagrams
 
-import app.snapsync.buildlogic.Committed
 import app.snapsync.buildlogic.QualityPlugin
 import org.gradle.api.Plugin
 import org.gradle.api.Project

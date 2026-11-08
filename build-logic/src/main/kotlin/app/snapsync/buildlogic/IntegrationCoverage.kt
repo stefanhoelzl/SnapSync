@@ -114,7 +114,14 @@ abstract class IntegrationCoverageTask : DefaultTask() {
                 m.classes.files.filter { it.isDirectory },
                 emptyList(),
                 m.path.get(),
-                ClassFilters(emptySet(), m.skipped.get().map { "$it.*" }.toSet(), emptySet(), emptySet(), emptySet(), emptySet()),
+                ClassFilters(
+                    emptySet(),
+                    m.skipped.get().map { "$it.*" }.toSet(),
+                    emptySet(),
+                    emptySet(),
+                    emptySet(),
+                    emptySet(),
+                ),
             )
             Measured(m.path.get(), counters(xml.readText()), m.instructions.get(), m.branches.get())
         }
@@ -125,7 +132,8 @@ abstract class IntegrationCoverageTask : DefaultTask() {
             throw GradleException(
                 "Coverage of the integration suite alone (each module's `coverage { }`, `docs/architecture.md`, " +
                     "\"Coverage\"):\n" + problems.joinToString("\n") { "  $it" } +
-                    "\nA drop is fixed by a test, never by lowering a number. Every module: ${dir.resolve("summary.md")}",
+                    "\nA drop is fixed by a test, never by lowering a number. " +
+                    "Every module: ${dir.resolve("summary.md")}",
             )
         }
     }

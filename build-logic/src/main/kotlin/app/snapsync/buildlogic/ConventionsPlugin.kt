@@ -20,9 +20,9 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 class ConventionsPlugin : Plugin<Project> {
     override fun apply(root: Project) {
         check(root == root.rootProject) { "snapsync.conventions is the root's: it configures every subproject" }
-        // `base` gives the ROOT project the lifecycle tasks (`check`, `build`) the root's gates ride — `./gradlew build`
-        // includes the root `check`, so `detektAppShell` runs in the canonical build (`docs/architecture.md`, "The
-        // shell gates").
+        // `base` gives the ROOT project the lifecycle tasks (`check`, `build`) the root's gates ride —
+        // `./gradlew build` includes the root `check`, so `detektAppShell` runs in the canonical build
+        // (`docs/architecture.md`, "The shell gates").
         root.pluginManager.apply("base")
         root.pluginManager.apply("snapsync.quality")
         root.pluginManager.apply("snapsync.archive-names")

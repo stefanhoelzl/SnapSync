@@ -24,12 +24,12 @@ import org.jetbrains.kotlin.psi.psiUtil.parents
 // where the state is guaranteed never to happen, its `because` naming the guarantee.
 
 /**
- * In the core's layers the only throw is `throw InvalidProgramState("<literal>")`, or a rethrow of what a `catch` caught
- * or a function was handed. Every expected failure is a value; nothing else may throw for it either — no `require`,
- * `check`, `error`, `requireNotNull`, `checkNotNull` or `TODO`, no `!!`, and none of the standard library's calls that
- * throw on an empty or missing value (`first`, `last`, `single`, `reduce`, `getValue`, `getOrThrow`), each of which has
- * a twin that answers `null`. Read as syntax: a conversion that throws on bad text (`String.toInt()`) cannot be told
- * from one that cannot without types, and is review's.
+ * In the core's layers the only throw is `throw InvalidProgramState("<literal>")`, or a rethrow of what a `catch`
+ * caught or a function was handed. Every expected failure is a value; nothing else may throw for it either — no
+ * `require`, `check`, `error`, `requireNotNull`, `checkNotNull` or `TODO`, no `!!`, and none of the standard library's
+ * calls that throw on an empty or missing value (`first`, `last`, `single`, `reduce`, `getValue`, `getOrThrow`), each
+ * of which has a twin that answers `null`. Read as syntax: a conversion that throws on bad text (`String.toInt()`)
+ * cannot be told from one that cannot without types, and is review's.
  */
 class OnlyInvalidProgramStateThrows(config: Config = Config.empty) : Rule(config) {
     override val issue = Issue(
@@ -59,7 +59,8 @@ class OnlyInvalidProgramStateThrows(config: Config = Config.empty) : Rule(config
         val asserting = receiver == null && name in ASSERTIONS
         val emptyThrows = receiver != null && name in THROWING_READS &&
             expression.valueArgumentList?.arguments.orEmpty().isEmpty()
-        if (asserting || emptyThrows || (receiver != null && name in ALWAYS_THROWING)) {
+        val alwaysThrows = receiver != null && name in ALWAYS_THROWING
+        if (asserting || emptyThrows || alwaysThrows) {
             report(CodeSmell(issue, Entity.from(expression), "`$name` throws: answer the failure as a value."))
         }
     }

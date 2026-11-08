@@ -104,7 +104,10 @@ class EntryNamesTest {
               Class descriptor  : 'Lapp/snapsync/ui/state/UiIntent${'$'}CreateName;'
         """.trimIndent().lineSequence()
 
-        assertEquals(mapOf("app.snapsync.ui.state.UiIntent\$ConfirmCreate" to "ConfirmCreate"), EntryNames.innerNames(dump))
+        assertEquals(
+            mapOf("app.snapsync.ui.state.UiIntent\$ConfirmCreate" to "ConfirmCreate"),
+            EntryNames.innerNames(dump),
+        )
     }
 
     @Test
