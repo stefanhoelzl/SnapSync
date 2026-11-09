@@ -39,7 +39,7 @@ object InvalidProgramStateGlue {
 
     /**
      * Every throw of `InvalidProgramState` in [classFiles] (the module's compiled classes): its block's instructions on
-     * the line they are attributed to, and — where exactly one conditional arm (a jump's, or a switch case's) leads
+     * each line they are attributed to, and — where exactly one conditional arm (a jump's, or a switch case's) leads
      * into the block — that arm's one branch, on its jump's line. A block entered by plain fall-through or a `goto` is
      * not this shape and excuses nothing: something else runs on the way in. A block several arms lead into excuses its
      * instructions only: which arm is the impossible one is not the bytecode's to say.
@@ -50,16 +50,20 @@ object InvalidProgramStateGlue {
         cls.methods.flatMap { method ->
             val site = "${cls.name.replace('/', '.')}.${method.name}"
             throwsIn(method.instructions.toArray()).flatMap { t ->
-                listOfNotNull(
-                    CoverageZero.Glue(key, t.line, t.instructions, 0, site, "invalid program state"),
+                t.lines.map { (line, instructions) ->
+                    CoverageZero.Glue(key, line, instructions, 0, site, "invalid program state")
+                } + listOfNotNull(
                     t.armLine?.let { CoverageZero.Glue(key, it, 0, 1, site, "invalid program state's arm") },
                 )
             }
         }
     }
 
-    /** One recognised throw: its block's line and size, and the line of the one arm into it, when there is one. */
-    private class Throw(val line: Int, val instructions: Int, val armLine: Int?)
+    /**
+     * One recognised throw: its block's instructions by the line each is attributed to — an elvis broken before its
+     * `?:` puts the `pop` on the line above the throw — and the line of the one arm into it, when there is one.
+     */
+    private class Throw(val lines: Map<Int, Int>, val armLine: Int?)
 
     private fun throwsIn(code: Array<AbstractInsnNode>): List<Throw> {
         val real = code.indices.filter { code[it].opcode >= 0 }
@@ -68,8 +72,8 @@ object InvalidProgramStateGlue {
             val popped = at > 0 && code[real[at - 1]].opcode == Opcodes.POP
             val start = if (popped) at - 1 else at
             val arms = armsInto(code, real, start) ?: return@mapNotNull null
-            val line = lineAt(code, real[start]) ?: return@mapNotNull null
-            Throw(line, THROW.size + if (popped) 1 else 0, arms.singleOrNull()?.let { lineAt(code, it) })
+            val block = real.subList(start, at + THROW.size).map { lineAt(code, it) ?: return@mapNotNull null }
+            Throw(block.groupingBy { it }.eachCount(), arms.singleOrNull()?.let { lineAt(code, it) })
         }
     }
 
