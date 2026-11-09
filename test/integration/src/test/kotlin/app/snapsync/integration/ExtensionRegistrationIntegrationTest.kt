@@ -9,7 +9,8 @@ import kotlin.test.Test
  * **When the app registers iOS's own background uploader** (decision record `changes/own-work-per-wake`), read off the
  * operating system's record: only while it may upload — a full grant, and the uploader switched on — and only when iOS
  * does not already hold the registration. A grant widened to full registers it; a launch over a registration iOS holds
- * registers nothing again; an uploader switched off is never registered.
+ * registers nothing again; a revoke leaves the registration as iOS holds it; an uploader switched off is
+ * never registered.
  */
 class ExtensionRegistrationIntegrationTest {
 
@@ -42,6 +43,24 @@ class ExtensionRegistrationIntegrationTest {
         }
 
         whenever { host.relaunch() }
+        then {
+            never<WorldEvent.ExtensionRegistered>()
+            settled { true }
+        }
+    }
+
+    @Test
+    fun access_revoked_after_the_registration_leaves_it_as_ios_holds_it() = behaviour {
+        given {
+            iosUploaderCarried()
+            createdEvent()
+            step("joined, iOS's uploader registered", act = { confirmJoin() }, until = {
+                event<WorldEvent.ExtensionRegistered> { it.on }
+                settled { true }
+            })
+        }
+
+        whenever { library.permission(PhotoGrant.DENIED) }
         then {
             never<WorldEvent.ExtensionRegistered>()
             settled { true }
