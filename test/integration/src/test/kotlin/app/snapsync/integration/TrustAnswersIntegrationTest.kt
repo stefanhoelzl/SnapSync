@@ -67,6 +67,96 @@ class TrustAnswersIntegrationTest {
 
     @Test
     @Verifies(
+        spec = "privacy-security",
+        requirement = "A refused phone is told why",
+        scenario = "No answer is not a refusal",
+    )
+    fun a_create_whose_proof_challenge_the_service_fails_to_issue_fails_without_a_refusal() = behaviour {
+        given {
+            step(
+                "the service hands out no challenge",
+                act = { backend.fail(CHALLENGE, BackendFault.SERVER_ERROR, ALWAYS) },
+                until = {},
+            )
+            inFront()
+        }
+
+        for (fault in CHALLENGE_FAULTS) {
+            whenever {
+                backend.recover(CHALLENGE)
+                backend.fail(CHALLENGE, fault, ALWAYS)
+                createTheEvent()
+            }
+            then {
+                event<WorldEvent.BackendReceived> { it.operation == CHALLENGE }
+                screen<Layer.CreateEvent> { it.error != null }
+                neverScreen<Layer.CreateEvent> { it.error in REFUSALS }
+                never<WorldEvent.BackendReceived> { it.operation == MINT }
+                never<WorldEvent.EventCreated>()
+            }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A refused phone is told why",
+        scenario = "No answer is not a refusal",
+    )
+    fun a_create_whose_proof_the_service_cannot_be_reached_to_mint_fails_without_a_refusal() = behaviour {
+        given {
+            step(
+                "no mint reaches the service",
+                act = { backend.fail(MINT, BackendFault.UNREACHABLE, ALWAYS) },
+                until = {},
+            )
+            inFront()
+        }
+
+        whenever { createTheEvent() }
+        then {
+            screen<Layer.CreateEvent> { it.error != null }
+            neverScreen<Layer.CreateEvent> { it.error in REFUSALS }
+            never<WorldEvent.EventCreated>()
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "A device that cannot be verified is shown, and never blamed on the member",
+    )
+    fun a_renewal_whose_challenge_the_service_fails_to_issue_names_no_refusal() = behaviour {
+        given {
+            joinedEvent()
+            inFront()
+            step("in the background, past the proof's life", act = {
+                os.background()
+                advance(PROOF_EXPIRED)
+            }, until = { settled { true } })
+        }
+
+        for (fault in CHALLENGE_FAULTS) {
+            whenever {
+                backend.fail(CHALLENGE, fault, ALWAYS)
+                os.foreground()
+            }
+            then {
+                event<WorldEvent.BackendReceived> { it.operation == CHALLENGE }
+                never<WorldEvent.BackendReceived> { it.operation == RENEW || it.operation == MINT }
+                neverScreen<Layer.Joined> { (it.health as? SyncHealth.Unattested)?.refusal != null }
+                settled { true }
+            }
+            whenever {
+                backend.recover(CHALLENGE)
+                os.background()
+            }
+            then { settled { true } }
+        }
+    }
+
+    @Test
+    @Verifies(
         spec = "sync-status",
         requirement = "A device that cannot be verified is shown, and never blamed on the member",
         scenario = "A refused phone's line names the cause",
@@ -119,12 +209,21 @@ class TrustAnswersIntegrationTest {
 
     private companion object {
         const val MINT = "mintToken"
+        const val CHALLENGE = "challenge"
         const val RENEW = "renewToken"
         const val TOKEN = "DEADBEEF"
         const val ALWAYS = 10_000
 
         /** Past the 30 days a proof lasts. */
         val PROOF_EXPIRED = 31.days
+
+        /** Every way the service can fail to hand out a challenge. */
+        val CHALLENGE_FAULTS = listOf(
+            BackendFault.SERVER_ERROR,
+            BackendFault.MAINTENANCE,
+            BackendFault.UNREACHABLE,
+            BackendFault.MALFORMED,
+        )
 
         val REFUSALS = setOf(
             ScreenMessage.DEVICE_MODIFIED,

@@ -2,6 +2,8 @@ package app.snapsync.integration
 
 import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Given
+import app.snapsync.levers.PhotoGrant
+import app.snapsync.levers.TransferEnd
 import app.snapsync.levers.WorldEvent
 
 // The shared steps that move a member's own photos to the event through the OS-driven extension (`Steps.kt` holds the
@@ -55,3 +57,21 @@ suspend fun Given.declaredWithNoJob(vararg ids: String) {
 
 /** Only the app uploads from now on: the switch its next pass reads at its gate, and that pass runs at once. */
 suspend fun Acts.theAppAloneUploads() = devControls.pin(app = true, extension = false)
+
+/** The app opened, and [photo]'s upload handed to its session. */
+suspend fun Given.uploading(photo: String) = step("$photo uploading", act = { os.foreground() }, until = {
+    event<WorldEvent.SessionTransferCreated> { it.key == primaryKey(photo) }
+    settled { true }
+})
+
+/**
+ * On a phone whose session lives in the app's process (Android's), photo access revoked in Settings: the process ends,
+ * and the upload it carried is cut off — its staged file and digest left for the next attempt to go on from.
+ */
+suspend fun Given.cutOffByARevoke() = step("access revoked in Settings, the upload cut off with the process", act = {
+    library.permission(PhotoGrant.DENIED)
+    os.foreground()
+}, until = {
+    event<WorldEvent.SessionTransferEnded> { it.outcome.how == TransferEnd.How.FAILED }
+    settled { true }
+})
