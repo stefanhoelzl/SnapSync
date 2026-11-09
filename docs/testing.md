@@ -1144,7 +1144,8 @@ chosen at launch** (11h): its launch adapters. The systems are the mocks of `Moc
 `process-info`, `network`, `clock`, `wake`, `background-time`, `extension-registry`, `upload-queue`, `upload-session`,
 `downloads`, `lifecycle`, `links`, `push`, `screen`, `system-ui`. Not among them: the development controls (always the
 channel's), the extension's entry port (the channel already plays its invocations through the real adapter) and
-MetricKit (`host.processMetrics` feeds the real handler; the JVM host plays reports through `process-metrics`).
+MetricKit (`host.processMetrics` feeds the real handler; the JVM host plays reports through `process-metrics` —
+a recorded one by kind — and through `host.processMetrics`, a bag of any shape, both into the mocked provider).
 Code: `:test:launch-adapters`.
 
 - **The adapters file** is `rig/adapters` in the App Group — the adapter choice: one `system=mock|real` per line, `#`
