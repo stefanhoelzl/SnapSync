@@ -2,7 +2,6 @@ package app.snapsync.data.upload
 
 import app.snapsync.data.membership.sharedOver
 import app.snapsync.data.store.StoreWrite
-import app.snapsync.data.store.use
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole

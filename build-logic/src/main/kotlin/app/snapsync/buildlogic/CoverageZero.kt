@@ -91,6 +91,26 @@ object CoverageZero {
         return judgement.verdict(shapeProblems(root))
     }
 
+    /** What [unreachable] takes out of a report's totals: the sites it excused, and those the report contradicts. */
+    data class Excusal(val sites: List<Glue>, val mismatches: List<String>) {
+        val instructions: Long get() = sites.sumOf { it.instructions.toLong() }
+        val branches: Long get() = sites.sumOf { it.branches.toLong() }
+    }
+
+    /**
+     * The misses in [report] that [glue] shows no input can reach, line by line exactly as [judge] excuses them — for a
+     * measurement that judges totals rather than lines. The integration measurement (`IntegrationCoverage`) takes
+     * them out of its totals, so a throw of `InvalidProgramState` is "a state that cannot happen" to BOTH coverage
+     * gates, and stops counting as a branch the integration suite failed to reach (`docs/architecture.md`,
+     * "Coverage"). Keep the two gates on this one reading: a second copy of the rule is how one gate drifts from the
+     * other.
+     */
+    fun unreachable(report: String, glue: List<Glue>): Excusal {
+        val judgement = Judgement(emptyMap(), sitesByLine(glue), emptyMap(), emptySet())
+        parse(report).children("package").forEach(judgement::judgePackage)
+        return judgement.excusal()
+    }
+
     /** Two sites on one line (a throw's block on it, and the arm into another throw's) are excused together. */
     private fun sitesByLine(glue: List<Glue>): Map<Pair<String, Int>, Glue> =
         glue.groupBy { it.file to it.line }.mapValues { (_, sites) ->
@@ -135,6 +155,9 @@ object CoverageZero {
 
         fun verdict(shapeProblems: List<String>) =
             Verdict(misses, excused, mismatches + shapeProblems, excusedGlue, composeLines)
+
+        /** What this judgement excused of the bytecode glue, and the sites the report contradicted. */
+        fun excusal() = Excusal(excusedGlue.toList(), mismatches.toList())
 
         /** Judges [sf]'s lines, after checking its scanned declarations against the bytecode's [expected] ones. */
         private fun judgeFile(key: String, sf: Element, expected: Set<String>) {

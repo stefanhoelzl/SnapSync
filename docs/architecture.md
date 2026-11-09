@@ -648,7 +648,9 @@ integrationCoverage { goal(instructions = 95, branches = 85) }
   build, so the list shrinks on its own and cannot go stale. A module with no branches meets any branch target. Every
   run writes `test/integration/build/reports/integration-coverage/summary.md`: each module's measurement, its target,
   and the gap to the goal. A measurement that moves between two runs of the same code is a flaky test to fix, never a
-  margin. The glue the zero gate excuses (below) is not excused here: a percentage absorbs it.
+  margin. Of what the zero gate excuses (below), only a throw of `InvalidProgramState` is excused here, through the
+  SAME reading (`CoverageZero.unreachable`) — taken out of the totals, so "make the state an `InvalidProgramState`"
+  ends a branch for both gates alike; the compiler glue is not, since a percentage absorbs it.
   The wiring modules are held at 100/100, the suite being the test written for them, and the entry points too.
 - **`skipped(reason, packages)`: the one way to leave something out**, its reason read in review. WHERE it stands
   decides what it skips: at the top of the block, the module from every measurement; inside `unit { }` or `integration { }`, only

@@ -106,6 +106,7 @@ abstract class IntegrationCoverageTask : DefaultTask() {
             deleteRecursively()
             mkdirs()
         }
+        val mismatches = mutableListOf<String>()
         val measured = modules.get().map { m ->
             val xml = dir.resolve(m.path.get().trimStart(':').replace(':', '-') + ".xml")
             KoverLegacyFeatures.generateXmlReport(
@@ -123,11 +124,19 @@ abstract class IntegrationCoverageTask : DefaultTask() {
                     emptySet(),
                 ),
             )
-            Measured(m.path.get(), counters(xml.readText()), m.instructions.get(), m.branches.get())
+            val text = xml.readText()
+            // A throw of `InvalidProgramState` is no miss here either: the zero gate's own reading, shared.
+            val bytes = m.classes.files.filter { it.isDirectory }.flatMap { root ->
+                root.walkTopDown().filter { it.extension == "class" }.map { it.readBytes() }.toList()
+            }
+            val excusal = CoverageZero.unreachable(text, InvalidProgramStateGlue.find(bytes))
+            mismatches += excusal.mismatches.map { "${m.path.get()}: $it" }
+            logExcused(m.path.get(), excusal)
+            Measured(m.path.get(), without(counters(text), excusal), m.instructions.get(), m.branches.get())
         }
         val goal = goalInstructions.get() to goalBranches.get()
         dir.resolve("summary.md").writeText(IntegrationVerdict.summary(measured, goal))
-        val problems = IntegrationVerdict.problems(measured, goal)
+        val problems = mismatches + IntegrationVerdict.problems(measured, goal)
         if (problems.isNotEmpty()) {
             throw GradleException(
                 "Coverage of the integration suite alone (each module's `coverage { }`, `docs/architecture.md`, " +
@@ -137,6 +146,31 @@ abstract class IntegrationCoverageTask : DefaultTask() {
             )
         }
     }
+
+    /** Every excused site by name, so what the measurement lets through is read, not just counted. */
+    private fun logExcused(path: String, excusal: CoverageZero.Excusal) {
+        if (excusal.sites.isEmpty()) return
+        logger.lifecycle(
+            "$path: excused ${excusal.sites.size} InvalidProgramState site(s) — " +
+                "${excusal.instructions} instruction(s), ${excusal.branches} branch(es)",
+        )
+        excusal.sites.forEach {
+            logger.lifecycle(
+                "  excused ${it.file}:${it.line}  ${it.instructions} instr / ${it.branches} branch  ${it.site}",
+            )
+        }
+    }
+
+    /** [counters] less [excusal]'s unreachable instructions and branches: they were never reachable. */
+    private fun without(counters: Map<String, Pair<Long, Long>>, excusal: CoverageZero.Excusal) =
+        counters.mapValues { (unit, counted) ->
+            val (covered, total) = counted
+            when (unit) {
+                "INSTRUCTION" -> covered to total - excusal.instructions
+                "BRANCH" -> covered to total - excusal.branches
+                else -> counted
+            }
+        }
 
     /** The report's totals, `INSTRUCTION`/`BRANCH` → covered of total. */
     private fun counters(xml: String): Map<String, Pair<Long, Long>> {

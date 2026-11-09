@@ -250,6 +250,18 @@ class CoverageZeroTest {
     }
 
     @Test
+    fun `an elvis broken before its throw excuses each instruction on the line it sits on`() {
+        assertEquals(
+            listOf(
+                CoverageZero.Glue("app/core/Keys.kt", 9, 1, 0, "app.core.Keys.mint", "invalid program state"),
+                CoverageZero.Glue("app/core/Keys.kt", 10, 5, 0, "app.core.Keys.mint", "invalid program state"),
+                CoverageZero.Glue("app/core/Keys.kt", 9, 0, 1, "app.core.Keys.mint", "invalid program state's arm"),
+            ),
+            InvalidProgramStateGlue.find(listOf(throwing(Entry.ELVIS_BROKEN))),
+        )
+    }
+
+    @Test
     fun `an if throwing one excuses its block and its arm, on their own lines`() {
         assertEquals(
             listOf(
@@ -299,7 +311,27 @@ class CoverageZeroTest {
         assertEquals(listOf(9), more.misses.map { it.line })
     }
 
-    private enum class Entry { ELVIS, IF, TWO_ARMS, FALL_THROUGH }
+    @Test
+    fun `the integration measurement takes exactly the excused throw out of its totals`() {
+        val glue = InvalidProgramStateGlue.find(listOf(throwing(Entry.ELVIS))).map {
+            it.copy(file = "app/ui/Screen.kt")
+        }
+        val excusal = CoverageZero.unreachable(report(emptyList(), listOf(Line(9, 8, 1), Line(10, 0, 0))), glue)
+        assertEquals(6L to 1L, excusal.instructions to excusal.branches)
+        assertEquals(emptyList(), excusal.mismatches)
+    }
+
+    @Test
+    fun `a report missing less than the throw holds contradicts it, and excuses nothing`() {
+        val glue = InvalidProgramStateGlue.find(listOf(throwing(Entry.ELVIS))).map {
+            it.copy(file = "app/ui/Screen.kt")
+        }
+        val excusal = CoverageZero.unreachable(report(emptyList(), listOf(Line(9, 3, 1))), glue)
+        assertEquals(0L to 0L, excusal.instructions to excusal.branches)
+        assertEquals(1, excusal.mismatches.size)
+    }
+
+    private enum class Entry { ELVIS, ELVIS_BROKEN, IF, TWO_ARMS, FALL_THROUGH }
 
     /** A method `mint` in `app/core/Keys.kt` throwing an exception of [type] the way Kotlin compiles [entry]. */
     private fun throwing(
@@ -318,7 +350,7 @@ class CoverageZeroTest {
         val ok = Label()
         val block = Label()
         when (entry) {
-            Entry.ELVIS -> {
+            Entry.ELVIS, Entry.ELVIS_BROKEN -> {
                 mv.visitVarInsn(Opcodes.ALOAD, 1)
                 mv.visitInsn(Opcodes.DUP)
                 mv.visitJumpInsn(Opcodes.IFNONNULL, ok)
@@ -341,6 +373,7 @@ class CoverageZeroTest {
             }
         }
         if (entry != Entry.ELVIS) {
+            // ELVIS_BROKEN: `?: throw` on the line below its value, so the `pop` stays on line 9.
             mv.visitLabel(block)
             mv.visitLineNumber(10, block)
         }
@@ -350,7 +383,7 @@ class CoverageZeroTest {
         mv.visitMethodInsn(Opcodes.INVOKESPECIAL, type, "<init>", "(Ljava/lang/String;)V", false)
         mv.visitInsn(Opcodes.ATHROW)
         mv.visitLabel(ok)
-        if (entry != Entry.ELVIS) mv.visitVarInsn(Opcodes.ALOAD, 1)
+        if (entry != Entry.ELVIS && entry != Entry.ELVIS_BROKEN) mv.visitVarInsn(Opcodes.ALOAD, 1)
         mv.visitInsn(Opcodes.ARETURN)
         mv.visitMaxs(0, 0)
         mv.visitEnd()
