@@ -114,6 +114,30 @@ class NeverLeavesIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "event-lifetime", requirement = "The app never leaves an event on its own")
+    fun a_photo_selected_after_the_event_s_photos_were_deleted_is_not_shared() = behaviour {
+        given {
+            limitedMember()
+            step("its photos deleted", act = {
+                backend.complete()
+                os.foreground()
+            }, until = {
+                screen<Layer.Joined> { it.deleted }
+                settled { true }
+            })
+            photoTaken("A")
+        }
+
+        whenever { library.changeSelection(listOf("A")) }
+        then {
+            never<WorldEvent.SessionTransferCreated>()
+            never<WorldEvent.UploadJobCreated>()
+            noLeave()
+            settled { true }
+        }
+    }
+
+    @Test
     @Verifies(
         spec = "event-lifetime",
         requirement = "The app never leaves an event on its own",

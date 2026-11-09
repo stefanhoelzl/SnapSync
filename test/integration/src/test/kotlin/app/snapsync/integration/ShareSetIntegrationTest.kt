@@ -6,6 +6,7 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
+import app.snapsync.levers.WriteKind
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
@@ -276,7 +277,60 @@ class ShareSetIntegrationTest {
         then { event<WorldEvent.BytesStored> { it.asset == "A" } }
     }
 
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "A photo already in an event is not uploaded again for it",
+        scenario = "An offline join may upload again, never duplicate",
+    )
+    fun a_rejoin_that_cannot_record_what_the_event_holds_still_joins() = behaviour {
+        given {
+            extensionUploadsOnly()
+            val event = joinedEvent()
+            photos("A")
+            uploaded("A")
+            left()
+            gateOpenOn(event)
+            shareSetUnwritable()
+        }
+
+        whenever { confirmJoin() }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "ledgerRow" && it.kind == WriteKind.DELETE }
+            event<WorldEvent.MemberJoined>()
+            screen<Layer.Joined>()
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "A photo already in an event is not uploaded again for it",
+        scenario = "An offline join may upload again, never duplicate",
+    )
+    fun a_join_whose_listing_fails_and_whose_share_set_cannot_be_written_still_joins() = behaviour {
+        given {
+            step("the listing failing", act = { backend.failListing(true) }, until = {})
+            gateOpenOn(registeredEvent())
+            shareSetUnwritable()
+        }
+
+        whenever { confirmJoin() }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "ledgerRow" && it.kind == WriteKind.DELETE }
+            event<WorldEvent.MemberJoined>()
+            screen<Layer.Joined>()
+        }
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
+
+    /** The upload ledger's next removal refused — the first write a join makes of the share set. */
+    private suspend fun Given.shareSetUnwritable() = step(
+        "the share set's next write refused",
+        act = { databases.fail("ledger.db", "ledgerRow", WriteKind.DELETE) },
+        until = {},
+    )
 
     /** The member leaves the joined event, and the backend records it. */
     private suspend fun Given.left() = step("left", act = { tap(UiIntent.LeaveEvent) }, until = {

@@ -5,6 +5,7 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.levers.KeychainItem
 import app.snapsync.levers.SettledEvent
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
@@ -152,6 +153,23 @@ class EventCompletionIntegrationTest {
             settled { it.of(event)?.finished == true }
         }
     }
+
+    @Test
+    @Verifies(spec = "event-lifetime", requirement = "A member's share is settled only after their own range has ended")
+    fun a_member_who_lost_the_event_s_key_after_receiving_everything_still_tells_the_event_so() =
+        behaviour(startAt = DURING) {
+            val event = given {
+                extensionUploadsOnly()
+                joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END).also {
+                    receivedFrom(DEV_F, "FQ", final = true)
+                    afterTheEnd()
+                    step("the event's key lost", act = { keychain.forget(KeychainItem.EVENT_KEY) }, until = {})
+                }
+            }
+
+            whenever { os.foreground() }
+            then { event<WorldEvent.ReceivedReported> { it.event == event && it.device != DEV_F && it.position > 0 } }
+        }
 
     @Test
     @Verifies(

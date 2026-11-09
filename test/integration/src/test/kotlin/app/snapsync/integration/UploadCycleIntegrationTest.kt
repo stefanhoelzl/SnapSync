@@ -218,6 +218,47 @@ class UploadCycleIntegrationTest {
         }
     }
 
+    // ---- a planned photo looked up again --------------------------------------------------------------------------
+
+    @Test
+    @Verifies(spec = "photo-sharing", requirement = "Deleting or no longer sharing a photo withdraws it")
+    fun a_planned_photo_deleted_before_its_upload_is_never_uploaded_and_is_withdrawn() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+            discoveredWithNoSlot()
+        }
+
+        // The walk cannot see the deletion — the library cannot be walked — so only the look-up before the job finds it.
+        whenever {
+            library.remove("A")
+            library.failNextEnumeration()
+            uploadQueue.jobLimit()
+            cycle()
+        }
+        then { never<WorldEvent.UploadJobCreated>() }
+
+        whenever { cycle() }
+        then {
+            event<WorldEvent.ManifestPublished> { "A" in it.withdrawn }
+            never<WorldEvent.UploadJobCreated>()
+        }
+    }
+
+    /**
+     * The queue takes no job, and a cycle declares what it found — the photo planned, no job made for it — in a process
+     * that then ends: the next one holds nothing of that walk, and looks the photo up before its job.
+     */
+    private suspend fun Given.discoveredWithNoSlot() {
+        step("no slot", act = { uploadQueue.jobLimit(0) }, until = {})
+        step("found, declared, no job", act = { cycle() }, until = {
+            event<WorldEvent.ManifestPublished> { it.added.isNotEmpty() }
+            settled { true }
+        })
+        backgroundLaunch()
+    }
+
     // ---- a storage reset ------------------------------------------------------------------------------------------
 
     /**
