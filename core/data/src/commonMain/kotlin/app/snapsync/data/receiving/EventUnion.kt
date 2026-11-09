@@ -32,11 +32,10 @@ import app.snapsync.wire.api.ServerIssue
  */
 class EventUnion(private val gateway: BackendGateway, private val own: ManifestRecord) {
 
-    /** [event]'s union, read as [plan] says — [UnionReadPlan.AlreadyRead] reads nothing and is no read. */
-    suspend fun read(event: EventId, plan: UnionReadPlan, trigger: UnionTrigger): UnionRead = when (plan) {
+    /** [event]'s union, read as [plan] says. */
+    suspend fun read(event: EventId, plan: UnionReadPlan.Reading, trigger: UnionTrigger): UnionRead = when (plan) {
         UnionReadPlan.Whole -> fetched(event, null, trigger)
         is UnionReadPlan.Since -> fetched(event, plan.from, trigger)
-        UnionReadPlan.AlreadyRead -> UnionRead.Unavailable("the announced position is already read")
     }
 
     private suspend fun fetched(event: EventId, from: Long?, trigger: UnionTrigger): UnionRead {

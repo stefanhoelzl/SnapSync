@@ -84,7 +84,6 @@ class ReceivingPlansTest {
 
         assertEquals(0, delta.pruned)
         assertEquals("PENDING", device.state(gone.ref))
-        assertEquals(0, device.planned(page(position = 5), UnionReadPlan.AlreadyRead).pruned)
     }
 
     @Test

@@ -66,7 +66,7 @@ class PlanReceiving(
 
         private suspend fun readFor(stored: StoredPosition): PlanOutcome = when (val plan = planOf(stored)) {
             UnionReadPlan.AlreadyRead -> PlanOutcome.NothingNew
-            UnionReadPlan.Whole, is UnionReadPlan.Since -> read(plan, stored)
+            is UnionReadPlan.Reading -> read(plan, stored)
         }
 
         /** What a caller read in this same act is a whole read: no second one repeats it. */
@@ -75,7 +75,7 @@ class PlanReceiving(
             else -> UnionReadPlan.Whole
         }
 
-        private suspend fun read(plan: UnionReadPlan, stored: StoredPosition): PlanOutcome = when (
+        private suspend fun read(plan: UnionReadPlan.Reading, stored: StoredPosition): PlanOutcome = when (
             val page = pageOf(
                 plan,
             )
@@ -85,18 +85,23 @@ class PlanReceiving(
         }
 
         /** Either way the hour is stamped: a union was read for this event now — by this act or by the caller's. */
-        private suspend fun pageOf(plan: UnionReadPlan): UnionRead {
+        private suspend fun pageOf(plan: UnionReadPlan.Reading): UnionRead {
             checks.stamp(EventCheck.PHOTOS, event, clock.now())
             return known?.let(UnionRead::Ok) ?: union.read(event, plan, trigger)
         }
 
-        private suspend fun identified(page: UnionPage, plan: UnionReadPlan, stored: StoredPosition) =
+        private suspend fun identified(page: UnionPage, plan: UnionReadPlan.Reading, stored: StoredPosition) =
             when (val me = identity.id()) {
                 is DeviceIdRead.Ok -> recorded(page, plan, me.value, stored)
                 is DeviceIdRead.Unavailable -> PlanOutcome.Unavailable("this device's id: $me")
             }
 
-        private suspend fun recorded(page: UnionPage, plan: UnionReadPlan, me: DeviceId, stored: StoredPosition) =
+        private suspend fun recorded(
+            page: UnionPage,
+            plan: UnionReadPlan.Reading,
+            me: DeviceId,
+            stored: StoredPosition,
+        ) =
             when (val planned = plans.plan(event, page, plan, me, stored)) {
                 is DownloadRead.Ok -> PlanOutcome.Planned(planned.value, page.position)
                 is DownloadRead.Unavailable -> PlanOutcome.Unavailable(planned.detail)

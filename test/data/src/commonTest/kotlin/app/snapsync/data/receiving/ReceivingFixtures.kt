@@ -158,7 +158,7 @@ internal class Store(val databases: DatabasesMock = DatabasesMock()) {
     }
 
     /** [page] planned for [EVENT] as a whole read by this device. */
-    suspend fun planned(page: UnionPage, plan: app.snapsync.domain.receiving.UnionReadPlan = WHOLE): Planned =
+    suspend fun planned(page: UnionPage, plan: app.snapsync.domain.receiving.UnionReadPlan.Reading = WHOLE): Planned =
         assertIs<DownloadRead.Ok<Planned>>(
             plans.plan(EVENT, page, plan, ME, assertIs<DownloadRead.Ok<StoredPosition>>(plans.position(EVENT)).value),
         ).value

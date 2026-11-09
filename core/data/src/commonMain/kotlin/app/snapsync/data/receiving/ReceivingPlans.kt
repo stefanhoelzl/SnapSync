@@ -39,7 +39,13 @@ class ReceivingPlans(private val store: DownloadStore) {
      * not yet staged. One transaction for the plan, where a transaction per photo paid a durable commit each (a
      * 101-photo backlog cost ~11.5 s on an iPhone XS).
      */
-    suspend fun plan(event: EventId, page: UnionPage, plan: UnionReadPlan, me: DeviceId, stored: StoredPosition) =
+    suspend fun plan(
+        event: EventId,
+        page: UnionPage,
+        plan: UnionReadPlan.Reading,
+        me: DeviceId,
+        stored: StoredPosition,
+    ) =
         store.locked {
             store.read { q -> ForeignPhotos.of(page.photos, me, settledAmong(q, page.photos.map { it.ref })) }
                 .then { foreign -> recorded(event, page, foreign, page.moved(stored.position, stored.othersDeclared)) }
@@ -79,7 +85,11 @@ class ReceivingPlans(private val store: DownloadStore) {
      * and this device has not received are dropped with their staged bytes — never settled, so a photo that comes back
      * is planned again — sparing every claimed import.
      */
-    private fun pruned(event: EventId, foreign: ForeignPhotos, plan: UnionReadPlan): DownloadRead<List<StagedPath>> =
+    private fun pruned(
+        event: EventId,
+        foreign: ForeignPhotos,
+        plan: UnionReadPlan.Reading,
+    ): DownloadRead<List<StagedPath>> =
         when (plan) {
             UnionReadPlan.Whole -> store.read { q ->
                 q.transactionWithResult {
@@ -90,7 +100,7 @@ class ReceivingPlans(private val store: DownloadStore) {
                     )
                 }
             }
-            is UnionReadPlan.Since, UnionReadPlan.AlreadyRead -> DownloadRead.Ok(emptyList())
+            is UnionReadPlan.Since -> DownloadRead.Ok(emptyList())
         }
 
     private fun withdrawn(q: DownloadStoreQueries, event: EventId, listed: Set<AssetRef>): List<StagedPath> {

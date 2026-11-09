@@ -84,12 +84,6 @@ class EventUnionTest {
     }
 
     @Test
-    fun `an announced position already read reads nothing`() = runTest {
-        assertIs<UnionRead.Unavailable>(union.read(EVENT, UnionReadPlan.AlreadyRead, UnionTrigger.PUSH))
-        assertEquals(emptyList(), transport.requests)
-    }
-
-    @Test
     fun `a page the app cannot go on from, or no page, is no read`() = runTest {
         for (unreadable in listOf(
             page("[]", cursor = "not-a-number"),
