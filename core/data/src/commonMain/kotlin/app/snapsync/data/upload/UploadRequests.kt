@@ -84,7 +84,7 @@ class UploadRequests(
         val url = exchange.url(path)
         val headers = mapOf("Content-Type" to detail.contentType) + exchange.versionHeaders() +
             mapOf("Authorization" to "Bearer ${token.secret}")
-        return BuiltRequest(url, headers, Destinations.pathOf(url))
+        return BuiltRequest(url, headers, Destinations.pathOf(url), device)
     }
 }
 
@@ -105,5 +105,13 @@ sealed interface RequestBuilt {
     data class Unverified(val detail: String) : RequestBuilt
 }
 
-/** One upload's [url] and [headers], and the [destination] path its row records when its job is accepted. */
-class BuiltRequest(val url: String, val headers: Map<String, String>, val destination: DestinationPath)
+/**
+ * One upload's [url] and [headers], the [destination] path its row records when its job is accepted, and the [device]
+ * it was built as — the id its path names, so a later question about these bytes asks as the same device.
+ */
+class BuiltRequest(
+    val url: String,
+    val headers: Map<String, String>,
+    val destination: DestinationPath,
+    val device: DeviceId,
+)

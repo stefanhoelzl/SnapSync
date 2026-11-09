@@ -76,7 +76,7 @@ class UploaderGraph(
         staged,
         StagedDigests(process.files, process.crypto, staged),
         UploadExport(ports.gallery, process.files, layers.sealing, staged),
-        UploadStandings(backend.gateway, services.deviceIdentity),
+        UploadStandings(backend.gateway),
         create,
     )
 

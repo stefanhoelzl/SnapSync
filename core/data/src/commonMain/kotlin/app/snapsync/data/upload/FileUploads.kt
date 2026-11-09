@@ -57,11 +57,13 @@ class FileUploads(
         is SealOrder -> export.sealed(upload.tag, upload.handle, order)
     }
 
-    private suspend fun resumed(upload: SessionUpload, path: String, digest: StagedDigest): CreateAnswer =
-        when (val start = TransferStart.of(standings.of(upload.event, upload.key, digest.sha256), digest.size)) {
+    private suspend fun resumed(upload: SessionUpload, path: String, digest: StagedDigest): CreateAnswer {
+        val standing = standings.of(upload.event, upload.request.device, upload.key, digest.sha256)
+        return when (val start = TransferStart.of(standing, digest.size)) {
             is TransferStart.At -> sentFrom(upload, path, digest, start.offset)
             TransferStart.NotNow -> CreateAnswer.NotNow
         }
+    }
 
     private suspend fun sentFrom(upload: SessionUpload, path: String, digest: StagedDigest?, from: Long): CreateAnswer {
         resumes(upload, from)

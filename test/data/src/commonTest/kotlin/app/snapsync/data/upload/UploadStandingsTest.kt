@@ -1,6 +1,5 @@
 package app.snapsync.data.upload
 
-import app.snapsync.application.membership.FixedIdentity
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.ScriptedCredential
 import app.snapsync.data.backend.ScriptedTransport
@@ -9,7 +8,6 @@ import app.snapsync.data.backend.appTooOld
 import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
-import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.upload.ResumePoint
@@ -23,7 +21,7 @@ import kotlin.test.assertEquals
 
 /**
  * Where a failed upload stands, by the backend's word: the offset its bytes reached, that they all landed, or nothing —
- * and a question that cannot be asked defers, where an answer that is not about these bytes sends the file whole.
+ * and a question the network cannot carry defers, where an answer that is not about these bytes sends the file whole.
  */
 class UploadStandingsTest {
 
@@ -31,13 +29,12 @@ class UploadStandingsTest {
     private val device = testDeviceId("D1")
     private val key = UploadKey.of(AssetId.parse("A1")!!, ResourceRole.PRIMARY, "IMG.MOV")
 
-    private val identity = FixedIdentity(DeviceIdRead.Ok(device, DeviceIdRead.Via.READ))
     private val transport = ScriptedTransport()
-    private val standings = UploadStandings(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")), identity)
+    private val standings = UploadStandings(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")))
 
     private suspend fun standing(answer: HttpResult): ResumePoint {
         transport.answer = { answer }
-        return standings.of(event, key, "abc")
+        return standings.of(event, device, key, "abc")
     }
 
     @Test
@@ -74,18 +71,7 @@ class UploadStandingsTest {
     }
 
     @Test
-    fun `a question that cannot be asked defers the upload`() = runTest {
+    fun `a question the network cannot carry defers the upload`() = runTest {
         assertEquals(ResumePoint.Deferred, standing(HttpResult.Unreachable("offline")))
-
-        identity.read = DeviceIdRead.Unavailable("locked")
-        assertEquals(ResumePoint.Deferred, standings.of(event, key, "abc"))
-    }
-
-    @Test
-    fun `a process that holds no device id sends the file whole, asking nothing`() = runTest {
-        identity.read = DeviceIdRead.Absent
-
-        assertEquals(ResumePoint.From(0), standings.of(event, key, "abc"))
-        assertEquals(emptyList(), transport.calls)
     }
 }
