@@ -107,7 +107,7 @@ class RecognizeReceivedPhotosTest {
         r.listed += a
         r.library.value = listOf(r.markedPhoto("LOCAL-A", a))
 
-        for (unread in listOf(DeviceIdRead.Absent, DeviceIdRead.Unavailable("keychain locked"))) {
+        for (unread in listOf(DeviceIdRead.Unavailable("keychain locked"))) {
             r.device.identity.read = unread
             assertIs<RecognitionOutcome.Unavailable>(recognize()(membership, UnionTrigger.JOIN), "$unread")
         }

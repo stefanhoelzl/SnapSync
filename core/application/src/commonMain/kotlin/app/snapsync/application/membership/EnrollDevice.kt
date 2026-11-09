@@ -2,8 +2,8 @@ package app.snapsync.application.membership
 
 import app.snapsync.application.EntryPointCall
 import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.identity.AppDeviceIdentity
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.EnrollFact
 import app.snapsync.data.membership.EventJoin
 import app.snapsync.data.membership.MembershipRepository
@@ -30,7 +30,7 @@ import app.snapsync.domain.sharing.CaptureRangeVerdict
  */
 class EnrollDevice(
     private val membership: MembershipRepository,
-    private val identity: DeviceIdentity,
+    private val identity: AppDeviceIdentity,
     private val join: EventJoin,
     private val ids: EventKeyIds,
 ) {
@@ -84,7 +84,7 @@ class EnrollDevice(
     private suspend fun identified(active: Membership.Active, key: KeyToKeep): AdmitOutcome =
         when (val id = identity.id()) {
             is DeviceIdRead.Ok -> Admitted(active, id.value, key)
-            DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> EnrollOutcome.Failed()
+            is DeviceIdRead.Unavailable -> EnrollOutcome.Failed()
         }
 }
 

@@ -1,5 +1,6 @@
 package app.snapsync.data.upload
 
+import app.snapsync.application.membership.FixedAppIdentity
 import app.snapsync.application.membership.FixedIdentity
 import app.snapsync.data.Held
 import app.snapsync.data.RecordingSecureStore
@@ -66,6 +67,9 @@ internal class SessionWorld(takesResources: Boolean = false) {
     val shared = sharedOver(databases)
     val membership = MembershipRepository(shared)
     val identity = FixedIdentity(DeviceIdRead.Ok(testDeviceId("D1"), DeviceIdRead.Via.READ))
+
+    /** The same device as the app process resolves it, for what only the app does (the listing). */
+    val appIdentity = FixedAppIdentity(DeviceIdRead.Ok(testDeviceId("D1"), DeviceIdRead.Via.READ))
     val crypto = fakeCrypto()
     val ids = EventKeyIds(crypto)
     val keys = EventKeyStore(RecordingSecureStore(), ids)

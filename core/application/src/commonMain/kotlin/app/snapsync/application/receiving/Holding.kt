@@ -1,8 +1,8 @@
 package app.snapsync.application.receiving
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.data.identity.AppDeviceIdentity
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.EventUnion
@@ -38,7 +38,7 @@ import app.snapsync.inbound.Log
 class HoldsEverything(
     private val counts: ReceivingCounts,
     private val union: EventUnion,
-    private val identity: DeviceIdentity,
+    private val identity: AppDeviceIdentity,
 ) {
 
     @EntryPointCall
@@ -59,7 +59,7 @@ class HoldsEverything(
 
     private suspend fun received(page: UnionPage): HeldPosition = when (val me = identity.id()) {
         is DeviceIdRead.Ok -> facts(page, counts.held(ForeignPhotos.of(page.photos, me.value, emptySet()).refs))
-        DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> HeldPosition.Lacks
+        is DeviceIdRead.Unavailable -> HeldPosition.Lacks
     }
 
     private fun facts(page: UnionPage, held: DownloadRead<HeldFacts>): HeldPosition = when (held) {

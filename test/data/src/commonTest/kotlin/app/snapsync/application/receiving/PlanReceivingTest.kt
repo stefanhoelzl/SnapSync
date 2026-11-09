@@ -90,7 +90,7 @@ class PlanReceivingTest {
     @Test
     fun `no device id plans nothing`() = runTest {
         r.listed += Listed("A")
-        for (unread in listOf(DeviceIdRead.Absent, DeviceIdRead.Unavailable("keychain locked"))) {
+        for (unread in listOf(DeviceIdRead.Unavailable("keychain locked"))) {
             r.device.identity.read = unread
             assertIs<PlanOutcome.Unavailable>(plan(receiving(membership), UnionTrigger.FOREGROUND), "$unread")
         }

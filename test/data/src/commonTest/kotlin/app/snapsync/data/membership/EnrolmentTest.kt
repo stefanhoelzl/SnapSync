@@ -1,6 +1,6 @@
 package app.snapsync.data.membership
 
-import app.snapsync.application.membership.FixedIdentity
+import app.snapsync.application.membership.FixedAppIdentity
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.ScriptedCredential
 import app.snapsync.data.backend.ScriptedTransport
@@ -55,7 +55,7 @@ class EnrolmentTest {
     @Test
     fun `a leave is confirmed when the server recorded it or holds nothing to leave`() = runTest {
         val notifier =
-            LeaveNotifier(gateway, FixedIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE_ID), DeviceIdRead.Via.READ)))
+            LeaveNotifier(gateway, FixedAppIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE_ID), DeviceIdRead.Via.READ)))
         for ((answer, fact) in listOf(
             ok(200) to LeaveFact.Confirmed,
             ok(404) to LeaveFact.Confirmed,
@@ -71,8 +71,8 @@ class EnrolmentTest {
 
     @Test
     fun `a leave this device cannot name itself for waits`() = runTest {
-        for (read in listOf(DeviceIdRead.Absent, DeviceIdRead.Unavailable("locked"))) {
-            assertEquals(LeaveFact.Unanswered, LeaveNotifier(gateway, FixedIdentity(read)).leave(testEventId(EVENT)))
+        for (read in listOf(DeviceIdRead.Unavailable("locked"))) {
+            assertEquals(LeaveFact.Unanswered, LeaveNotifier(gateway, FixedAppIdentity(read)).leave(testEventId(EVENT)))
         }
         assertEquals(emptyList(), transport.calls, "nothing was sent")
     }

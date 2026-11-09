@@ -2,8 +2,8 @@ package app.snapsync.application.receiving
 
 import app.snapsync.application.EntryPointCall
 import app.snapsync.data.gallery.GrantRead
+import app.snapsync.data.identity.AppDeviceIdentity
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.EventUnion
 import app.snapsync.data.receiving.HandlesRead
@@ -49,7 +49,7 @@ class RecognizeReceivedPhotos(
     private val union: EventUnion,
     private val photos: ReceivedPhotos,
     private val marked: MarkedPhotos,
-    private val identity: DeviceIdentity,
+    private val identity: AppDeviceIdentity,
     private val passes: RecognitionPasses,
 ) {
     private val log = Log("RecognizeReceivedPhotos")
@@ -80,7 +80,7 @@ class RecognizeReceivedPhotos(
     private inner class Pass(private val active: Membership.Active, private val page: UnionPage) {
         suspend fun run(): Ended = when (val me = identity.id()) {
             is DeviceIdRead.Ok -> settledFor(me.value)
-            DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> Ended.Failed(page, "this device's id: $me")
+            is DeviceIdRead.Unavailable -> Ended.Failed(page, "this device's id: $me")
         }
 
         private suspend fun settledFor(me: DeviceId): Ended = when (

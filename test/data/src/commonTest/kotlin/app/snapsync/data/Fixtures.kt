@@ -5,7 +5,7 @@ import app.snapsync.data.backend.BackendTarget
 import app.snapsync.data.backend.TokenRead
 import app.snapsync.data.backend.VersionIgnored
 import app.snapsync.data.backend.VersionObserver
-import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.identity.AppDeviceIdentity
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.trust.AttestationIssuer
 import app.snapsync.data.trust.AttestationStatus
@@ -203,7 +203,7 @@ internal class Subject(
     val held: Held = Held(),
     store: CredentialStore = held.store,
     versions: VersionObserver = VersionIgnored,
-    identity: DeviceIdentity = identityOf(DEVICE),
+    identity: AppDeviceIdentity = identityOf(DEVICE),
     integrity: DeviceIntegrity = key,
 ) {
     val status = AttestationStatus()

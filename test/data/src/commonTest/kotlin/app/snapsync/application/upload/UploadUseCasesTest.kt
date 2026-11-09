@@ -470,7 +470,7 @@ class UploadUseCasesTest {
     fun `in-flight rows the backend already stores are settled, and nothing is asked with none in flight`() = runTest {
         world.joined()
         val listing =
-            DeviceListing(BackendGateway(exchangeOver(world.transport), ScriptedCredential("T1")), world.identity)
+            DeviceListing(BackendGateway(exchangeOver(world.transport), ScriptedCredential("T1")), world.appIdentity)
         val settle = SettleStoredUploads(world.reads, listing, world.transitions)
         world.transport.answer = { json(200, """[{"assetId":"A1","role":"primary","filename":"IMG.MOV"}]""") }
 
@@ -510,7 +510,7 @@ class UploadUseCasesTest {
         val stuck = object : HttpTransport {
             override suspend fun send(request: HttpRequest): HttpResult = awaitCancellation()
         }
-        val listing = DeviceListing(BackendGateway(exchangeOver(stuck), ScriptedCredential("T1")), world.identity)
+        val listing = DeviceListing(BackendGateway(exchangeOver(stuck), ScriptedCredential("T1")), world.appIdentity)
 
         SettleStoredUploads(world.reads, listing, world.transitions)(world.event)
 

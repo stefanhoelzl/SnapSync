@@ -1,6 +1,6 @@
 package app.snapsync.data.push
 
-import app.snapsync.application.membership.FixedIdentity
+import app.snapsync.application.membership.FixedAppIdentity
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.domain.push.PushRegistrationKey
 import app.snapsync.inbound.CompositionOnly
@@ -15,7 +15,7 @@ import kotlin.test.assertEquals
 /** The token the platform delivered, and the registration it makes for the device the identity names. */
 class PushTokensTest {
 
-    private val identity = FixedIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ))
+    private val identity = FixedAppIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ))
     private class Service : PushNotifications {
         var asked = 0
         override val kind: String = "apns"
@@ -57,8 +57,6 @@ class PushTokensTest {
     fun `a device id that cannot be read now makes no registration`() {
         tokens.store(PushToken("T1"))
         identity.read = DeviceIdRead.Unavailable("locked")
-        assertEquals(RegistrationRead.NoIdentity, tokens.current())
-        identity.read = DeviceIdRead.Absent
         assertEquals(RegistrationRead.NoIdentity, tokens.current())
     }
 
