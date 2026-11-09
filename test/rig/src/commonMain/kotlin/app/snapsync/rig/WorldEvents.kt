@@ -150,6 +150,7 @@ fun MockDevice.tellInto(events: WorldEvents, screen: Boolean) {
     entryEvents.watch { events.tell(it) }
     databases.watch { events.tell(it) }
     keychain.watch { events.tell(it) }
+    disk.watch { events.tell(it) }
     preferences.watch { events.tell(it) }
     // What the operating system records of the app: its wakes, holds, push registrations and extension registration
     // (the completion handlers are the played OS's own, told where it is made).

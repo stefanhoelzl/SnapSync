@@ -140,6 +140,11 @@ sealed interface WorldEvent {
     @SerialName("keychain-faulted")
     data class KeychainFaulted(val item: KeychainItem, val kind: StoreFault) : WorldEvent
 
+    /** A file operation [op] on [place] failed, as an operator's [FilesLevers.fail] armed it. */
+    @Serializable
+    @SerialName("files-faulted")
+    data class FilesFaulted(val place: FilePlace, val op: FileOp) : WorldEvent
+
     /** A preferences call of [kind] on [item] was refused, as an operator's [PreferencesLevers.fail] armed it. */
     @Serializable
     @SerialName("preferences-faulted")

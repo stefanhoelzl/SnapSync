@@ -83,6 +83,14 @@ interface FilesLevers {
     /** The bytes the app's files take, its diagnostics left out — what the device's storage page shows a person. */
     suspend fun appStorageBytes(): Long
 
+    /**
+     * The next [times] (omitted: one) calls of [op] on [place]'s files fail, as a full or failing disk answers: the
+     * operation reports an I/O failure and changes nothing, while every other file stays reachable. A refusal a locked
+     * phone does not explain — the sustained one is [DeviceLevers.lock]. Each failure is told as
+     * [WorldEvent.FilesFaulted].
+     */
+    suspend fun fail(place: FilePlace, op: FileOp, times: Int? = null)
+
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<FilesLevers>(
         FilesLevers::class,
@@ -90,6 +98,50 @@ interface FilesLevers {
         setOf(LeverNeed.FILES_MOCKED),
         { serviceDescriptorOf() },
     )
+}
+
+/** Where on the device's disk the app keeps a kind of file, by what it is — the channel maps each to its directory. */
+@Serializable
+enum class FilePlace {
+    /** This device's own photos, staged for their upload, and the digests beside them. */
+    @SerialName("upload-staging")
+    UPLOAD_STAGING,
+
+    /** Received photos staged on their way into the library. */
+    @SerialName("download-staging")
+    DOWNLOAD_STAGING,
+
+    /** The records an older build kept in files of their own, which the app copies into its database once. */
+    @SerialName("legacy-records")
+    LEGACY_RECORDS,
+}
+
+/** A file operation a [FilesLevers.fail] fault fails. */
+@Serializable
+enum class FileOp {
+    /** Reading a file's bytes, whole or a range of them. */
+    @SerialName("read")
+    READ,
+
+    /** Writing or appending to a file. */
+    @SerialName("write")
+    WRITE,
+
+    /** Removing a file. */
+    @SerialName("delete")
+    DELETE,
+
+    /** Listing a directory. */
+    @SerialName("list")
+    LIST,
+
+    /** Asking whether a file is there. */
+    @SerialName("exists")
+    EXISTS,
+
+    /** Moving a file into the place, or adopting one the operating system handed over. */
+    @SerialName("move")
+    MOVE,
 }
 
 /** A process that keeps a device log of its own. */
@@ -141,6 +193,14 @@ enum class KeychainItem {
     /** This device's identity — the id every event knows the phone by. */
     @SerialName("device-id")
     DEVICE_ID,
+
+    /** The backend's credential: the token attestation earned, which every request carries. */
+    @SerialName("attest-token")
+    ATTEST_TOKEN,
+
+    /** The key the device proved itself with, which a renewal signs with again. */
+    @SerialName("attest-key-id")
+    ATTEST_KEY_ID,
 }
 
 /** The calls a store fault refuses ([KeychainLevers.fail], [PreferencesLevers.fail]). */
