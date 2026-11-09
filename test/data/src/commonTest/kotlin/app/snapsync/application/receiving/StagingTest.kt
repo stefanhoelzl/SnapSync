@@ -2,8 +2,12 @@ package app.snapsync.application.receiving
 
 import app.snapsync.application.EntryPointCall
 import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.FileNameCipher
 import app.snapsync.data.membership.active
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.Encryption
+import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.TransferFacts
 import app.snapsync.domain.receiving.UnionTrigger
@@ -34,8 +38,8 @@ class StagingTest {
     private val healthy = TransferFacts(status = 200, expectedBytes = -1, receivedBytes = 1024)
 
     /** [membership] joined, its union serving A, planned: the transfer A's resource started under. */
-    private suspend fun plannedTag(membership: Membership.Active = r.joined()): String {
-        r.listed += Listed("A")
+    private suspend fun plannedTag(membership: Membership.Active = r.joined(), listed: Listed = Listed("A")): String {
+        r.listed += listed
         r.position = 1
         PlanReceiving(r.plans, r.union, r.device.identity, r.checks, r.device.wallClock)(
             receiving(membership),
@@ -94,12 +98,16 @@ class StagingTest {
     fun `an encrypted event's download that does not open is not staged`() = runTest {
         val plain = active()
         val key = EventKeyIds(fakeCrypto()).mint()
+        r.keys.keep(KeyToKeep.Key(key), plain.event.id)
+        // Its name is sealed as any member's build seals it, so the union names it and the transfer starts.
+        val binding = FileBinding(plain.event.id, testDeviceId(SENDER), testAssetId("A"), ResourceRole.PRIMARY)
         val tag = plannedTag(
             r.joined(Membership.Active(plain.event.copy(encryption = Encryption.Encrypted(key.id)), plain.share)),
+            Listed("A", filename = FileNameCipher(fakeCrypto()).sealFileName(key, binding, "IMG_A.JPG")),
         )
 
         val landed = assertIs<StageOutcome.Landed>(stage(tag, healthy, r.temporary("t1")))
-        assertSame(RecordOutcome.NotOpened, record(landed), "no key is kept for the event")
+        assertSame(RecordOutcome.NotOpened, record(landed), "its bytes are no file of the event's key")
     }
 
     @Test

@@ -1,7 +1,12 @@
 package app.snapsync.data.upload
 
+import app.snapsync.control.Verifies
 import app.snapsync.data.backend.ok
+import app.snapsync.data.crypto.FileNameOpening
 import app.snapsync.data.identity.DeviceIdRead
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.SealVerdict
 import app.snapsync.domain.upload.UploadRow
@@ -9,6 +14,7 @@ import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferSource
+import app.snapsync.testids.testDeviceId
 import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -73,6 +79,30 @@ class SessionTierTest {
         val staged = world.staged.path(world.tag())
         assertFalse(world.files.held.getValue(staged).contentEquals(world.library.bytes), "sealed, never the plaintext")
         assertFalse("$staged.plain" in world.files.held)
+    }
+
+    // The app's part: an encrypted event's upload names its photo only sealed for that photo, and a plain event's as it is.
+    @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The service keeps an encrypted event's photo names only encrypted",
+        scenario = "The stored photos do not reveal their names",
+    )
+    fun `an encrypted event's upload names its photo only sealed for that photo, a plain event's readable`() = runTest {
+        val plain = SessionWorld()
+        plain.joined()
+        plain.tier.create(plain.event, plain.discovered(), SessionWorld.From)
+        assertTrue(plain.session.made.single().target.url.endsWith("?filename=IMG.MOV"))
+
+        val world = SessionWorld()
+        world.joinedEncrypted()
+        world.tier.create(world.event, world.discovered(), SessionWorld.From)
+
+        val url = world.session.made.single().target.url
+        assertFalse("IMG" in url, "no readable name leaves the phone: $url")
+        val binding = FileBinding(world.event, testDeviceId("D1"), AssetId.parse("A1")!!, ResourceRole.PRIMARY)
+        val opened = world.names.openFileName(world.eventKey, binding, url.substringAfter("?filename="))
+        assertEquals("IMG.MOV", assertIs<FileNameOpening.Opened>(opened).name.value)
     }
 
     @Test

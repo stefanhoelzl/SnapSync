@@ -68,6 +68,19 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.membershipClau
         assertAnswer<PublishManifestReply.Published>(s.publish(manifest(s.seeded.deviceId)))
     }
 
+    // Builds before `seal-file-names` still name each resource's key and file in their manifest; the service ignores
+    // both, and takes the publish (`PENDING_CLEANUPS.md`, "The union's `key` and the manifest's `key`/`filename`").
+    clause(
+        "MANIFEST_AN_OLDER_BUILDS_PUBLISH_NAMING_KEYS_AND_FILES_IS_ACCEPTED",
+        BackendState.MEMBER,
+        covers = cells { backend(Routes.PublishManifest.ID, PublishManifestReply.Published::class) },
+    ) { s ->
+        val asset = SeededAsset(AssetId.parse("asset-1")!!, listOf(ResourceRole.PRIMARY))
+        val older =
+            Manifest(deviceId = s.seeded.deviceId, assets = listOf(asset.asOlderBuilds()), version = 0, `final` = false)
+        assertAnswer<PublishManifestReply.Published>(s.publish(older))
+    }
+
     clause(
         "MANIFEST_A_NON_MEMBER_PUBLISH_IS_REFUSED",
         BackendState.EVENT_EXISTS,

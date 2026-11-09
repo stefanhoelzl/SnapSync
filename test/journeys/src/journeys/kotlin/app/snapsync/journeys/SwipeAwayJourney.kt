@@ -13,9 +13,6 @@ import app.snapsync.journeys.run.until
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
@@ -55,6 +52,7 @@ class SwipeAwayJourney {
         RigClient(appA).use { a ->
             HttpClient(CIO).use { http ->
                 val event = joinedTo(a.state().ui) ?: fail("A is not joined: the journeys before this one join it")
+                val key = inviteKey(a.state().ui)
                 assertWakesPending("A, joined, waits for its heartbeat and for a new photo")
 
                 device.home()
@@ -78,15 +76,18 @@ class SwipeAwayJourney {
                 val row = device.takePhoto(photo, name)
                 assertTrue(!row.pending && row.takenMillis != null, "the photo is in the library, dated: $row")
 
+                // Its name read with the key A's invite carries: an encrypted event names a photo only sealed for it.
                 requests.await(UPLOAD, "the photo taken after the swipe, uploaded by A in the background", from) {
-                    it.method == "PUT" && "/events/$event/files/" in it.url && "filename=$name" in it.url &&
+                    it.method == "PUT" && "/events/$event/files/" in it.url && nameUploaded(key, it.url) == name &&
                         it.status in STORED
                 }
                 val focus = device.focusedWindow()
                 assertTrue(AndroidRun.APP !in focus, "A stayed closed while it uploaded: $focus")
-                val files = union(http, backend, event).flatMap { asset ->
-                    asset["resources"]?.jsonArray.orEmpty().map { it.jsonObject["filename"]?.jsonPrimitive?.content }
-                }
+                val files = union(
+                    http,
+                    backend,
+                    event,
+                ).flatMap { asset -> namesOf(key, event, asset).map { it.second } }
                 assertTrue(name in files, "the photo in the event union: $files")
 
                 // Opened again, as the force-stop journey after this one finds A.

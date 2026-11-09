@@ -7,22 +7,20 @@ import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.EventUnion
 import app.snapsync.data.receiving.HeldFacts
+import app.snapsync.data.receiving.HeldRead
 import app.snapsync.data.receiving.ReceivedReply
 import app.snapsync.data.receiving.ReceivedReporting
 import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.receiving.ReportedReceived
-import app.snapsync.data.receiving.UnionRead
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.event.EventPhase
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
-import app.snapsync.domain.receiving.ForeignPhotos
 import app.snapsync.domain.receiving.HeldPosition
+import app.snapsync.domain.receiving.HeldUnion
 import app.snapsync.domain.receiving.ReceivedReport
 import app.snapsync.domain.receiving.ReceivingVerdict
 import app.snapsync.domain.receiving.ReportDue
-import app.snapsync.domain.receiving.UnionPage
-import app.snapsync.domain.receiving.UnionReadPlan
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
@@ -51,19 +49,21 @@ class HoldsEverything(
         is ReceivingVerdict.Receives, ReceivingVerdict.KeyLost -> read(active, trigger)
     }
 
+    /** The whole union, counted by ref alone: what is held needs no photo's name, so a lost key reads it too. */
     private suspend fun read(active: Membership.Active, trigger: UnionTrigger): HeldPosition =
-        when (val read = union.read(active.event.id, UnionReadPlan.Whole, trigger)) {
-            is UnionRead.Ok -> received(read.page)
-            is UnionRead.Unavailable -> HeldPosition.Lacks
+        when (val read = union.held(active.event.id, trigger)) {
+            is HeldRead.Counted -> received(read.union)
+            is HeldRead.Unavailable -> HeldPosition.Lacks
         }
 
-    private suspend fun received(page: UnionPage): HeldPosition = when (val me = identity.id()) {
-        is DeviceIdRead.Ok -> facts(page, counts.held(ForeignPhotos.of(page.photos, me.value, emptySet()).refs))
+    private suspend fun received(union: HeldUnion): HeldPosition = when (val me = identity.id()) {
+        is DeviceIdRead.Ok -> facts(union, counts.held(union.foreignTo(me.value)))
         is DeviceIdRead.Unavailable -> HeldPosition.Lacks
     }
 
-    private fun facts(page: UnionPage, held: DownloadRead<HeldFacts>): HeldPosition = when (held) {
-        is DownloadRead.Ok -> HeldPosition.of(page.position, held.value.foreign, held.value.settled, held.value.waiting)
+    private fun facts(union: HeldUnion, held: DownloadRead<HeldFacts>): HeldPosition = when (held) {
+        is DownloadRead.Ok ->
+            HeldPosition.of(union.position, held.value.foreign, held.value.settled, held.value.waiting)
         is DownloadRead.Unavailable -> HeldPosition.Lacks
     }
 }

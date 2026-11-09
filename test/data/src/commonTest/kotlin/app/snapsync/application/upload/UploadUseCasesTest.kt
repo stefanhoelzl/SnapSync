@@ -470,28 +470,32 @@ class UploadUseCasesTest {
     fun `in-flight rows the backend already stores are settled, and nothing is asked with none in flight`() = runTest {
         world.joined()
         val listing =
-            DeviceListing(BackendGateway(exchangeOver(world.transport), ScriptedCredential("T1")), world.appIdentity)
+            DeviceListing(
+                BackendGateway(exchangeOver(world.transport), ScriptedCredential("T1")),
+                world.appIdentity,
+                world.served,
+            )
         val settle = SettleStoredUploads(world.reads, listing, world.transitions)
         world.transport.answer = { json(200, """[{"assetId":"A1","role":"primary","filename":"IMG.MOV"}]""") }
 
-        settle(world.event)
+        settle(world.joinedAs)
         assertEquals(emptyList(), world.transport.calls)
 
         world.tier.create(world.event, world.discovered(), SessionWorld.From)
-        settle(world.event)
+        settle(world.joinedAs)
         assertIs<UploadRow.Completed>(world.row())
 
         world.tier.create(world.event, world.discovered("A2"), SessionWorld.From)
         world.transport.answer = { text(502, "down") }
-        settle(world.event)
+        settle(world.joinedAs)
         assertIs<UploadRow.Requested>(world.row("A2"))
 
         // A listing that names other keys, or that this build cannot read, settles nothing.
         world.transport.answer = { json(200, """[{"assetId":"A9","role":"primary","filename":"IMG.MOV"}]""") }
-        settle(world.event)
+        settle(world.joinedAs)
         assertIs<UploadRow.Requested>(world.row("A2"))
         world.transport.answer = { json(200, """[{"assetId":"bad id!","role":"primary","filename":"IMG.MOV"}]""") }
-        settle(world.event)
+        settle(world.joinedAs)
         assertIs<UploadRow.Requested>(world.row("A2"))
 
         // While nothing is joined, nothing is asked.
@@ -500,7 +504,7 @@ class UploadUseCasesTest {
         assertEquals(asked, world.transport.calls.size)
 
         world.databases.lock()
-        settle(world.event)
+        settle(world.joinedAs)
     }
 
     @Test
@@ -510,9 +514,13 @@ class UploadUseCasesTest {
         val stuck = object : HttpTransport {
             override suspend fun send(request: HttpRequest): HttpResult = awaitCancellation()
         }
-        val listing = DeviceListing(BackendGateway(exchangeOver(stuck), ScriptedCredential("T1")), world.appIdentity)
+        val listing = DeviceListing(
+            BackendGateway(exchangeOver(stuck), ScriptedCredential("T1")),
+            world.appIdentity,
+            world.served,
+        )
 
-        SettleStoredUploads(world.reads, listing, world.transitions)(world.event)
+        SettleStoredUploads(world.reads, listing, world.transitions)(world.joinedAs)
 
         assertIs<UploadRow.Requested>(world.row())
     }

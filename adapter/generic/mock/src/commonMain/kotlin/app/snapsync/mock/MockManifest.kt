@@ -45,19 +45,26 @@ class MockManifestAsset(
     val resources: List<MockManifestResource>,
 )
 
-/** One resource of a [MockManifestAsset]: its role, content type, storage key and file name. */
+/**
+ * One resource of a [MockManifestAsset]: its role and content type — and, for a member the world seeds, the capture name
+ * its bytes are uploaded under. A manifest an app published names none: what a resource is called arrives with its
+ * bytes, as the real service takes it (decision record `changes/seal-file-names`, D5).
+ */
 @Serializable
 class MockManifestResource(
     val role: ResourceRole,
     val contentType: String,
-    val key: String,
-    val filename: String,
+    val filename: String? = null,
 )
 
 /** This manifest, declaring whether the member's share is settled. */
 fun MockManifest.withFinal(final: Boolean): MockManifest = MockManifest(deviceId, assets, version, final)
 
-private val mockManifestJson = Json { encodeDefaults = true }
+// Lenient like the rest of the mock's saved state (`MockState`): a world saved before a field left still loads.
+private val mockManifestJson = Json {
+    encodeDefaults = true
+    ignoreUnknownKeys = true
+}
 
 /** This manifest as the mock's saved state spells it. */
 fun MockManifest.encodeToJson(): String = mockManifestJson.encodeToString(MockManifest.serializer(), this)

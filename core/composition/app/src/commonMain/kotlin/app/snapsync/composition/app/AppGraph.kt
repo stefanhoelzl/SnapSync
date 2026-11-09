@@ -194,7 +194,7 @@ class AppGraph(
 
     /** The join-time load: the joined event's rows made its share set from the device's stored-file listing. */
     private val shareSetLoad: LoadShareSet =
-        LoadShareSet(DeviceListing(backend.gateway, services.deviceIdentity), uploader.reset)
+        LoadShareSet(DeviceListing(backend.gateway, services.deviceIdentity, services.servedNames), uploader.reset)
 
     /** Create an event: minted with its key, for the creator to join through the gate a scanned invite takes. */
     private val createEvent: CreateEvent =

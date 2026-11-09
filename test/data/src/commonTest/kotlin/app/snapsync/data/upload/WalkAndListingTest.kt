@@ -3,18 +3,23 @@ package app.snapsync.data.upload
 import app.snapsync.data.backend.json
 import app.snapsync.data.backend.text
 import app.snapsync.data.identity.DeviceIdRead
+import app.snapsync.data.membership.active
 import app.snapsync.data.sharing.DURING
 import app.snapsync.data.sharing.DiscoveryRead
 import app.snapsync.data.sharing.Library
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.event.Encryption
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.ManifestVersion
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.ResourceKind
+import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -100,7 +105,11 @@ class WalkAndListingTest {
         world.joined()
         world.tier.create(world.event, world.discovered(), SessionWorld.From)
         world.transport.answer = {
-            json(200, """[{"assetId":"A1","role":"primary","filename":"IMG.MOV"},{"assetId":"A9","role":"live","filename":"x.mov"}]""")
+            json(
+                200,
+                """[{"assetId":"A1","role":"primary","filename":"IMG.MOV"},{"assetId":"A9","role":"live","filename":"x.mov"},""" +
+                    """{"assetId":"A8","role":"primary","filename":""}]""",
+            )
         }
         val listing =
             DeviceListing(
@@ -109,12 +118,18 @@ class WalkAndListingTest {
                     app.snapsync.data.backend.ScriptedCredential("T1"),
                 ),
                 world.appIdentity,
+                world.served,
             )
 
-        val stored = assertIs<ListingRead.Listed>(listing.stored(world.event)).stored
+        val stored = assertIs<ListingRead.Listed>(listing.stored(active())).stored
 
         assertEquals(
-            listOf(world.key(), UploadKey.of(AssetId.parse("A9")!!, ResourceRole.LIVE, "x.mov")),
+            listOf(
+                world.key(),
+                UploadKey.of(AssetId.parse("A9")!!, ResourceRole.LIVE, "x.mov"),
+                // A plain event's empty name keys its item as it always did: a `.bin`.
+                UploadKey.of(AssetId.parse("A8")!!, ResourceRole.PRIMARY, ""),
+            ),
             stored.map {
                 it.key
             },
@@ -125,6 +140,49 @@ class WalkAndListingTest {
     }
 
     @Test
+    fun `an encrypted event's listing keys each item by its opened name, and an item whose name does not open is none`() =
+        runTest {
+            world.joinedEncrypted()
+            val sealed = world.names.sealFileName(
+                world.eventKey,
+                FileBinding(world.event, testDeviceId("D1"), AssetId.parse("A1")!!, ResourceRole.PRIMARY),
+                "IMG.MOV",
+            )
+            val foreign = world.names.sealFileName(
+                world.ids.mint(),
+                FileBinding(world.event, testDeviceId("D1"), AssetId.parse("A2")!!, ResourceRole.PRIMARY),
+                "IMG.MOV",
+            )
+            world.transport.answer = {
+                json(
+                    200,
+                    """[{"assetId":"A1","role":"primary","filename":"$sealed"},""" +
+                        """{"assetId":"A2","role":"primary","filename":"$foreign"}]""",
+                )
+            }
+            val listing = DeviceListing(
+                app.snapsync.data.backend.BackendGateway(
+                    app.snapsync.data.backend.exchangeOver(world.transport),
+                    app.snapsync.data.backend.ScriptedCredential("T1"),
+                ),
+                world.appIdentity,
+                world.served,
+            )
+
+            val stored = assertIs<ListingRead.Listed>(listing.stored(world.joinedAs)).stored
+            assertEquals(listOf(world.key()), stored.map { it.key }, "A2's record is another key's: no evidence")
+
+            // A membership whose key this device does not keep lists nothing — and asks nothing.
+            val asked = world.transport.calls.size
+            val unkeyed = Membership.Active(
+                world.joinedAs.event.copy(encryption = Encryption.Encrypted(world.ids.mint().id)),
+                world.joinedAs.share,
+            )
+            assertIs<ListingRead.Unavailable>(listing.stored(unkeyed))
+            assertEquals(asked, world.transport.calls.size)
+        }
+
+    @Test
     fun `a listing that cannot be asked or understood says so`() = runTest {
         val listing =
             DeviceListing(
@@ -133,6 +191,7 @@ class WalkAndListingTest {
                     app.snapsync.data.backend.ScriptedCredential("T1"),
                 ),
                 world.appIdentity,
+                world.served,
             )
         listOf(
             text(400, "bad"),
@@ -146,16 +205,16 @@ class WalkAndListingTest {
             app.snapsync.ports.HttpResult.Unreachable("offline"),
         ).forEach { answer ->
             world.transport.answer = { answer }
-            assertIs<ListingRead.Unavailable>(listing.stored(world.event), "$answer")
+            assertIs<ListingRead.Unavailable>(listing.stored(active()), "$answer")
         }
 
         // A listing that decodes but names an asset this build cannot read will not heal: told apart, and none seeded.
         world.transport.answer = {
             json(200, """[{"assetId":"A1","role":"primary","filename":"x"},{"assetId":"bad id!","role":"live","filename":"x"}]""")
         }
-        assertIs<ListingRead.Unreadable>(listing.stored(world.event))
+        assertIs<ListingRead.Unreadable>(listing.stored(active()))
 
         world.appIdentity.read = DeviceIdRead.Unavailable("locked")
-        assertEquals(ListingRead.Unavailable("locked"), listing.stored(world.event))
+        assertEquals(ListingRead.Unavailable("locked"), listing.stored(active()))
     }
 }

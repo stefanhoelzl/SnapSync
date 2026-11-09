@@ -203,6 +203,7 @@ import PlayOffer from "../components/PlayOffer.astro";
     fileAssociatedData,
     keyFromFragment,
     keyTextFromFragment,
+    openedNames,
     opens,
     sealedName,
   } from "../lib/event-key";
@@ -286,12 +287,15 @@ import PlayOffer from "../components/PlayOffer.astro";
           );
       }
 
-      // The photo list, each file carrying a link that lives an hour (`null` once the event is gone).
+      // The photo list, each file carrying a link that lives an hour (`null` once the event is gone). An encrypted
+      // event's names are sealed for each photo and opened here with the key (decision record
+      // `changes/seal-file-names`, D7); a photo whose name does not open is left out of the zip.
       const readList = async (): Promise<ReturnType<typeof zipEntries> | null> => {
         const res = await fetch("/web/events/" + eventId + "/photos");
         if (res.status === 404) return null;
         if (!res.ok) throw new Error("photos " + res.status);
-        return zipEntries(await res.json());
+        const union = await res.json();
+        return zipEntries(key ? await openedNames(key, eventId, union) : union);
       };
 
       let list: ReturnType<typeof zipEntries> | null;

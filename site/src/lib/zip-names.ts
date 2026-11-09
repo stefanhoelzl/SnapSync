@@ -37,14 +37,12 @@ function splitName(name: string): [string, string] {
   return dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
 }
 
-function nameOf(r: UnionResource, fallback: string): string {
-  return r.filename || fallback;
-}
-
 /**
  * The zip's entries for [union], and how many photos and videos they are (a Live Photo counts once). Every asset's
  * original is included; a Live Photo's paired video is included beside it, under the still's stem and the video's own
- * extension.
+ * extension. Every listed resource names its file — the service takes no upload without one — so an asset with a
+ * resource that does not (an encrypted event's name that did not open, `event-key.ts`) is left out whole: a pair is
+ * never split.
  */
 export function zipEntries(union: UnionAsset[]): { entries: ZipEntry[]; photos: number } {
   const used = new Set<string>();
@@ -53,10 +51,11 @@ export function zipEntries(union: UnionAsset[]): { entries: ZipEntry[]; photos: 
   for (const asset of union) {
     const resources = asset.resources || [];
     const primary = resources.find((r) => r.role === "primary" && r.url);
-    if (!primary) continue;
+    if (!primary?.filename) continue;
     const live = resources.find((r) => r.role === "live" && r.url);
-    const [stem, ext] = splitName(nameOf(primary, "photo"));
-    const liveExt = live ? splitName(nameOf(live, "video.MOV"))[1] || ".MOV" : null;
+    if (live && !live.filename) continue;
+    const [stem, ext] = splitName(primary.filename);
+    const liveExt = live ? splitName(live.filename!)[1] || ".MOV" : null;
     let candidate = stem;
     for (let i = 2; taken(used, candidate, ext, liveExt); i++) candidate = stem + "-" + i;
     used.add(candidate + ext);

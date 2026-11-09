@@ -8,8 +8,6 @@ import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
-import app.snapsync.domain.upload.UploadKey
-import app.snapsync.format.UploadKeyText
 import app.snapsync.levers.CensusView
 import app.snapsync.levers.GalleryView
 import app.snapsync.levers.SeedKind
@@ -108,14 +106,11 @@ internal fun foreignAsset(
     assetId: String,
     filename: String = "IMG.HEIC",
     contentType: String = "image/heic",
-): MockManifestAsset {
-    val key = UploadKeyText.of(UploadKey.of(AssetId.parse(assetId)!!, ResourceRole.PRIMARY, filename))
-    return MockManifestAsset(
-        assetId = AssetId.parse(assetId)!!,
-        creationDate = LibraryAssets.DEFAULT_DATE,
-        resources = listOf(MockManifestResource(ResourceRole.PRIMARY, contentType, key, filename)),
-    )
-}
+): MockManifestAsset = MockManifestAsset(
+    assetId = AssetId.parse(assetId)!!,
+    creationDate = LibraryAssets.DEFAULT_DATE,
+    resources = listOf(MockManifestResource(ResourceRole.PRIMARY, contentType, filename)),
+)
 
 /** The app host's bulk-seed date: 2001-09-09, before any event can start. */
 private const val BULK_DATE = "2001-09-09T01:46:40Z"

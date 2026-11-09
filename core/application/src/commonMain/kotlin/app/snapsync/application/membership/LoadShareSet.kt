@@ -6,6 +6,7 @@ import app.snapsync.data.upload.DeviceListing
 import app.snapsync.data.upload.ListingRead
 import app.snapsync.data.upload.UploadRowsReset
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.membership.Membership
 import app.snapsync.inbound.Field
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
@@ -47,8 +48,9 @@ private val log = Log("LoadShareSet")
  */
 class LoadShareSet(private val listing: DeviceListing, private val reset: UploadRowsReset) {
     @EntryPointCall
-    suspend operator fun invoke(eventId: EventId): ShareSetLoaded {
-        val read = withTimeoutOrNull(LISTING_TIMEOUT_MS) { listing.stored(eventId) }
+    suspend operator fun invoke(membership: Membership.Active): ShareSetLoaded {
+        val eventId = membership.event.id
+        val read = withTimeoutOrNull(LISTING_TIMEOUT_MS) { listing.stored(membership) }
         told(read)
         return when (read) {
             is ListingRead.Listed -> seeded(eventId, read)

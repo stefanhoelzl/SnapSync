@@ -16,6 +16,7 @@ import app.snapsync.data.crash.ReportedIdsRead
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.FileCipher
+import app.snapsync.data.crypto.FileNameCipher
 import app.snapsync.data.identity.StoredDeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
@@ -136,6 +137,7 @@ class ExtensionGraph(ports: ExtensionPorts, runtime: Runtime, process: ProcessGr
         gateway = gateway,
         keys = keys,
         cipher = FileCipher(process.crypto, process.files),
+        names = FileNameCipher(process.crypto),
     )
 
     /**

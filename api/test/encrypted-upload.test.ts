@@ -8,7 +8,7 @@ import { assert, assertEquals } from "@std/assert";
 import { encodeBase64Url } from "@std/encoding/base64url";
 import { encodeHex } from "@std/encoding/hex";
 import { insertEvent } from "../src/db.ts";
-import { sealRecord } from "../src/sealed-meta.ts";
+import { sealFileName, sealRecord } from "../src/sealed-meta.ts";
 import {
   decryptFile,
   encodeHead,
@@ -36,8 +36,18 @@ import {
 const EVENT_KEY = Uint8Array.from({ length: 32 }, (_, i) => i * 5);
 const KEY_ID = encodeHex(await keyIdOf(EVENT_KEY));
 const AD = fileAssociatedData(E, D, "ASSET1", "primary");
-const BYTE_PATH = `/api/v2/events/${E}/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`;
-const EVENTLESS_BYTE_PATH = `/api/v2/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`;
+/** The photo's name as an encrypted event's upload carries it: sealed for that photo alone. */
+const SEALED_NAME = await sealFileName(
+  EVENT_KEY,
+  { eventId: E, deviceId: D, assetId: "ASSET1", role: "primary" },
+  "IMG_0001.HEIC",
+);
+const BYTE_PATH = `/api/v2/events/${E}/files/devices/${D}/ASSET1/primary?filename=${SEALED_NAME}`;
+const EVENTLESS_BYTE_PATH = `/api/v2/files/devices/${D}/ASSET1/primary?filename=${SEALED_NAME}`;
+const PLAIN_BYTE_PATH =
+  `/api/v2/events/${E}/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`;
+const PLAIN_EVENTLESS_BYTE_PATH =
+  `/api/v2/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`;
 const PHOTO = Uint8Array.from({ length: 150_000 }, (_, i) => (i * 11 + 2) & 0xff);
 
 async function member(keyId: string | null) {
@@ -252,12 +262,52 @@ Deno.test("plain event → bytes are stored as they came, and a file key is refu
   const db = await member(null);
   const { calls, fetchImpl } = recorder();
   const app = createApp({ config: CONFIG, db, fetch: fetchImpl });
-  assertEquals((await app.request(BYTE_PATH, putting(PHOTO))).status, 201);
+  assertEquals((await app.request(PLAIN_BYTE_PATH, putting(PHOTO))).status, 201);
   assertEquals(await stored(calls), PHOTO);
+  assertEquals(
+    (await rows(db, `SELECT filename FROM resources`))[0].filename,
+    "IMG_0001.HEIC",
+    "a plain event's name stays readable",
+  );
   const headers = {
     [FILE_KEY_HEADER]: encodeBase64Url(new Uint8Array(32)),
     [FILE_HEAD_HEADER]: encodeBase64Url(encodeHead({ ...freshHead(), keyId: new Uint8Array(8) })),
   };
-  assertEquals((await app.request(BYTE_PATH, putting(PHOTO, headers))).status, 400);
+  assertEquals((await app.request(PLAIN_BYTE_PATH, putting(PHOTO, headers))).status, 400);
+  db.close();
+});
+
+Deno.test("encrypted event → an upload naming its file readable is refused 400 on every byte route, before a byte is stored", async () => {
+  const db = await member(KEY_ID);
+  const { calls, fetchImpl } = recorder();
+  const app = createApp({ config: CONFIG, db, fetch: fetchImpl });
+  const file = await sealedOnDevice();
+  for (const path of [PLAIN_BYTE_PATH, PLAIN_EVENTLESS_BYTE_PATH]) {
+    const res = await app.request(path, putting(file));
+    assertEquals(res.status, 400, path);
+    assertEquals(await res.text(), "invalid filename");
+  }
+  assertEquals(calls.filter((c) => c.init.method === "PUT").length, 0);
+  assertEquals((await rows(db, `SELECT 1 FROM resources`)).length, 0);
+  db.close();
+});
+
+// @Verifies(spec = "invite-link", requirement = "The service keeps an encrypted event's photo names only encrypted", scenario = "The stored photos do not reveal their names")
+// The api's part: an encrypted event's photo is stored, logged and served with its name only sealed, and the sealed
+// name it serves opens to the photo's name with the invite's key. The app's part, that it sends no readable name, is
+// `EncryptedEventIntegrationTest`'s.
+Deno.test("encrypted event → the sealed name is stored and served as it came, and nothing keeps the readable one", async () => {
+  const db = await member(KEY_ID);
+  const { calls, fetchImpl } = recorder();
+  const lines: string[] = [];
+  const app = createApp({ config: CONFIG, db, fetch: fetchImpl, logSink: lineSink(lines) });
+  assertEquals((await app.request(BYTE_PATH, putting(await sealedOnDevice()))).status, 201);
+  assertEquals((await rows(db, `SELECT filename FROM resources`))[0].filename, SEALED_NAME);
+  const tables = await rows(db, `SELECT name FROM sqlite_master WHERE type = 'table'`);
+  const kept = [...lines, ...calls.map((c) => c.url)];
+  for (const { name } of tables) {
+    kept.push(JSON.stringify(await rows(db, `SELECT * FROM "${name}"`)));
+  }
+  assert(!kept.some((t) => t.includes("IMG_0001")), "the readable name is kept nowhere");
   db.close();
 });

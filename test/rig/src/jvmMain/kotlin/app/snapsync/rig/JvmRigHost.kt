@@ -190,6 +190,8 @@ class JvmRigHost private constructor(
                         heldToken(mocks.keychain.port(), device.takeIf { it == mocks.ownDeviceId })
                     },
                     sealedName = mocks.eventKeys::sealedName,
+                    sealedFileName = mocks.eventKeys::sealedFileName,
+                    openedFileName = mocks.eventKeys::openedFileName,
                 ),
                 PlayedOs(mocks).also { os -> os.watch { threads.events.tell(it) } },
             )

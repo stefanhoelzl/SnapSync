@@ -157,6 +157,9 @@ class OptInPinsTest {
         "/core/data/src/commonMain/kotlin/app/snapsync/data/crypto/FileCipher.kt" to mapOf(
             "KeyMaterial" to Pin(1, "the cipher: each file's key is derived from the event key's bytes"),
         ),
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/crypto/FileNameCipher.kt" to mapOf(
+            "KeyMaterial" to Pin(1, "each photo's sealed name's key is derived from the event key's bytes"),
+        ),
         "/core/data/src/commonMain/kotlin/app/snapsync/data/crypto/MetaCipher.kt" to mapOf(
             "KeyMaterial" to Pin(1, "the sealed name's key is derived from the event key's bytes"),
         ),

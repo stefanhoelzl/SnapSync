@@ -1,6 +1,8 @@
 package app.snapsync.mock
 
 import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.FileNameCipher
+import app.snapsync.data.crypto.FileNameOpening
 import app.snapsync.data.crypto.MetaCipher
 import app.snapsync.data.crypto.MetaOpening
 import app.snapsync.domain.asset.AssetId
@@ -87,6 +89,34 @@ class EventKeyLedger {
         val key = keyOf(eventId)?.let(EventKey::of)?.let(EventKeyIds(crypto)::identify) ?: return null
         return MetaCipher(crypto).seal(key, SealedMetaFormat.recordNamed(name))
     }
+
+    /**
+     * [name] sealed for the photo [binding] names, under its event's key — what any member's build uploads into an
+     * encrypted event (decision record `changes/seal-file-names`, D1) — or `null` for an event this device did not
+     * create encrypted, whose names travel readable.
+     */
+    @OptIn(MakesEventKey::class)
+    fun sealedFileName(binding: FileBinding, name: String): String? {
+        val crypto = primitives ?: return null
+        val key = identified(binding.event.value, crypto) ?: return null
+        return FileNameCipher(crypto).sealFileName(key, binding, name)
+    }
+
+    /**
+     * The name [envelope] holds for the photo [binding] names, opened with its event's key; `null` for an event this
+     * device did not create encrypted, or a record that does not open there. What lets the world — never the backend it
+     * plays — read which photo an encrypted event holds.
+     */
+    @OptIn(MakesEventKey::class)
+    fun openedFileName(binding: FileBinding, envelope: String): String? {
+        val crypto = primitives ?: return null
+        val key = identified(binding.event.value, crypto) ?: return null
+        return (FileNameCipher(crypto).openFileName(key, binding, envelope) as? FileNameOpening.Opened)?.name?.value
+    }
+
+    @OptIn(MakesEventKey::class)
+    private fun identified(eventId: String, crypto: Crypto) =
+        keyOf(eventId)?.let(EventKey::of)?.let(EventKeyIds(crypto)::identify)
 
     /** [eventId]'s key, or `null` for an event this device did not create encrypted. */
     fun keyOf(eventId: String): ByteArray? {

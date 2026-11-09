@@ -4,7 +4,9 @@ import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.format.EnvelopeRead
 import app.snapsync.format.ResourceRoleText
+import app.snapsync.format.SealedMetaFormat
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.BackendFault
@@ -654,9 +656,9 @@ internal class BackendState(
         if (eventId !in events) return null
         return memberships.filterKeys { it.first == eventId }.flatMap { (key, membership) ->
             val deviceId = key.second
-            val stored = storedFiles[eventId to deviceId].orEmpty().mapTo(mutableSetOf(), ::storedKey)
+            val landed = landed(eventId, deviceId)
             membership.manifest?.assets.orEmpty()
-                .filter { asset -> asset.resources.isNotEmpty() && asset.resources.all { it.key in stored } }
+                .filter { asset -> asset.resources.isNotEmpty() && asset.landedIn(landed) }
                 .map { deviceId to it }
         }
     }
@@ -670,9 +672,8 @@ internal class BackendState(
     fun declared(eventId: String): Long {
         val complete = union(eventId)?.size ?: return 0L
         val pending = present(eventId).entries.sumOf { (key, membership) ->
-            val stored = storedFiles[eventId to key.second].orEmpty().mapTo(mutableSetOf(), ::storedKey)
-            membership.manifest?.assets.orEmpty()
-                .count { asset -> asset.resources.isEmpty() || !asset.resources.all { it.key in stored } }
+            val landed = landed(eventId, key.second)
+            membership.manifest?.assets.orEmpty().count { asset -> asset.resources.isEmpty() || !asset.landedIn(landed) }
         }
         return (complete + pending).toLong()
     }
@@ -728,6 +729,9 @@ internal class BackendState(
             null -> presentEventOf(deviceId) ?: return CONFLICT
             else -> named.takeIf { isPresent(it, deviceId) } ?: return FORBIDDEN
         }
+        // An encrypted event takes a file's name only sealed — its shape is all a backend can check (decision record
+        // `changes/seal-file-names`, D3).
+        if (events[eventId]?.keyId != null && SealedMetaFormat.decode(filename) !is EnvelopeRead.Read) return BAD_REQUEST
         deposit(eventId, deviceId, DeviceFile(AssetId.parse(segments[1])!!, role, filename), bytes)
         val key = "$eventId/$deviceId/${segments[1]}/${ResourceRoleText.of(role)}"
         val shaHeader = Routes.UploadResource.HEADER_X_SNAPSYNC_SHA256
@@ -829,10 +833,29 @@ internal fun BackendState.present(eventId: String) =
 
 /** Whether [membership] of [deviceId] has SHARED everything: settled, and every resource it declares landed. */
 internal fun BackendState.sharedAll(eventId: String, deviceId: String, membership: BackendState.Membership): Boolean {
-    val stored = storedFiles[eventId to deviceId].orEmpty().mapTo(mutableSetOf(), ::storedKey)
-    return membership.manifest?.final == true &&
-        membership.manifest?.assets.orEmpty().all { asset -> asset.resources.all { it.key in stored } }
+    val landed = landed(eventId, deviceId)
+    return membership.manifest?.final == true && membership.manifest?.assets.orEmpty().all { it.landedIn(landed) }
 }
+
+/**
+ * What has landed for [deviceId] in [eventId], by asset and role — the identity the real union compares a declaration
+ * with (`completeAssets`); what a resource is called arrives with its bytes, and a manifest names none.
+ */
+internal fun BackendState.landed(eventId: String, deviceId: String): Set<Pair<AssetId, ResourceRole>> =
+    storedFiles[eventId to deviceId].orEmpty().mapTo(mutableSetOf()) { it.assetId to it.role }
+
+/** The file landed for [deviceId]'s [asset] as its [role] in [eventId], or `null` before its bytes arrive. */
+internal fun BackendState.landedFile(
+    eventId: String,
+    deviceId: String,
+    asset: AssetId,
+    role: ResourceRole,
+): DeviceFile? =
+    storedFiles[eventId to deviceId].orEmpty().firstOrNull { it.assetId == asset && it.role == role }
+
+/** Whether every resource this asset declares has landed. */
+private fun MockManifestAsset.landedIn(landed: Set<Pair<AssetId, ResourceRole>>): Boolean =
+    resources.all { (assetId to it.role) in landed }
 
 /**
  * Whether [eventId] is FINISHED now: its open-until date has passed, someone joined it, and every member still in it

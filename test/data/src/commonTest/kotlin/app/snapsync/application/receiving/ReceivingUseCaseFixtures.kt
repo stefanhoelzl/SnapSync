@@ -9,6 +9,8 @@ import app.snapsync.data.crypto.DownloadOpening
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.FileCipher
+import app.snapsync.data.crypto.FileNameCipher
+import app.snapsync.data.crypto.ServedNames
 import app.snapsync.data.membership.EventCheckRecord
 import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
@@ -82,7 +84,9 @@ internal class Listed(
     val role: String = "primary",
 ) {
     val ref: AssetRef get() = AssetRef(testDeviceId(device), testAssetId(asset))
-    val key: String get() = "$asset-$role.heic"
+
+    /** The key the backend derives for older builds — a phone derives the same from the name it holds. */
+    val key: String get() = "$asset-$role.${filename.substringAfterLast('.').lowercase()}"
 }
 
 /** The platform's background downloads, recorded: each start's tag, answered [answer]. */
@@ -146,8 +150,14 @@ internal class Receiver {
     val received = ReceivedPhotos(file)
     val checks = EventCheckRecord(device.shared)
 
-    /** The union, netted of what this device declared — nothing yet: its manifest record is empty. */
-    val union = EventUnion(device.gateway, ManifestRecord(device.shared))
+    private val crypto = fakeCrypto()
+    val keys = EventKeyStore(RecordingSecureStore(), EventKeyIds(crypto))
+
+    /**
+     * The union, netted of what this device declared — nothing yet: its manifest record is empty — its names read as
+     * the membership's event serves them.
+     */
+    val union = EventUnion(device.gateway, ManifestRecord(device.shared), ServedNames(keys, FileNameCipher(crypto)))
 
     val library = MutableStateFlow<List<GalleryAssetResources>>(emptyList())
     val grant = MutableStateFlow(LibraryGrant.GRANTED)
@@ -160,8 +170,6 @@ internal class Receiver {
     val passes = RecognitionPasses()
     val reported = ReportedReceived()
 
-    private val crypto = fakeCrypto()
-    val keys = EventKeyStore(RecordingSecureStore(), EventKeyIds(crypto))
     val opening = DownloadOpening(device.membership, keys, FileCipher(crypto, files), files)
 
     /** The union the backend serves, at [position], with [declared] photos declared (`null`: no total). */

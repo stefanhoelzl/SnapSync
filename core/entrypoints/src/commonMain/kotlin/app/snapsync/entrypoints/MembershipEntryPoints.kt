@@ -204,7 +204,7 @@ class Joining(
         ensure("membership change") { change.release() }
         required { change.hold() }
         // The share set before the membership: no cycle ever sees the new membership over the previous one's ledger.
-        required { shareSet(enrolled.membership.event.id) }
+        required { shareSet(enrolled.membership) }
         // The photos an earlier install received are recognised before any uploader sees the membership — against
         // every photo of the event, after forgetting which photos were any other event's.
         isolated("forget other events") { forgetOtherEvents(enrolled.membership) }

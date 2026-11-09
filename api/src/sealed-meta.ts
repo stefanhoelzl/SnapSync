@@ -8,6 +8,10 @@
 //   key       HKDF-SHA256(event key, no salt, "snapsync/meta/v1"), 32 bytes
 //   plaintext a UTF-8 JSON object, today {"name": "…"}; keys a reader does not know are ignored
 //
+// A photo's FILE NAME in an encrypted event is the same envelope and record under a key derived per photo:
+// HKDF-SHA256(event key, no salt, "snapsync/file-name/v1/<eventId>/<deviceId>/<assetId>/<role>") (decision
+// record `changes/seal-file-names`, D1). The edge checks its shape before it stores an upload's `filename`.
+//
 // GCM carries no associated data: the binding is the derivation's label, as the encrypted file format binds
 // a file. The edge never holds the key, so it can only ever call `envelopeShape`.
 
@@ -58,12 +62,16 @@ export function envelopeShape(envelope: string): EnvelopeRead {
   };
 }
 
-async function metaKey(eventKey: Uint8Array, usage: KeyUsage): Promise<CryptoKey> {
+async function metaKey(
+  eventKey: Uint8Array,
+  usage: KeyUsage,
+  label: Uint8Array,
+): Promise<CryptoKey> {
   const base = await crypto.subtle.importKey("raw", eventKey as BufferSource, "HKDF", false, [
     "deriveKey",
   ]);
   return crypto.subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: LABEL },
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: label as BufferSource },
     base,
     { name: "AES-GCM", length: 256 },
     false,
@@ -72,12 +80,15 @@ async function metaKey(eventKey: Uint8Array, usage: KeyUsage): Promise<CryptoKey
 }
 
 /** The raw 32 bytes of a record's key — for the vectors test only; nothing else needs the key as bytes. */
-export async function metaKeyBytes(eventKey: Uint8Array): Promise<Uint8Array> {
+export async function metaKeyBytes(
+  eventKey: Uint8Array,
+  label: Uint8Array = LABEL,
+): Promise<Uint8Array> {
   const base = await crypto.subtle.importKey("raw", eventKey as BufferSource, "HKDF", false, [
     "deriveBits",
   ]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: LABEL },
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: label as BufferSource },
     base,
     256,
   );
@@ -88,9 +99,61 @@ export async function metaKeyBytes(eventKey: Uint8Array): Promise<Uint8Array> {
 export type MetaRecord = { name: string; [key: string]: unknown };
 
 /** The record `envelope` holds, opened with `eventKey`, or `null` when it does not open or holds no name. */
-export async function openRecord(
+export function openRecord(eventKey: Uint8Array, envelope: string): Promise<MetaRecord | null> {
+  return openUnder(eventKey, envelope, LABEL);
+}
+
+/** `record` sealed under `eventKey`, with `nonce` (12 bytes; a fresh random one unless a test pins it). */
+export function sealRecord(
+  eventKey: Uint8Array,
+  record: MetaRecord,
+  nonce: Uint8Array = crypto.getRandomValues(new Uint8Array(META_NONCE_LENGTH)),
+): Promise<string> {
+  return sealUnder(eventKey, record, nonce, LABEL);
+}
+
+// ── A photo's file name (decision record `changes/seal-file-names`, D1) ───────────────────────────
+//
+// The same envelope and record, under a key derived PER PHOTO: the label names the event, the device, the
+// asset and the role, so a record moved onto another photo opens under no key there.
+
+/** The photo a file name is sealed for — the ids as the byte route's path names them. */
+export type FileNameBinding = { eventId: string; deviceId: string; assetId: string; role: string };
+
+/** The derivation label binding a file name to its photo. */
+export function fileNameLabel(b: FileNameBinding): Uint8Array {
+  return new TextEncoder().encode(
+    `snapsync/file-name/v1/${b.eventId}/${b.deviceId}/${b.assetId}/${b.role}`,
+  );
+}
+
+/**
+ * The file name `envelope` holds for the photo `binding` names, opened with the event's key — or `null` when it
+ * does not open there, or names no file (every upload names one).
+ */
+export async function openFileName(
+  eventKey: Uint8Array,
+  binding: FileNameBinding,
+  envelope: string,
+): Promise<string | null> {
+  const record = await openUnder(eventKey, envelope, fileNameLabel(binding));
+  return record === null || record.name === "" ? null : record.name;
+}
+
+/** `name`, sealed for the photo `binding` names (`nonce`: a fresh random one unless a test pins it). */
+export function sealFileName(
+  eventKey: Uint8Array,
+  binding: FileNameBinding,
+  name: string,
+  nonce: Uint8Array = crypto.getRandomValues(new Uint8Array(META_NONCE_LENGTH)),
+): Promise<string> {
+  return sealUnder(eventKey, { name }, nonce, fileNameLabel(binding));
+}
+
+async function openUnder(
   eventKey: Uint8Array,
   envelope: string,
+  label: Uint8Array,
 ): Promise<MetaRecord | null> {
   const read = envelopeShape(envelope);
   if (!read.ok) return null;
@@ -98,7 +161,7 @@ export async function openRecord(
   try {
     plaintext = await crypto.subtle.decrypt(
       { name: "AES-GCM", iv: read.nonce as BufferSource },
-      await metaKey(eventKey, "decrypt"),
+      await metaKey(eventKey, "decrypt", label),
       read.sealed as BufferSource,
     );
   } catch {
@@ -113,16 +176,16 @@ export async function openRecord(
   }
 }
 
-/** `record` sealed under `eventKey`, with `nonce` (12 bytes; a fresh random one unless a test pins it). */
-export async function sealRecord(
+async function sealUnder(
   eventKey: Uint8Array,
   record: MetaRecord,
-  nonce: Uint8Array = crypto.getRandomValues(new Uint8Array(META_NONCE_LENGTH)),
+  nonce: Uint8Array,
+  label: Uint8Array,
 ): Promise<string> {
   const sealed = new Uint8Array(
     await crypto.subtle.encrypt(
       { name: "AES-GCM", iv: nonce as BufferSource },
-      await metaKey(eventKey, "encrypt"),
+      await metaKey(eventKey, "encrypt", label),
       new TextEncoder().encode(JSON.stringify(record)) as BufferSource,
     ),
   );

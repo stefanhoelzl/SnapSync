@@ -1,16 +1,29 @@
 package app.snapsync.application.membership
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.data.crypto.FileNameCipher
+import app.snapsync.data.crypto.ServedNames
 import app.snapsync.data.identity.AppDeviceIdentity
+import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.upload.DeviceListing
 import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.feature.support.ScriptedBackend
+import app.snapsync.feature.support.SharedStore
+import app.snapsync.feature.support.TestEventKeys
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
+import app.snapsync.format.LegacyMembership
+import app.snapsync.format.TimestampText
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.LogLevel
@@ -18,7 +31,9 @@ import app.snapsync.inbound.LogLine
 import app.snapsync.inbound.LogWriter
 import app.snapsync.levers.WriteKind
 import app.snapsync.mock.DatabasesMock
+import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.HttpResult
 import app.snapsync.testids.testAssetId
@@ -47,6 +62,7 @@ class LoadShareSetTest {
     /** The load, its lines recorded into [recorder] while it runs. */
     private class Loading(private val share: LoadShareSet, private val recorder: Recorder) {
         suspend fun load(eventId: app.snapsync.domain.event.EventId): ShareSetLoaded {
+            val membership = joining(eventId)
             Log.install(
                 listOf(object : LogWriter {
                     override fun write(line: LogLine) {
@@ -56,7 +72,7 @@ class LoadShareSetTest {
                 }),
             )
             return try {
-                share(eventId)
+                share(membership)
             } finally {
                 Log.install(emptyList())
             }
@@ -74,7 +90,17 @@ class LoadShareSetTest {
         ledger: TestLedger,
         identity: AppDeviceIdentity = testIdentity(deviceId),
         recorder: Recorder = Recorder(),
-    ) = Loading(LoadShareSet(DeviceListing(backend.gateway, identity), ledger.reset), recorder)
+    ) = Loading(
+        LoadShareSet(
+            DeviceListing(
+                backend.gateway,
+                identity,
+                ServedNames(TestEventKeys(fakeCrypto(), inMemorySecureStore()).store, FileNameCipher(fakeCrypto())),
+            ),
+            ledger.reset,
+        ),
+        recorder,
+    )
 
     /**
      * What a device carries into a join: an earlier event's rows — work in flight, work waiting, a stale belief —
@@ -204,4 +230,18 @@ class LoadShareSetTest {
         assertIs<UploadRow.Completed>(kept.getValue("J-primary.heic"), "what was stored stays stored")
         assertIs<UploadRow.Discovered>(kept.getValue("W-primary.heic"), "the stranded upload needs a job again")
     }
+}
+
+/** A plain event's membership, as a join hands it to its share-set load — read back from a store, not yet entered. */
+private fun joining(eventId: app.snapsync.domain.event.EventId): Membership.Active {
+    val config = LegacyMembership(
+        eventId = eventId,
+        name = "Lake weekend",
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-01-31T00:00:00Z")),
+        endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+    )
+    val read = MembershipRepository(SharedStore().apply { persist(config) }.db).state.value
+    return (read as MembershipRead.Joined).membership as Membership.Active
 }

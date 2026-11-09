@@ -34,7 +34,9 @@ interface PublicBackendLevers {
      * real Google motion photo, as an Android member's camera shares it (omitted: a placeholder photo); [filename] is
      * the capturing device's own name for every asset. [final] `true` declares the member's share settled; [uploading]
      * (a subset of [assets]) are declared but their bytes not sent — still on that member's phone; a later call without
-     * them lands them.
+     * them lands them. [sealedFilename] is every asset's name exactly as uploaded into an encrypted event — sealed by
+     * whatever key that member holds, so a name the event's key does not open can be staged (decision record
+     * `changes/seal-file-names`); omitted, the name is [filename], sealed as any build seals it.
      */
     @StandsInFor("BackendOperator.seedMember", "BackendOperator.deposit")
     suspend fun foreignDevice(
@@ -45,6 +47,7 @@ interface PublicBackendLevers {
         filename: String? = null,
         final: Boolean? = null,
         uploading: List<String>? = null,
+        sealedFilename: String? = null,
     ): String
 
     /** A fellow member leaving [event], as any build's leave reaches the backend. */

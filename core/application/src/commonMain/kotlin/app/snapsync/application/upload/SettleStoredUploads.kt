@@ -8,6 +8,7 @@ import app.snapsync.data.upload.OwnUploadRows
 import app.snapsync.data.upload.RowTransition
 import app.snapsync.data.upload.RowTransitions
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.membership.Membership
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import kotlinx.coroutines.withTimeoutOrNull
@@ -29,26 +30,27 @@ class SettleStoredUploads(
     private val listing: DeviceListing,
     private val transitions: RowTransitions,
 ) {
+    /** Settle what [joined]'s event already stores of this device's in-flight uploads — nothing when none is joined. */
     @EntryPointCall
-    suspend operator fun invoke(event: EventId?) = when (event) {
+    suspend operator fun invoke(joined: Membership.Active?) = when (joined) {
         null -> Unit
-        is EventId -> joined(event)
+        else -> joined(joined)
     }
 
-    private suspend fun joined(event: EventId) = when (val inFlight = rows.inFlight(event)) {
-        is CountRead.Counted -> if (inFlight.count > 0) listed(event) else Unit
+    private suspend fun joined(joined: Membership.Active) = when (val inFlight = rows.inFlight(joined.event.id)) {
+        is CountRead.Counted -> if (inFlight.count > 0) listed(joined) else Unit
         is CountRead.Unavailable -> log.w(
             "the upload rows could not be read — nothing settled",
             "detail" of inFlight.detail,
         )
     }
 
-    private suspend fun listed(event: EventId) = when (
+    private suspend fun listed(joined: Membership.Active) = when (
         val read = withTimeoutOrNull(LISTING_TIMEOUT_MS) {
-            listing.stored(event)
+            listing.stored(joined)
         }
     ) {
-        is ListingRead.Listed -> settled(event, read)
+        is ListingRead.Listed -> settled(joined.event.id, read)
         is ListingRead.Unavailable -> log.w(
             "the device listing could not be read — nothing settled",
             "detail" of read.detail,

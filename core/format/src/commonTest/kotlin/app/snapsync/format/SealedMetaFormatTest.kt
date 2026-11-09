@@ -1,5 +1,10 @@
 package app.snapsync.format
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -34,6 +39,37 @@ class SealedMetaFormatTest {
             hmac.messages[1],
             "T(1) = HMAC(PRK, label ‖ 0x01): the label is the binding",
         )
+    }
+
+    @Test
+    fun `a file name's key is HKDF over the event key with a label naming its photo`() {
+        val event = EventId.parse("0b5e1c2a-7d4f-4c1e-9a3b-2f6d8e0c1a5b")!!
+        val device = DeviceId.parse("6f1d2c3b-4a5e-4f60-8172-93a4b5c6d7e8")!!
+        val binding = FileBinding(event, device, AssetId.parse("1234")!!, ResourceRole.LIVE)
+        val hmac = Recording()
+        assertEquals(
+            SealedMetaFormat.KEY_LENGTH,
+            SealedMetaFormat.fileNameKeyOf(ByteArray(32) { 1 }, binding, hmac).size,
+        )
+        assertEquals(
+            "snapsync/file-name/v1/$event/$device/1234/live".encodeToByteArray().toList() + 1.toByte(),
+            hmac.messages[1],
+            "T(1) = HMAC(PRK, label ‖ 0x01): the label binds the name to its photo",
+        )
+    }
+
+    @Test
+    fun `a file name's key differs for every other photo, and from the event record's`() {
+        val event = EventId.parse("0b5e1c2a-7d4f-4c1e-9a3b-2f6d8e0c1a5b")!!
+        val device = DeviceId.parse("6f1d2c3b-4a5e-4f60-8172-93a4b5c6d7e8")!!
+        val still = FileBinding(event, device, AssetId.parse("1234")!!, ResourceRole.PRIMARY)
+        val labels = listOf(
+            SealedMetaFormat.fileNameLabel(still),
+            SealedMetaFormat.fileNameLabel(FileBinding(event, device, AssetId.parse("1234")!!, ResourceRole.LIVE)),
+            SealedMetaFormat.fileNameLabel(FileBinding(event, device, AssetId.parse("1235")!!, ResourceRole.PRIMARY)),
+            "snapsync/meta/v1".encodeToByteArray(),
+        ).map { it.toList() }
+        assertEquals(labels.size, labels.toSet().size)
     }
 
     @Test

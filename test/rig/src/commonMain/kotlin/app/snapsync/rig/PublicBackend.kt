@@ -36,6 +36,7 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
         filename: String?,
         final: Boolean?,
         uploading: List<String>?,
+        sealedFilename: String?,
     ): String {
         val who = deviceId(device)
         require(assets.isNotEmpty()) { "assets must name at least one asset" }
@@ -57,6 +58,7 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
             bytes,
             final == true,
             uploading.orEmpty().toSet(),
+            sealedFilename,
         )
     }
 
@@ -88,21 +90,16 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
         bytes: ByteArray?,
         final: Boolean,
         uploading: Set<String>,
+        sealedFilename: String?,
     ): String {
         val eventId = event ?: reach.createEvent(FOREIGN_EVENT_NAME, FOREIGN_EVENT_START)
         reach.join(eventId, who.value)
         assets.filterNot { it.assetId.value in uploading }.forEach { asset ->
             asset.resources.forEach {
                 if (bytes != null) {
-                    reach.upload(
-                        who.value,
-                        asset.assetId,
-                        it,
-                        bytes,
-                        eventId,
-                    )
+                    reach.upload(who.value, asset.assetId, it, bytes, eventId, sealedFilename)
                 } else {
-                    reach.upload(who.value, asset.assetId, it, eventId = eventId)
+                    reach.upload(who.value, asset.assetId, it, eventId = eventId, asUploaded = sealedFilename)
                 }
             }
         }
