@@ -253,6 +253,24 @@ class LeaveIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "manage-membership", requirement = "Leaving asks first, then is instant and works offline")
+    fun a_photo_selected_after_a_leave_is_shared_nowhere() = behaviour {
+        given {
+            limitedMember()
+            left()
+            step("A taken", act = { takePhoto("A") }, until = { settled { true } })
+        }
+
+        whenever { library.changeSelection(listOf("A")) }
+        then {
+            never<WorldEvent.SessionTransferCreated>()
+            never<WorldEvent.UploadJobCreated>()
+            neverScreen<Layer.Joined>()
+            settled { true }
+        }
+    }
+
+    @Test
     @Verifies(
         spec = "manage-membership",
         requirement = "Leaving asks first, then is instant and works offline",

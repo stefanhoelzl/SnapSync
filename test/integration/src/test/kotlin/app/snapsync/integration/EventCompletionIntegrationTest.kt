@@ -7,6 +7,7 @@ import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.KeychainItem
 import app.snapsync.levers.SettledEvent
+import app.snapsync.levers.StoreFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -172,6 +173,29 @@ class EventCompletionIntegrationTest {
         }
 
     @Test
+    @Verifies(spec = "event-lifetime", requirement = "A member's share is settled only after their own range has ended")
+    fun a_wake_that_cannot_read_the_device_identity_never_says_the_member_holds_everything() =
+        behaviour(startAt = DURING) {
+            val event = given {
+                extensionUploadsOnly()
+                joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END).also {
+                    receivedFrom(DEV_F, "FQ", final = true)
+                    afterTheEnd()
+                    step("a background launch whose device-id reads are refused", act = {
+                        keychain.fail(KeychainItem.DEVICE_ID, StoreFault.READ, IDENTITY_UNREADABLE)
+                        host.relaunch(scene = false)
+                    }, until = { settled { true } })
+                }
+            }
+
+            whenever { heartbeat() }
+            then {
+                never<WorldEvent.ReceivedReported> { it.event == event && it.device != DEV_F && it.position > 0 }
+                settled { it.of(event)?.finished == false }
+            }
+        }
+
+    @Test
     @Verifies(
         spec = "event-lifetime",
         requirement = "A member's share is settled only after their own range has ended",
@@ -267,6 +291,9 @@ class EventCompletionIntegrationTest {
     }, until = { settled { true } })
 
     private companion object {
+        /** More device-id reads than the behaviour's launch and wake make: every one refused. */
+        const val IDENTITY_UNREADABLE = 1_000
+
         const val SHORT_START = "2026-05-15T00:00:00"
         const val SHORT_END = "2026-05-20T00:00:00"
 
