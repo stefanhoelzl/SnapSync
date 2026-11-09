@@ -43,7 +43,7 @@ class StagingArea(private val files: Files) {
      */
     fun listed(): Listed = when (val listed = files.list(FileArea.SHARED, StagedPath.ROOT)) {
         is FileResult.Ok -> Listed.Files(listed.value.map(::StagedPath))
-        FileResult.AreaUnavailable, is FileResult.Denied, is FileResult.Failed -> Listed.Unreadable("$listed")
+        is FileFailure -> Listed.Unreadable("$listed")
     }
 
     /**
@@ -61,7 +61,7 @@ class StagingArea(private val files: Files) {
         )
     ) {
         is FileResult.Ok -> exists.value
-        FileResult.AreaUnavailable, is FileResult.Denied, is FileResult.Failed -> true.also {
+        is FileFailure -> true.also {
             log.w(
                 "could not look for a staged file",
                 "path" of path.value,
@@ -71,7 +71,7 @@ class StagingArea(private val files: Files) {
 
     private suspend fun released(path: StagedPath, deleted: FileResult<Unit>) = when (deleted) {
         is FileResult.Ok, FileResult.NotFound -> Unit
-        FileResult.AreaUnavailable, is FileResult.Denied, is FileResult.Failed -> log.w(
+        is FileFailure -> log.w(
             "a staged file stays on disk",
             "path" of path.value,
             "why" of "$deleted",
