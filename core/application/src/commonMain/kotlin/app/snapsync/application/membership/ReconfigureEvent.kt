@@ -30,8 +30,7 @@ class ReconfigureEvent(private val membership: MembershipRepository) {
         is CaptureRangeVerdict.Ok -> saved(
             membership.reconfigure(active, Share(range.range, choice.direction, choice.album)),
         )
-        CaptureRangeVerdict.Inverted, CaptureRangeVerdict.TooLong, CaptureRangeVerdict.OutsideEvent ->
-            ReconfigureOutcome.Refused
+        is CaptureRangeVerdict.Refused -> ReconfigureOutcome.Refused
     }
 
     private fun saved(saved: UpdateResult): ReconfigureOutcome = when (saved) {

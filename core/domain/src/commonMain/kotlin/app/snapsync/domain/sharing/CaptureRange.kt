@@ -66,12 +66,15 @@ sealed interface CaptureRangeVerdict {
     /** It is: [range]. */
     class Ok(val range: CaptureRange) : CaptureRangeVerdict
 
+    /** It is not, for the reason each case names: a refusal, read as one wherever why does not matter. */
+    sealed interface Refused : CaptureRangeVerdict
+
     /** Its end lies before its start. */
-    data object Inverted : CaptureRangeVerdict
+    data object Inverted : Refused
 
     /** It is longer than an event may be ([EventWindow.MAX]). */
-    data object TooLong : CaptureRangeVerdict
+    data object TooLong : Refused
 
     /** It does not overlap the event's own range. */
-    data object OutsideEvent : CaptureRangeVerdict
+    data object OutsideEvent : Refused
 }
