@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.KeychainItem
@@ -16,6 +17,7 @@ import kotlin.test.Test
  * is obtained again at the next call; and a phone whose Keychain lost its identity makes itself a new one, kept or not,
  * and still creates an event.
  */
+@Verifies(spec = "privacy-security", requirement = "Only a genuine SnapSync app can change an event")
 class KeptProofIntegrationTest {
 
     @Test

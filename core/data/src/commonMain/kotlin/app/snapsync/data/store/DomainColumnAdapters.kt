@@ -34,17 +34,27 @@ sealed interface Stored<out T : Any> {
     /** The id the column spells, or `null` for [Empty]. */
     val value: T?
 
+    /** The id, for a column no migration ever emptied — every one but an event id's. */
+    fun id(): T
+
     /** The column spells an id. */
-    data class Valid<out T : Any>(override val value: T) : Stored<T>
+    data class Valid<out T : Any>(override val value: T) : Stored<T> {
+        override fun id(): T = value
+    }
 
     /** The column holds the empty string a migration left: no id. Written back as it was read. */
     data object Empty : Stored<Nothing> {
         override val value: Nothing? get() = null
+
+        override fun id(): Nothing = throw InvalidProgramState("only an event id column was ever emptied")
     }
 }
 
 /** An id column: the id's text exactly as it arrived, and [parse]'s reading of it. */
 abstract class StoredIdColumnAdapter<T : Any> : ColumnAdapter<Stored<T>, String> {
+    /** The one text a column holds that spells no id. */
+    private val noId: Map<String, Stored.Empty> = mapOf(EMPTY to Stored.Empty)
+
     protected abstract fun parse(text: String): T?
 
     protected abstract fun text(value: T): String
@@ -54,7 +64,7 @@ abstract class StoredIdColumnAdapter<T : Any> : ColumnAdapter<Stored<T>, String>
 
     /** A column text that spells no id: only ever the empty one a migration left. */
     private fun spellingNone(text: String): Stored<T> =
-        Stored.Empty.takeIf { text == EMPTY } ?: throw InvalidProgramState("an id column holds an id or no text")
+        noId[text] ?: throw InvalidProgramState("an id column holds an id or no text")
 
     override fun encode(value: Stored<T>): String = when (value) {
         is Stored.Valid -> text(value.value)
