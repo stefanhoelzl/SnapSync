@@ -84,6 +84,46 @@ class RenameIntegrationTest {
     @Verifies(
         spec = "manage-membership",
         requirement = "A failed rename keeps the dialog and never ends the membership",
+        scenario = "A rejected name",
+    )
+    fun a_name_of_only_spaces_is_refused_before_anything_is_sent() = behaviour {
+        given { joinedWeekend() }
+
+        lateinit var failed: Seen<Layer.Joined>
+        whenever { rename("   ") }
+        then {
+            failed = screen<Layer.Joined> { it.renameState is RenameState.Failed }
+            never<WorldEvent.BackendReceived> { it.operation == "changeEvent" }
+            neverScreen<Layer.Joined> { it.membership.name != "Weekend" }
+        }
+        assertEquals(RenameState.Failed(ScreenMessage.RENAME_NAME_REFUSED), failed.value.renameState)
+    }
+
+    @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "A failed rename keeps the dialog and never ends the membership",
+    )
+    fun a_rename_confirmed_for_an_event_since_replaced_renames_neither() = behaviour {
+        val replaced = given {
+            val (first, _) = joinedWeekend()
+            left()
+            joinedEvent(name = "Ski Trip")
+            first
+        }
+
+        whenever { rename("Ana's 30th", event = replaced) }
+        then {
+            never<WorldEvent.BackendReceived> { it.operation == "changeEvent" }
+            neverScreen<Layer.Joined> { it.membership.name != "Ski Trip" }
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "A failed rename keeps the dialog and never ends the membership",
         scenario = "A rename that meets a missing event keeps the member joined",
     )
     fun a_rename_of_a_SWEPT_event_leaves_the_membership_joined_and_intact() = behaviour {

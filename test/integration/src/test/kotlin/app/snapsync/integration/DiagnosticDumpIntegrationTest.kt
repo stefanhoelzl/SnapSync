@@ -9,6 +9,8 @@ import app.snapsync.domain.report.DiagnosticDump
 import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.levers.LogProcess
 import app.snapsync.levers.NetworkState
+import app.snapsync.levers.PreferenceItem
+import app.snapsync.levers.StoreFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.rig.HostReporting
 import app.snapsync.ui.state.BuildLine
@@ -16,6 +18,7 @@ import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ReportNotice
 import app.snapsync.ui.state.ReportTarget
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -135,6 +138,121 @@ class DiagnosticDumpIntegrationTest {
             "the device id the app resolved, in SnapSync's own section: $ids",
         )
         assertTrue(DiagnosticKeys.TIME_ZONE in state, "the device's zone: $state")
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
+    fun a_dump_says_the_device_was_offline_or_blocked_as_the_system_reported_it() = behaviour {
+        given { joinedEvent() }
+
+        lateinit var offline: Seen<WorldEvent.DumpReceived>
+        lateinit var blocked: Seen<WorldEvent.DumpReceived>
+        whenever {
+            network.set(NetworkState.OFFLINE)
+            sendDiagnostics("offline")
+            network.set(NetworkState.BLOCKED)
+            sendDiagnostics("blocked")
+        }
+        then {
+            offline = event<WorldEvent.DumpReceived> { it.dump.note == "offline" }
+            blocked = event<WorldEvent.DumpReceived> { it.dump.note == "blocked" }
+        }
+
+        assertEquals("offline", offline.value.dump.state[DiagnosticKeys.NETWORK])
+        assertEquals("blocked", blocked.value.dump.state[DiagnosticKeys.NETWORK])
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
+    fun a_dump_carries_the_mobile_data_choice_as_the_member_switched_it() = behaviour {
+        given { joinedEvent() }
+
+        lateinit var off: Seen<WorldEvent.DumpReceived>
+        lateinit var on: Seen<WorldEvent.DumpReceived>
+        whenever {
+            tap(UiIntent.MobileData(SwitchTo.OFF))
+            sendDiagnostics("switched off")
+            tap(UiIntent.MobileData(SwitchTo.ON))
+            sendDiagnostics("switched on")
+        }
+        then {
+            off = event<WorldEvent.DumpReceived> { it.dump.note == "switched off" }
+            on = event<WorldEvent.DumpReceived> { it.dump.note == "switched on" }
+        }
+
+        assertEquals("off", off.value.dump.state[DiagnosticKeys.MOBILE_DATA])
+        assertEquals("on", on.value.dump.state[DiagnosticKeys.MOBILE_DATA])
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "A device fact cannot be read",
+    )
+    fun an_unreadable_mobile_data_choice_is_marked_unreadable_and_the_report_still_goes() = behaviour {
+        given {
+            joinedEvent()
+            step("the mobile-data choice unreadable", act = {
+                preferences.fail(PreferenceItem.MOBILE_DATA, StoreFault.READ, times = UNREADABLE_READS)
+            }, until = {})
+        }
+
+        lateinit var received: Seen<WorldEvent.DumpReceived>
+        whenever { sendDiagnostics(NOTE) }
+        then { received = event<WorldEvent.DumpReceived>() }
+
+        assertEquals("unreadable", received.value.dump.state[DiagnosticKeys.MOBILE_DATA])
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "A device fact cannot be read",
+    )
+    fun device_conditions_that_never_answer_are_marked_failed_and_the_report_still_goes() = behaviour {
+        given {
+            joinedEvent()
+            step("the device's conditions never answer", act = { deviceConditions.hold(true) }, until = {})
+        }
+
+        whenever { sendDiagnostics(NOTE) }
+        then {
+            never<WorldEvent.DumpReceived>()
+            settled { true }
+        }
+
+        lateinit var received: Seen<WorldEvent.DumpReceived>
+        whenever { advance(CONDITIONS_READ_BOUND) }
+        then { received = event<WorldEvent.DumpReceived>() }
+
+        val state = received.value.dump.state
+        listOf(DiagnosticKeys.POWER_SAVING, DiagnosticKeys.THERMAL).forEach { fact ->
+            assertTrue(state[fact].orEmpty().startsWith("failed ("), "$fact is marked failed: $state")
+        }
+        assertEquals("online", state[DiagnosticKeys.NETWORK], "the facts read apart from them are still read: $state")
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
+    fun a_dump_says_whether_the_member_saves_the_event_to_an_album() = behaviour {
+        given { joinedSavingToAlbum() }
+
+        lateinit var received: Seen<WorldEvent.DumpReceived>
+        whenever { sendDiagnostics(NOTE) }
+        then { received = event<WorldEvent.DumpReceived>() }
+
+        assertEquals("true", received.value.dump.state["save_to_album"])
     }
 
     @Test
@@ -408,6 +526,12 @@ class DiagnosticDumpIntegrationTest {
     private companion object {
         /** Longer than the app shows a report's word for. */
         val NOTICE_SHOWN = 5.seconds
+
+        /** Past the bound a report waits on one device read before it writes that read failed. */
+        val CONDITIONS_READ_BOUND = 3.seconds
+
+        /** More reads of the mobile-data choice than a report and what runs beside it make. */
+        const val UNREADABLE_READS = 100
 
         /**
          * Every fact a report's state may hold — this app's own state and the device's settings and conditions. A new
