@@ -209,13 +209,14 @@ that release.
     > cannot open the stored photos. The one exception is an iPhone that uploads photos in the background through the
     > system's own photo uploader: there, each photo reaches our service unencrypted together with a key that opens
     > only that photo, and our service encrypts it as it arrives and keeps neither the key nor the unencrypted photo.
-    > The event's name is stored encrypted the same way. So that a chat app can show it in a link preview, the invite
+    > The event's name, and the name each photo had on its phone, are stored encrypted the same way. So that a chat
+    > app can show the event's name in a link preview, the invite
     > link a member shares also carries the name readable; our service reads it there only to show that page or
     > preview, and keeps it in no record or log. The event's QR code does not carry it.
   - Staged here, not published, until this release: before it no shipped build seals a name
-    (`openspec/changes/seal-event-name`, task 7.3).
+    (`openspec/changes/seal-event-name`, task 7.3; `openspec/changes/archive/2026-11-09-seal-file-names`).
 - **Record:** `openspec/changes/archive/2026-10-12-defer-encrypt-by-default` (design D1–D5), `openspec/changes/archive/2026-10-08-encrypt-events-by-default`,
-  `openspec/changes/seal-event-name` (design D7).
+  `openspec/changes/seal-event-name` (design D7), `openspec/changes/archive/2026-11-09-seal-file-names` (design, Migration Plan).
 
 ## At the promote that re-enables encrypted creation
 
@@ -339,6 +340,26 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
   covers the cancel.
 - **Remove:** delete `forgetLegacyWatch` and its two calls, that test, and this entry. `WakeWorker` then reads only
   the heartbeat, and may drop the id it no longer gets.
+
+## Once `MIN_APP_VERSION` ≥ the release that re-enables encrypted creation
+
+**Unlock condition:** the floor is at or above the release that re-enables encrypted creation (above), which is the
+first to carry `seal-file-names` — every build in use then keys a photo from the name it holds, and names nothing in
+its manifest.
+
+### The union's `key` and the manifest's `key`/`filename` (api + wire + mock)
+- **What:** fields only builds before `seal-file-names` read or send.
+  - The union's `key` (`<assetId>-<role>.<ext>`), still derived from the stored `filename`:
+    `api/src/db.ts`, `unionRows` (`objectNameFor`, and `api/src/object-names.ts` itself); `api/src/routes/shared.ts`,
+    the union's `key`; `UnionResource.key` in `api/openapi.yaml`; the mock's `storedKey` in `BackendRouter.union`.
+    For an encrypted event it is meaningless (`.bin`, derived from a sealed name), which no such build meets once the
+    floor passes it.
+  - The manifest resource's optional `key` and `filename` in `api/openapi.yaml` (`ManifestResource`), which the
+    service ignores, and `SeededAsset.asOlderBuilds` with its contract clause (`test/contracts`).
+- **Why:** 0.5 and 0.6 key their download records by the union's `key`, and send both manifest fields as required.
+- **Remove:** drop `key` from `UnionResource` and its derivation (with `object-names.ts` and its test), and
+  `key`/`filename` from `ManifestResource`; regenerate the wire; drop the older-builds contract clause.
+- **Record:** `openspec/changes/archive/2026-11-09-seal-file-names` (design D4, D5).
 
 ## Once `MIN_APP_VERSION` ≥ the release that re-enables encrypted creation, and no plain event is open
 

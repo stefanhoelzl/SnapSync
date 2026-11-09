@@ -3,6 +3,8 @@ package app.snapsync.data.upload
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.Credential
 import app.snapsync.data.backend.TokenRead
+import app.snapsync.data.crypto.FileNameCipher
+import app.snapsync.data.crypto.UploadSeal
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.trust.CachedCredentialStore
@@ -20,8 +22,8 @@ import app.snapsync.wire.api.Routes
  * **The upload of one resource, as the backend's byte route takes it** — the destination and the headers a transfer
  * tier hands the platform. The destination belongs to one event and names this device, the asset and the role in its
  * path (change `per-event-storage-layout`), so a key's bytes land under the same object name however often they are
- * sent; the photo's original file name rides in the query, of which the backend reads only the extension — the key's
- * own when the row records no name.
+ * sent; the photo's original file name rides in the query — the key's own text when the row records no name — and in
+ * an encrypted event only sealed for that photo, so the backend never reads it.
  *
  * Carrying `Content-Type` (the MIME the walk recorded), the calling build's version headers, and the device's token as
  * `Authorization: Bearer`. An upload is a GATED request (change `withhold-unverified-uploads`): it is built only with a
@@ -37,29 +39,32 @@ class UploadRequests(
     private val credentials: CachedCredentialStore,
     private val credential: Credential,
     private val identity: DeviceIdentity,
+    private val names: FileNameCipher,
 ) {
-    /** [key]'s first upload into [event], described by [detail]. */
-    suspend fun first(event: EventId, key: UploadKey, detail: RowDetail): RequestBuilt = built(event, key, detail)
+    /**
+     * [key]'s first upload into [event], described by [detail] — as its event's [seal] says: an encrypted event's
+     * seals the photo's name with its bytes.
+     */
+    suspend fun first(event: EventId, key: UploadKey, detail: RowDetail, seal: UploadSeal.Goes): RequestBuilt =
+        built(Upload(event, key, detail, seal))
 
     /** [key]'s upload again, after a failure: the token read from its store of record first. */
-    suspend fun retry(event: EventId, key: UploadKey, detail: RowDetail): RequestBuilt {
+    suspend fun retry(event: EventId, key: UploadKey, detail: RowDetail, seal: UploadSeal.Goes): RequestBuilt {
         credentials.reread()
-        return built(event, key, detail)
+        return built(Upload(event, key, detail, seal))
     }
 
-    private suspend fun built(event: EventId, key: UploadKey, detail: RowDetail): RequestBuilt =
-        when (val id = identity.id()) {
-            is DeviceIdRead.Ok -> proven(event, id.value, key, detail)
-            DeviceIdRead.Absent -> RequestBuilt.NoIdentity
-            is DeviceIdRead.Unavailable -> RequestBuilt.IdentityUnreadable(id.detail)
-        }
+    private suspend fun built(upload: Upload): RequestBuilt = when (val id = identity.id()) {
+        is DeviceIdRead.Ok -> proven(upload, id.value)
+        DeviceIdRead.Absent -> RequestBuilt.NoIdentity
+        is DeviceIdRead.Unavailable -> RequestBuilt.IdentityUnreadable(id.detail)
+    }
 
-    private suspend fun proven(event: EventId, device: DeviceId, key: UploadKey, detail: RowDetail): RequestBuilt =
-        when (val token = gated()) {
-            is TokenRead.Held -> RequestBuilt.Built(request(event, device, key, detail, token.token))
-            TokenRead.None -> RequestBuilt.Unverified("no proof is held, and this process could obtain none")
-            is TokenRead.Unavailable -> RequestBuilt.Unverified(token.detail)
-        }
+    private suspend fun proven(upload: Upload, device: DeviceId): RequestBuilt = when (val token = gated()) {
+        is TokenRead.Held -> RequestBuilt.Built(request(upload, device, token.token))
+        TokenRead.None -> RequestBuilt.Unverified("no proof is held, and this process could obtain none")
+        is TokenRead.Unavailable -> RequestBuilt.Unverified(token.detail)
+    }
 
     /** The token, the gated way: the one held, or one this process obtains first. */
     private suspend fun gated(): TokenRead = when (val read = credential.token()) {
@@ -67,25 +72,35 @@ class UploadRequests(
         is TokenRead.Held, is TokenRead.Unavailable -> read
     }
 
-    private fun request(
-        event: EventId,
-        device: DeviceId,
-        key: UploadKey,
-        detail: RowDetail,
-        token: BearerToken,
-    ): BuiltRequest {
+    private fun request(upload: Upload, device: DeviceId, token: BearerToken): BuiltRequest {
+        val key = upload.key
         val path = Routes.UploadResource.path(
-            event.value,
+            upload.event.value,
             device.value,
             key.asset.value,
             ResourceRoleText.of(key.role),
-            detail.originalFilename.ifBlank { UploadKeyText.of(key) },
+            nameOf(upload),
         )
         val url = exchange.url(path)
-        val headers = mapOf("Content-Type" to detail.contentType) + exchange.versionHeaders() +
+        val headers = mapOf("Content-Type" to upload.detail.contentType) + exchange.versionHeaders() +
             mapOf("Authorization" to "Bearer ${token.secret}")
         return BuiltRequest(url, headers, Destinations.pathOf(url), device)
     }
+
+    /**
+     * The name the upload's query carries: the photo's own — or the key's when its row records none — readable in a
+     * plain event, and in an encrypted one only sealed for this photo (decision record `changes/seal-file-names`).
+     */
+    private fun nameOf(upload: Upload): String {
+        val name = upload.detail.originalFilename.ifBlank { UploadKeyText.of(upload.key) }
+        return when (val seal = upload.seal) {
+            UploadSeal.Plain -> name
+            is UploadSeal.Sealed -> names.sealFileName(seal.order.key, seal.order.binding, name)
+        }
+    }
+
+    /** One upload's request, as its tier asks for it. */
+    private class Upload(val event: EventId, val key: UploadKey, val detail: RowDetail, val seal: UploadSeal.Goes)
 }
 
 /** What building an upload's request came to. */

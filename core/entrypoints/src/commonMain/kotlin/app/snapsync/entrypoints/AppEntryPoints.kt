@@ -528,7 +528,7 @@ class ForegroundWork(
         required { prelude.run(on) }
         concurrently {
             child("staging") { staging.releaseUnclaimed(membership.active()?.let { it.event.id }) }
-            child("settle") { settle(membership.active()?.let { it.event.id }) }
+            child("settle") { settle(membership.active()) }
             child("total") { count() }
             receiving.children(this, on)
             child("membership") { stateRefresh.run(on) }

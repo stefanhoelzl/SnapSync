@@ -9,8 +9,10 @@ import app.snapsync.data.gallery.GalleryTranslation.facts
 import app.snapsync.data.gallery.GalleryTranslation.role
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.AdmissionVerdict
 import app.snapsync.domain.sharing.CandidateSet
 import app.snapsync.domain.sharing.SelectionInputs
@@ -18,9 +20,7 @@ import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.domain.sharing.WalkBounds
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.version.Store
-import app.snapsync.format.UploadKeyText
 import app.snapsync.inbound.Completion
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmLanes
@@ -419,17 +419,20 @@ class WorldInspectorController(
     private fun injectMember(eventId: String, deviceId: String) {
         val backend = mocks.backend.operator
         val asset = AssetId.parse("$deviceId-a1")!!
-        val key = UploadKeyText.of(UploadKey.of(asset, ResourceRole.PRIMARY, FOREIGN_FILENAME))
-        backend.deposit(deviceId, asset, ResourceRole.PRIMARY, FOREIGN_FILENAME, eventId)
+        val device = requireNotNull(DeviceId.parse(deviceId)) { "not a device id: '$deviceId'" }
+        // Named as any member's build uploads it: sealed for the photo in an event this device created encrypted.
+        val binding = FileBinding(EventId.parse(eventId)!!, device, asset, ResourceRole.PRIMARY)
+        val name = mocks.eventKeys.sealedFileName(binding, FOREIGN_FILENAME) ?: FOREIGN_FILENAME
+        backend.deposit(deviceId, asset, ResourceRole.PRIMARY, name, eventId)
         backend.seedMember(
             eventId,
             MockManifest(
-                requireNotNull(DeviceId.parse(deviceId)) { "not a device id: '$deviceId'" },
+                device,
                 listOf(
                     MockManifestAsset(
                         asset,
                         LibraryAssets.DEFAULT_DATE,
-                        listOf(MockManifestResource(ResourceRole.PRIMARY, "image/heic", key, FOREIGN_FILENAME)),
+                        listOf(MockManifestResource(ResourceRole.PRIMARY, "image/heic")),
                     ),
                 ),
             ),

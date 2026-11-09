@@ -66,6 +66,8 @@ internal fun launchWorld(
             heldToken(ports.secureStore.value, id.takeIf { it == own })
         },
         sealedName = device.eventKeys::sealedName,
+        sealedFileName = device.eventKeys::sealedFileName,
+        openedFileName = device.eventKeys::openedFileName,
     ).takeIf { MockedSystem.BACKEND in mocked },
     reachRefusal = realBackend,
     operatorRefusal = { realBackend },

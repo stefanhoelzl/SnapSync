@@ -29,7 +29,7 @@ import { s3Client } from "../s3.ts";
 import { type Fault, refuse } from "../refusal.ts";
 import type { RequestLog } from "../request-log.ts";
 import { APP_VERSION_HEADER } from "../version.ts";
-import { uploadOf } from "./encrypted-upload.ts";
+import { admitFilename, uploadOf } from "./encrypted-upload.ts";
 import {
   ALREADY_LANDED,
   type Landing,
@@ -175,6 +175,7 @@ export function v2Handlers(
     contentType: string,
   ): Promise<StoreOutcome> {
     const { eventId, deviceId, assetId, role } = r;
+    admitFilename(r.filename, r.keyId);
     const errors: Fault[] = [];
     const path = await eventBytePath(eventId, deviceId, assetId, role);
     const target: Target = { ...r, path, contentType };

@@ -5,6 +5,8 @@ import app.snapsync.data.FakeClient
 import app.snapsync.data.Held
 import app.snapsync.data.backend.Credential
 import app.snapsync.data.backend.TokenRead
+import app.snapsync.data.crypto.FileNameCipher
+import app.snapsync.data.crypto.UploadSeal
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.token
 import app.snapsync.data.trust.CachedCredentialStore
@@ -15,6 +17,7 @@ import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.trust.BearerToken
 import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.UploadKey
+import app.snapsync.mock.fakeCrypto
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Limits
@@ -51,13 +54,14 @@ class UploadRequestsTest {
 
     private val held = Held(token = token(30))
     private val identity = FixedIdentity(DeviceIdRead.Ok(device, DeviceIdRead.Via.READ))
-    private val requests = UploadRequests(FakeClient().exchange(), held.store, Gated(held.store), identity)
+    private val requests =
+        UploadRequests(FakeClient().exchange(), held.store, Gated(held.store), identity, FileNameCipher(fakeCrypto()))
 
     private fun built(answer: RequestBuilt): BuiltRequest = assertIs<RequestBuilt.Built>(answer).request
 
     @Test
     fun `a first upload is addressed to the event, this device, the asset and its role, carrying the token`() = runTest {
-        val request = built(requests.first(event, key, detail))
+        val request = built(requests.first(event, key, detail, UploadSeal.Plain))
 
         val path = "/events/${event.value}/files/devices/${device.value}/A1/live"
         assertEquals("${FakeClient.BASE}$path?filename=IMG_0001.MOV", request.url)
@@ -69,7 +73,8 @@ class UploadRequestsTest {
 
     @Test
     fun `a row that records no file name is named by its key, whose extension is the same`() = runTest {
-        val request = built(requests.first(event, key, RowDetail(CaptureDate.Undated, "video/quicktime", "")))
+        val request =
+            built(requests.first(event, key, RowDetail(CaptureDate.Undated, "video/quicktime", ""), UploadSeal.Plain))
 
         assertEquals(true, request.url.endsWith("?filename=A1-live.mov"))
     }
@@ -78,14 +83,20 @@ class UploadRequestsTest {
     fun `a phone that holds no proof obtains one first, and where it cannot nothing is built`() = runTest {
         val empty = Held().store
         val attesting = Gated(empty, obtains = token(31))
-        val app = UploadRequests(FakeClient().exchange(), empty, attesting, identity)
-        assertEquals("Bearer ${token(31)}", built(app.first(event, key, detail)).headers["Authorization"])
+        val app = UploadRequests(FakeClient().exchange(), empty, attesting, identity, FileNameCipher(fakeCrypto()))
+        assertEquals(
+            "Bearer ${token(31)}",
+            built(app.first(event, key, detail, UploadSeal.Plain)).headers["Authorization"],
+        )
         assertEquals(1, attesting.asked, "the app attests on the spot")
 
         val dropOnly = Gated(empty)
-        val extension = UploadRequests(FakeClient().exchange(), empty, dropOnly, identity)
-        assertIs<RequestBuilt.Unverified>(extension.first(event, key, detail), "no request without a proof")
-        assertIs<RequestBuilt.Unverified>(extension.retry(event, key, detail))
+        val extension = UploadRequests(FakeClient().exchange(), empty, dropOnly, identity, FileNameCipher(fakeCrypto()))
+        assertIs<RequestBuilt.Unverified>(
+            extension.first(event, key, detail, UploadSeal.Plain),
+            "no request without a proof",
+        )
+        assertIs<RequestBuilt.Unverified>(extension.retry(event, key, detail, UploadSeal.Plain))
     }
 
     @Test
@@ -96,27 +107,34 @@ class UploadRequestsTest {
             override suspend fun rejected(sent: BearerToken): TokenRead = TokenRead.None
             override suspend fun missing(): TokenRead = TokenRead.None.also { asked++ }
         }
-        val locked = UploadRequests(FakeClient().exchange(), held.store, unreadable, identity)
+        val locked =
+            UploadRequests(FakeClient().exchange(), held.store, unreadable, identity, FileNameCipher(fakeCrypto()))
 
-        assertEquals(RequestBuilt.Unverified("keychain locked"), locked.first(event, key, detail))
+        assertEquals(RequestBuilt.Unverified("keychain locked"), locked.first(event, key, detail, UploadSeal.Plain))
         assertEquals(0, unreadable.asked)
     }
 
     @Test
     fun `a retry carries the token the other process renewed since`() = runTest {
-        requests.first(event, key, detail)
+        requests.first(event, key, detail, UploadSeal.Plain)
         held.record.setToken(app.snapsync.data.bearer(token(29)))
 
-        assertEquals("Bearer ${token(30)}", built(requests.first(event, key, detail)).headers["Authorization"])
-        assertEquals("Bearer ${token(29)}", built(requests.retry(event, key, detail)).headers["Authorization"])
+        assertEquals(
+            "Bearer ${token(30)}",
+            built(requests.first(event, key, detail, UploadSeal.Plain)).headers["Authorization"],
+        )
+        assertEquals(
+            "Bearer ${token(29)}",
+            built(requests.retry(event, key, detail, UploadSeal.Plain)).headers["Authorization"],
+        )
     }
 
     @Test
     fun `nothing is built for a device whose id this process cannot read or may not mint`() = runTest {
         identity.read = DeviceIdRead.Absent
-        assertEquals(RequestBuilt.NoIdentity, requests.first(event, key, detail))
+        assertEquals(RequestBuilt.NoIdentity, requests.first(event, key, detail, UploadSeal.Plain))
 
         identity.read = DeviceIdRead.Unavailable("locked")
-        assertEquals(RequestBuilt.IdentityUnreadable("locked"), requests.retry(event, key, detail))
+        assertEquals(RequestBuilt.IdentityUnreadable("locked"), requests.retry(event, key, detail, UploadSeal.Plain))
     }
 }

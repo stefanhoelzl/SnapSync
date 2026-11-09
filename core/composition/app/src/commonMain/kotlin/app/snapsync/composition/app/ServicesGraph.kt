@@ -4,7 +4,9 @@ import app.snapsync.composition.process.ProcessGraph
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.FileCipher
+import app.snapsync.data.crypto.FileNameCipher
 import app.snapsync.data.crypto.MetaCipher
+import app.snapsync.data.crypto.ServedNames
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.legacy.LegacyRecords
 import app.snapsync.data.membership.EventCheckRecord
@@ -79,6 +81,12 @@ class ServicesGraph(ports: AppPorts, process: ProcessGraph) {
 
     /** An encrypted event's sealed metadata record — its name — sealed and opened (`changes/seal-event-name`). */
     val metaCipher: MetaCipher = MetaCipher(process.crypto)
+
+    /** An encrypted event's photo names, each sealed and opened for its photo (`changes/seal-file-names`). */
+    val fileNameCipher: FileNameCipher = FileNameCipher(process.crypto)
+
+    /** The names an event's photos are served under, read — opened with the event's key when it is encrypted. */
+    val servedNames: ServedNames = ServedNames(eventKeyStore, fileNameCipher)
 
     /** The device's mobile-data choice — over the shared preferences, which the upload extension reads too. */
     val mobileData: MobileDataStore = MobileDataStore(ports.preferences)

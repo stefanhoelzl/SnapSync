@@ -88,7 +88,7 @@ class ReceivingGraph(
 
     private val opening: DownloadOpening =
         DownloadOpening(services.membership, services.eventKeyStore, services.fileCipher, process.files)
-    private val union: EventUnion = EventUnion(backend.gateway, services.manifestRecord)
+    private val union: EventUnion = EventUnion(backend.gateway, services.manifestRecord, services.servedNames)
     private val marked: MarkedPhotos = MarkedPhotos(ports.gallery, selection)
     private val passes: RecognitionPasses = RecognitionPasses()
 

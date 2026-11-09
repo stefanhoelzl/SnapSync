@@ -12,6 +12,7 @@ import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.Credential
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.FileCipher
+import app.snapsync.data.crypto.FileNameCipher
 import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
@@ -67,6 +68,8 @@ class UploadGraph(
     gateway: BackendGateway,
     keys: EventKeyStore,
     cipher: FileCipher,
+    /** What seals a photo's name into an encrypted event's upload. */
+    names: FileNameCipher,
 ) {
     val rows: OwnUploadRows = OwnUploadRows(records)
     val walkRecord: WalkRecord = WalkRecord(records)
@@ -74,7 +77,7 @@ class UploadGraph(
     val record: JobRecord = JobRecord(transitions)
     val recent: RecentWalk = RecentWalk()
     val resources: OwnPhotoResources = OwnPhotoResources(photos)
-    val requests: UploadRequests = UploadRequests(exchange, credentials, credential, identity)
+    val requests: UploadRequests = UploadRequests(exchange, credentials, credential, identity, names)
     val sealing: UploadSealing = UploadSealing(membership, keys, identity, cipher)
     val gate: UploadGateRead =
         UploadGateRead(records, PassEntryRead(rows, membership, identity, keys), host, admission, received)

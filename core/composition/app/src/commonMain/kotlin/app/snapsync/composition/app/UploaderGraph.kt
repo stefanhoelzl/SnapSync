@@ -68,6 +68,7 @@ class UploaderGraph(
         gateway = backend.gateway,
         keys = services.eventKeyStore,
         cipher = services.fileCipher,
+        names = services.fileNameCipher,
     )
 
     private val staged: StagedFiles = StagedFiles(process.files)
@@ -96,7 +97,7 @@ class UploaderGraph(
 
     val settleStored: SettleStoredUploads = SettleStoredUploads(
         layers.rows,
-        DeviceListing(backend.gateway, services.deviceIdentity),
+        DeviceListing(backend.gateway, services.deviceIdentity, services.servedNames),
         layers.transitions,
     )
 

@@ -22,21 +22,33 @@ class SessionTier(
     private val create: SessionCreate,
     private val fromFiles: FileUploads,
 ) : UploadTier {
-    /** Make [row]'s upload into [event] a transfer of [handle]'s bytes, and record its row requested once it exists. */
+    /**
+     * Make [row]'s upload into [event] a transfer of [handle]'s bytes, and record its row requested once it exists. How
+     * its event seals it is asked first: an encrypted event's request carries the photo's name sealed with it.
+     */
     override suspend fun create(event: EventId, row: UploadRow.Discovered, from: SendFrom): CreateAnswer =
-        when (val built = requests.first(event, row.key, row.detail)) {
-            is RequestBuilt.Built -> sealed(SessionUpload(event, row.key, from.handle, built.request))
+        when (val seal = sealing.sealFor(event, row.key.asset, row.key.role)) {
+            is UploadSeal.Goes -> built(event, row, from, seal)
+            is UploadSeal.Withheld -> CreateAnswer.Withheld(seal.because)
+        }
+
+    private suspend fun built(
+        event: EventId,
+        row: UploadRow.Discovered,
+        from: SendFrom,
+        seal: UploadSeal.Goes,
+    ): CreateAnswer =
+        when (val built = requests.first(event, row.key, row.detail, seal)) {
+            is RequestBuilt.Built -> sent(SessionUpload(event, row.key, from.handle, built.request), seal)
             RequestBuilt.NoIdentity -> CreateAnswer.Unaddressed("no device id is held here")
             is RequestBuilt.IdentityUnreadable -> CreateAnswer.Unaddressed(built.detail)
             is RequestBuilt.Unverified -> CreateAnswer.Unverified(built.detail)
         }
 
-    private suspend fun sealed(upload: SessionUpload): CreateAnswer =
-        when (val seal = sealing.sealFor(upload.event, upload.key.asset, upload.key.role)) {
-            UploadSeal.Plain -> plain(upload)
-            is UploadSeal.Sealed -> fromFiles.sent(upload, seal.order)
-            is UploadSeal.Withheld -> CreateAnswer.Withheld(seal.because)
-        }
+    private suspend fun sent(upload: SessionUpload, seal: UploadSeal.Goes): CreateAnswer = when (seal) {
+        UploadSeal.Plain -> plain(upload)
+        is UploadSeal.Sealed -> fromFiles.sent(upload, seal.order)
+    }
 
     private suspend fun plain(upload: SessionUpload): CreateAnswer = when (session.takesResources) {
         true -> create.made(upload, TransferSource.Resource(upload.handle), upload.request.headers).answer

@@ -188,6 +188,19 @@ interface BackendSetup {
      * [SEEDED_PART_SHA256] — which keeps what arrived (`docs/architecture.md`, "Resumable uploads").
      */
     suspend fun uploadPart(eventId: String, deviceId: String, asset: SeededAsset, role: ResourceRole)
+
+    /** An ENCRYPTED event under [keyId], named by the sealed record [sealedMeta]; answers its id. */
+    suspend fun createEncryptedEvent(keyId: String, sealedMeta: String): String
+
+    /** [body] sent as [asset]'s [role] into [eventId] under [filename], as an uploader addresses it; the HTTP status. */
+    suspend fun uploadNamed(
+        eventId: String,
+        deviceId: String,
+        asset: SeededAsset,
+        role: ResourceRole,
+        filename: String,
+        body: String,
+    ): Int?
 }
 
 /** The SHA-256 a setup's upload declares its bytes by — of [EdgeSetup]'s seeded body. */
@@ -294,6 +307,45 @@ class EdgeSetup(private val transport: HttpTransport, base: String, private val 
         }
     }
 
+    override suspend fun createEncryptedEvent(keyId: String, sealedMeta: String): String {
+        val body = EventCreate(
+            sealedMeta = sealedMeta,
+            keyId = keyId,
+            startsAt = SEEDED_STARTS_AT,
+            endsAt = SEEDED_ENDS_AT,
+        )
+        val reply = send(Routes.CreateEvent.request(body), creator)
+        return (reply as? CreateEventReply.Created ?: refused("create an encrypted event", reply)).event.eventId
+    }
+
+    override suspend fun uploadNamed(
+        eventId: String,
+        deviceId: String,
+        asset: SeededAsset,
+        role: ResourceRole,
+        filename: String,
+        body: String,
+    ): Int? {
+        val path = Routes.UploadResource.path(
+            eventId,
+            deviceId,
+            asset.assetId.value,
+            ResourceRoleText.of(role),
+            filename,
+        )
+        val headers = mapOf(
+            Limits.VERSION_HEADER to SERVED_APP_VERSION,
+            AUTHORIZATION to "Bearer ${tokens.tokenFor(deviceId)}",
+            "Content-Type" to "image/jpeg",
+        )
+        return (
+            transport.send(
+                HttpRequest(Routes.UploadResource.METHOD, base + path, headers, body),
+            ) as? HttpResult.Response
+            )
+            ?.status
+    }
+
     /** [request], carrying [deviceId]'s token — or none, for a route a token is optional on. */
     private suspend fun <R : Reply> send(request: GatedRequest<R>, deviceId: String?): R {
         val wire = request.wire
@@ -329,8 +381,15 @@ class SeededAsset(val assetId: AssetId, val roles: List<ResourceRole>, val filen
 
     fun key(role: ResourceRole) = UploadKeyText.of(UploadKey.of(assetId, role, filename))
 
-    /** This asset as a manifest declares it. */
+    /** This asset as a manifest declares it — roles and types; what each file is called travels with its bytes. */
     fun onWire() = ManifestAsset(
+        assetId = assetId.value,
+        creationDate = creationDate,
+        resources = roles.map { ManifestResource(it.onWire(), "image/jpeg") },
+    )
+
+    /** This asset as a build before `seal-file-names` declares it: each resource's key and name besides. */
+    fun asOlderBuilds() = ManifestAsset(
         assetId = assetId.value,
         creationDate = creationDate,
         resources = roles.map { ManifestResource(it.onWire(), "image/jpeg", key(it), filename) },

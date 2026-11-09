@@ -615,7 +615,10 @@ paths:
         - name: filename
           in: query
           required: true
-          description: The resource's capture name. It never reaches the storage key.
+          description: |
+            The resource's capture name. It never reaches the storage key. In an ENCRYPTED event it is the name
+            sealed for this one resource (a sealed metadata envelope, decision record `changes/seal-file-names`),
+            and anything else is refused `400 invalid filename`.
           schema:
             type: string
             minLength: 1
@@ -1405,16 +1408,18 @@ components:
             $ref: "#/components/schemas/ManifestResource"
     ManifestResource:
       type: object
-      required: [role, contentType, key, filename]
+      required: [role, contentType]
       properties:
         role:
           $ref: "#/components/schemas/Role"
         contentType:
           type: string
         key:
+          description: Ignored. Sent only by builds before `seal-file-names` (`PENDING_CLEANUPS.md`).
           type: string
           minLength: 1
         filename:
+          description: Ignored. Sent only by builds before `seal-file-names` (`PENDING_CLEANUPS.md`).
           type: string
 
     UnionAsset:
@@ -1440,8 +1445,12 @@ components:
         contentType:
           type: string
         key:
+          description: |
+            `<assetId>-<role>.<ext>`, derived from a readable `filename`. Read only by builds before
+            `seal-file-names`, which derive it themselves from the name they hold (`PENDING_CLEANUPS.md`).
           type: string
         filename:
+          description: The capture name as uploaded — sealed in an encrypted event.
           type: string
         url:
           description: The download address; absent under `urls=false`.
@@ -1457,7 +1466,7 @@ components:
         role:
           $ref: "#/components/schemas/Role"
         filename:
-          description: The capture name.
+          description: The capture name as uploaded — sealed in an encrypted event.
           type: string
 
     DeviceConfig:

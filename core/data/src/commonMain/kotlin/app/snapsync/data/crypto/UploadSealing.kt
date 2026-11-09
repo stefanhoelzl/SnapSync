@@ -68,11 +68,14 @@ class UploadSealing(
 
 /** How one upload goes up. */
 sealed interface UploadSeal {
-    /** A plain event: the bytes as the library holds them. */
-    data object Plain : UploadSeal
+    /** The upload goes up now — its bytes, and its name, as its event takes them. */
+    sealed interface Goes : UploadSeal
 
-    /** An encrypted event: sealed as [order] says. */
-    class Sealed(val order: SealOrder) : UploadSeal
+    /** A plain event: the bytes as the library holds them, the name as it is. */
+    data object Plain : Goes
+
+    /** An encrypted event: sealed as [order] says, the photo's name with them. */
+    class Sealed(val order: SealOrder) : Goes
 
     /** Nothing goes up now, [because]. */
     class Withheld(val because: SealVerdict.Withheld.Because) : UploadSeal

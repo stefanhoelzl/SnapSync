@@ -27,13 +27,24 @@ class OsQueueTier(
     private val network: MobileDataStore,
     private val record: JobRecord,
 ) : UploadTier {
-    /** Make [row]'s upload into [event] a job sending [handle]'s bytes, and record its row requested once it exists. */
+    /**
+     * Make [row]'s upload into [event] a job sending [handle]'s bytes, and record its row requested once it exists. How
+     * its event seals it is asked first: an encrypted event's request carries the photo's name sealed with it.
+     */
     override suspend fun create(event: EventId, row: UploadRow.Discovered, from: SendFrom): CreateAnswer =
-        when (val built = requests.first(event, row.key, row.detail)) {
-            is RequestBuilt.Built -> when (val target = target(event, row.key, built.request)) {
-                is Target.To -> made(event, row.key, from.handle, built.request, target.target)
-                is Target.Withheld -> CreateAnswer.Withheld(target.because)
-            }
+        when (val seal = sealing.sealFor(event, row.key.asset, row.key.role)) {
+            is UploadSeal.Goes -> created(event, row, from, seal)
+            is UploadSeal.Withheld -> CreateAnswer.Withheld(seal.because)
+        }
+
+    private suspend fun created(
+        event: EventId,
+        row: UploadRow.Discovered,
+        from: SendFrom,
+        seal: UploadSeal.Goes,
+    ): CreateAnswer =
+        when (val built = requests.first(event, row.key, row.detail, seal)) {
+            is RequestBuilt.Built -> made(event, row.key, from.handle, built.request, target(built.request, seal))
             RequestBuilt.NoIdentity -> CreateAnswer.Unaddressed("no device id is held here")
             is RequestBuilt.IdentityUnreadable -> CreateAnswer.Unaddressed(built.detail)
             is RequestBuilt.Unverified -> CreateAnswer.Unverified(built.detail)
@@ -45,29 +56,27 @@ class OsQueueTier(
      * comes back as a terminal failure through the drain.
      */
     suspend fun retry(event: EventId, offered: OfferedRetry): RetryAnswer =
-        when (val built = requests.retry(event, offered.row.key, offered.row.detail)) {
-            is RequestBuilt.Built -> when (val target = target(event, offered.row.key, built.request)) {
-                is Target.To -> repointed(queue.retry(offered.job, target.target))
-                is Target.Withheld -> RetryAnswer.Withheld(target.because)
-            }
+        when (val seal = sealing.sealFor(event, offered.row.key.asset, offered.row.key.role)) {
+            is UploadSeal.Goes -> repointed(event, offered, seal)
+            is UploadSeal.Withheld -> RetryAnswer.Withheld(seal.because)
+        }
+
+    private suspend fun repointed(event: EventId, offered: OfferedRetry, seal: UploadSeal.Goes): RetryAnswer =
+        when (val built = requests.retry(event, offered.row.key, offered.row.detail, seal)) {
+            is RequestBuilt.Built -> repointed(queue.retry(offered.job, target(built.request, seal)))
             RequestBuilt.NoIdentity -> RetryAnswer.Unaddressed("no device id is held here")
             is RequestBuilt.IdentityUnreadable -> RetryAnswer.Unaddressed(built.detail)
             is RequestBuilt.Unverified -> RetryAnswer.Unverified(built.detail)
         }
 
-    /** Where [key]'s upload into [event] goes, with the headers its event's seal adds — or that it may not go now. */
-    private fun target(event: EventId, key: UploadKey, request: BuiltRequest): Target =
-        when (val seal = sealing.sealFor(event, key.asset, key.role)) {
-            UploadSeal.Plain -> Target.To(UploadTarget(request.url, request.headers, network.transferNetwork()))
-            is UploadSeal.Sealed -> Target.To(
-                UploadTarget(
-                    request.url,
-                    request.headers + sealing.edgeSeal(seal.order).headers(),
-                    network.transferNetwork(),
-                ),
-            )
-            is UploadSeal.Withheld -> Target.Withheld(seal.because)
-        }
+    /** Where [request] goes, with the headers the event's seal adds: the edge seals the library's own bytes. */
+    private fun target(request: BuiltRequest, seal: UploadSeal.Goes): UploadTarget =
+        UploadTarget(request.url, request.headers + sealHeaders(seal), network.transferNetwork())
+
+    private fun sealHeaders(seal: UploadSeal.Goes): Map<String, String> = when (seal) {
+        UploadSeal.Plain -> emptyMap()
+        is UploadSeal.Sealed -> sealing.edgeSeal(seal.order).headers()
+    }
 
     /** The job made, and its row recorded requested in the same step — a cancellation cannot split the two. */
     private suspend fun made(
@@ -83,13 +92,6 @@ class OsQueueTier(
     private fun repointed(answer: ChangeOutcome): RetryAnswer = when (answer) {
         ChangeOutcome.Applied -> RetryAnswer.Repointed
         is ChangeOutcome.Refused -> RetryAnswer.Refused("${answer.code} ${answer.detail}")
-    }
-
-    /** Where an upload goes, or that its event's seal withholds it. */
-    private sealed interface Target {
-        class To(val target: UploadTarget) : Target
-
-        class Withheld(val because: SealVerdict.Withheld.Because) : Target
     }
 }
 

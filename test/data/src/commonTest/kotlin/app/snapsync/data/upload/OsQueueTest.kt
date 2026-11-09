@@ -18,6 +18,7 @@ import app.snapsync.ports.UploadJobState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -145,6 +146,19 @@ class OsQueueTest {
         assertIs<RetryAnswer.Unverified>(tier.retry(world.event, offered))
         assertEquals(emptyList(), queue.retried, "the queue keeps the job, and offers it again once verified")
         assertIs<UploadRow.Requested>(world.row("A1"))
+    }
+
+    @Test
+    fun `an encrypted event's offered retry is re-pointed with the one file's key and the photo's name sealed`() = runTest {
+        world.joinedEncrypted()
+        queue.offered = listOf(job(requested()))
+        val offered = drain.offered(world.event).single()
+
+        assertEquals(RetryAnswer.Repointed, tier.retry(world.event, offered))
+
+        val target = queue.retried.single().second
+        assertTrue(EncryptedFileFormat.FILE_KEY_HEADER in target.headers)
+        assertFalse("IMG" in target.url, "the retry names the photo only sealed: ${target.url}")
     }
 
     @Test

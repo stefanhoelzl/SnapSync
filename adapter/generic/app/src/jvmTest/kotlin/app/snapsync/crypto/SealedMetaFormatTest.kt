@@ -1,12 +1,19 @@
 package app.snapsync.crypto
 
 import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.FileNameCipher
+import app.snapsync.data.crypto.FileNameOpening
 import app.snapsync.data.crypto.MetaCipher
 import app.snapsync.data.crypto.MetaOpening
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.format.Hmac
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.SealedMetaFormat
 import app.snapsync.ports.Crypto
 import kotlinx.serialization.json.Json
@@ -97,6 +104,55 @@ class SealedMetaFormatTest {
         rejects.forEach { v ->
             assertIs<MetaOpening.Damaged>(
                 MetaCipher(JcaCrypto()).open(identified(v.str("eventKey").hex()), v.str("envelope")),
+                v.str("reason"),
+            )
+        }
+    }
+
+    private fun JsonObject.binding(): FileBinding = getValue("binding").jsonObject.let { b ->
+        FileBinding(
+            EventId.parse(b.str("eventId"))!!,
+            DeviceId.parse(b.str("deviceId"))!!,
+            AssetId.parse(b.str("assetId"))!!,
+            ResourceRoleText.parse(b.str("role"))!!,
+        )
+    }
+
+    @Test
+    fun `every file-name vector derives its key, seals to its exact envelope and opens to its name`() {
+        val names = list("fileName")
+        assertTrue(names.isNotEmpty())
+        names.forEach { v ->
+            val key = identified(v.str("eventKey").hex())
+            val binding = v.binding()
+            assertEquals(
+                v.str("fileNameKey"),
+                SealedMetaFormat.fileNameKeyOf(v.str("eventKey").hex(), binding, jcaHmac).hex(),
+            )
+            val name = SealedMetaFormat.recordOf(v.str("plaintext").encodeToByteArray())!!.name
+            if (!v.str("plaintext").contains("future")) {
+                assertEquals(
+                    v.str("envelope"),
+                    FileNameCipher(drawing(v.str("nonce").hex())).sealFileName(key, binding, name),
+                    "the vector's name seals to its envelope: $name",
+                )
+            }
+            val opened = assertIs<FileNameOpening.Opened>(
+                FileNameCipher(JcaCrypto()).openFileName(key, binding, v.str("envelope")),
+            )
+            assertEquals(name, opened.name.value)
+        }
+    }
+
+    @Test
+    fun `every file-name reject vector is damaged, never opened`() {
+        val rejects = list("fileNameReject")
+        assertTrue(rejects.isNotEmpty())
+        rejects.forEach { v ->
+            assertIs<FileNameOpening.Damaged>(
+                FileNameCipher(
+                    JcaCrypto(),
+                ).openFileName(identified(v.str("eventKey").hex()), v.binding(), v.str("envelope")),
                 v.str("reason"),
             )
         }

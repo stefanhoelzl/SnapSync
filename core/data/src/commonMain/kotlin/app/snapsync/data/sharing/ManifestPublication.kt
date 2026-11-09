@@ -10,7 +10,6 @@ import app.snapsync.domain.sharing.ManifestAsset
 import app.snapsync.domain.sharing.ManifestResource
 import app.snapsync.domain.sharing.ShareDeclaration
 import app.snapsync.format.TimestampText
-import app.snapsync.format.UploadKeyText
 import app.snapsync.wire.api.ClientError
 import app.snapsync.wire.api.Closed
 import app.snapsync.wire.api.NoAnswer
@@ -63,11 +62,14 @@ class ManifestBody private constructor(internal val wire: Manifest, val text: St
             resources = asset.resources.map(::wireResource),
         )
 
+        /**
+         * A resource as the manifest declares it: its role and type. What it is called arrives with its bytes —
+         * sealed in an encrypted event — and the service reads no name or key here (decision record
+         * `changes/seal-file-names`, D5).
+         */
         private fun wireResource(resource: ManifestResource) = WireResource(
             role = role(resource.key.role),
             contentType = resource.contentType,
-            key = UploadKeyText.of(resource.key),
-            filename = resource.filename,
         )
 
         private fun role(role: ResourceRole): Role = when (role) {

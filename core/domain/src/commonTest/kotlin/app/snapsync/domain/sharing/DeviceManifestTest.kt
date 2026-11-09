@@ -49,7 +49,6 @@ class DeviceManifestTest {
         assertEquals(listOf(ResourceRole.PRIMARY, ResourceRole.LIVE), a.resources.map { it.key.role }, "primary first")
         assertEquals(CaptureDate.Dated(ts("2026-06-02T10:00:00Z")), a.captured)
         assertEquals("image/heic", a.resources.first().contentType)
-        assertEquals("IMG.HEIC", a.resources.first().filename)
     }
 
     @Test

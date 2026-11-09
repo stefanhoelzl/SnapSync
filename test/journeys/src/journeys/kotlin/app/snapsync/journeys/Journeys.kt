@@ -34,8 +34,6 @@ import kotlinx.datetime.atTime
 import kotlinx.datetime.plus
 import kotlinx.datetime.todayIn
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -264,18 +262,14 @@ class Journeys {
             sharedCount(it).reached(sharedBefore + photos.size)
         }
         val own = union(http, event).filter { it["deviceId"]?.jsonPrimitive?.content != member.deviceId }
+        // Each name read with the key A's invite carries: an encrypted event serves it only sealed for its photo.
+        val key = inviteKey(a.state().ui)
+        val shapes = own.map { namesOf(key, event, it) }
         val whole = photos.all { files ->
-            own.any { shapeOf(it) == files.map(::part).map { p -> ResourceRoleText.of(p.role) to p.filename }.toSet() }
+            shapes.any { it == files.map(::part).map { p -> ResourceRoleText.of(p.role) to p.filename }.toSet() }
         }
-        assertTrue(whole, "A's ${photos.size} moving photo(s) in the event union, whole: ${own.map(::shapeOf)}")
+        assertTrue(whole, "A's ${photos.size} moving photo(s) in the event union, whole: $shapes")
     }
-
-    /** The (role, filename) pairs an asset of the union is made of. */
-    private fun shapeOf(asset: JsonObject): Set<Pair<String, String>> =
-        asset["resources"]?.jsonArray.orEmpty().mapTo(mutableSetOf()) {
-            val resource = it.jsonObject
-            resource.getValue("role").jsonPrimitive.content to resource.getValue("filename").jsonPrimitive.content
-        }
 
     /** A fixture as the part of a photo its name makes it: a movie is a Live Photo's video, anything else the primary. */
     private fun part(path: String): Member.Part {

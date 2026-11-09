@@ -12,6 +12,8 @@ import app.snapsync.data.backend.ok
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.FileCipher
+import app.snapsync.data.crypto.FileNameCipher
+import app.snapsync.data.crypto.ServedNames
 import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.membership.MembershipRepository
@@ -91,28 +93,39 @@ internal class SessionWorld(takesResources: Boolean = false) {
     val create = SessionCreate(session, mobileDataAnswering { network }, record)
     val fromFiles = FileUploads(staged, digests, export, standings, create)
     val held = Held(token = token(30))
+    val names = FileNameCipher(crypto)
     val requests = UploadRequests(
         app.snapsync.data.FakeClient().exchange(),
         held.store,
         app.snapsync.data.trust.DropOnlyCredential(held.store),
         identity,
+        names,
     )
+
+    /** How the names the joined event serves are read — this device's listing reads through it. */
+    val served = ServedNames(keys, names)
     val tier = SessionTier(session, requests, sealing, create, fromFiles)
     val ends = SessionEnds(session, staged, record)
     val sweep = StagingSweep(files, staged, reads, session, fromFiles)
 
     val event = active().event.id
 
+    /** The membership [joined] entered last — the one a foreground's settle and a listing read for. */
+    lateinit var joinedAs: Membership.Active
+
+    /** The event key [joinedEncrypted] keeps. */
+    val eventKey = ids.mint()
+
     fun joined(encryption: Encryption = Encryption.Plain) {
         val plain = active()
-        membership.enter(enrolled(Membership.Active(plain.event.copy(encryption = encryption), plain.share)))
+        joinedAs = Membership.Active(plain.event.copy(encryption = encryption), plain.share)
+        membership.enter(enrolled(joinedAs))
     }
 
     /** An encrypted event this device holds the key of. */
     fun joinedEncrypted() {
-        val key = ids.mint()
-        joined(Encryption.Encrypted(key.id))
-        keys.keep(KeyToKeep.Key(key), event)
+        joined(Encryption.Encrypted(eventKey.id))
+        keys.keep(KeyToKeep.Key(eventKey), event)
     }
 
     /** The phone's proof refused and dropped, as the upload extension drops one it cannot replace. */

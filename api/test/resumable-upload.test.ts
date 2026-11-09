@@ -10,6 +10,7 @@ import { s3Client } from "../src/s3.ts";
 import { AwsClient } from "aws4fetch";
 import { decodeHex } from "@std/encoding/hex";
 import { FORMAT_VERSION } from "../src/encrypted-file.ts";
+import { sealFileName } from "../src/sealed-meta.ts";
 import {
   CONFIG,
   createApp,
@@ -26,7 +27,14 @@ import { insertEvent } from "../src/db.ts";
 import { runSweep } from "../src/scripts/sweep.ts";
 
 const MiB = 1024 * 1024;
-const BYTE_PATH = `/api/v2/events/${E}/files/devices/${D}/ASSET1/primary?filename=VID_0001.MP4`;
+// A SEALED name (decision record `changes/seal-file-names`): what an encrypted event's upload must carry, and what a
+// plain event takes like any other name — so one path serves both kinds of event here.
+const NAME = await sealFileName(
+  new Uint8Array(32),
+  { eventId: E, deviceId: D, assetId: "ASSET1", role: "primary" },
+  "VID_0001.MP4",
+);
+const BYTE_PATH = `/api/v2/events/${E}/files/devices/${D}/ASSET1/primary?filename=${NAME}`;
 const STATUS_PATH = `/api/v2/events/${E}/files/devices/${D}/ASSET1/primary/upload`;
 const DEVLIST_PATH = `/api/v2/events/${E}/files/devices/${D}`;
 const PATH = await eventBytePath(E, D, "ASSET1", "primary");

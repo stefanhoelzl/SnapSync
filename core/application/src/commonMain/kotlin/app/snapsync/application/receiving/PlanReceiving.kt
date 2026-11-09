@@ -14,6 +14,7 @@ import app.snapsync.data.time.WallClock
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.CheckCadence
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.ReceivingMembership
 import app.snapsync.domain.receiving.UnionPage
 import app.snapsync.domain.receiving.UnionReadPlan
@@ -50,15 +51,17 @@ class PlanReceiving(
         trigger: UnionTrigger,
         announced: Long? = null,
         known: UnionPage? = null,
-    ): PlanOutcome = logged(Planning(receiving.membership.event.id, trigger, announced, known).planned())
+    ): PlanOutcome = logged(Planning(receiving.membership, trigger, announced, known).planned())
 
-    /** One plan of [event]'s union. */
+    /** One plan of [membership]'s event's union. */
     private inner class Planning(
-        private val event: EventId,
+        private val membership: Membership.Active,
         private val trigger: UnionTrigger,
         private val announced: Long?,
         private val known: UnionPage?,
     ) {
+        private val event: EventId = membership.event.id
+
         suspend fun planned(): PlanOutcome = when (val stored = plans.position(event)) {
             is DownloadRead.Ok -> readFor(stored.value)
             is DownloadRead.Unavailable -> PlanOutcome.Unavailable(stored.detail)
@@ -87,7 +90,7 @@ class PlanReceiving(
         /** Either way the hour is stamped: a union was read for this event now — by this act or by the caller's. */
         private suspend fun pageOf(plan: UnionReadPlan.Reading): UnionRead {
             checks.stamp(EventCheck.PHOTOS, event, clock.now())
-            return known?.let(UnionRead::Ok) ?: union.read(event, plan, trigger)
+            return known?.let(UnionRead::Ok) ?: union.read(membership, plan, trigger)
         }
 
         private suspend fun identified(page: UnionPage, plan: UnionReadPlan.Reading, stored: StoredPosition) =

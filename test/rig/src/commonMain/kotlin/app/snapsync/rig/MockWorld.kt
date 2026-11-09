@@ -5,7 +5,10 @@ import app.snapsync.contracts.SERVED_APP_VERSION
 import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.UploadKeyText
@@ -135,6 +138,14 @@ class BackendReach(
      * world did not create encrypted (`EventKeyLedger.sealedName`; decision record `changes/seal-event-name`).
      */
     private val sealedName: (eventId: String, name: String) -> String? = { _, _ -> null },
+    /**
+     * A photo's name sealed for that photo, as any member's build uploads it into an encrypted event — `null` for an
+     * event this world did not create encrypted (`EventKeyLedger.sealedFileName`; decision record
+     * `changes/seal-file-names`).
+     */
+    private val sealedFileName: (binding: FileBinding, name: String) -> String? = { _, _ -> null },
+    /** A photo's sealed name opened with its event's key — `null` where this world cannot (`EventKeyLedger.openedFileName`). */
+    private val openedFileName: (binding: FileBinding, envelope: String) -> String? = { _, _ -> null },
 ) {
     private val tokens = DeviceTokens(transport, base, attester, { declared.value ?: SERVED_APP_VERSION })
 
@@ -142,13 +153,19 @@ class BackendReach(
     private suspend fun tokenFor(deviceId: String): String? =
         ownToken(deviceId) ?: PlatformCalls.attemptSuspending { tokens.tokenFor(deviceId) }.getOrNull()
 
-    /** The object keys the backend lists for [deviceId] in [eventId] — each event holds its own. */
+    /**
+     * The object keys the backend lists for [deviceId] in [eventId] — each event holds its own — keyed as the uploading
+     * phone keys them: from the name it uploaded, opened first where the event is encrypted and this world holds its key.
+     */
     suspend fun objectsOf(eventId: String, deviceId: String): Set<String> {
         val reply = send(Routes.DeviceFiles.request(eventId, deviceId))
         val listed = reply as? DeviceFilesReply.Listed ?: refused("the listing", reply)
-        return listed.items.mapTo(
-            mutableSetOf(),
-        ) { UploadKeyText.of(UploadKey.of(AssetId.parse(it.assetId)!!, it.role.inApp(), it.filename)) }
+        return listed.items.mapTo(mutableSetOf()) {
+            val asset = AssetId.parse(it.assetId)!!
+            val role = it.role.inApp()
+            val binding = FileBinding(EventId.parse(eventId)!!, DeviceId.parse(deviceId)!!, asset, role)
+            UploadKeyText.of(UploadKey.of(asset, role, openedFileName(binding, it.filename) ?: it.filename))
+        }
     }
 
     /**
@@ -240,17 +257,23 @@ class BackendReach(
         resource: MockManifestResource,
         bytes: ByteArray = SEEDED_BYTES,
         eventId: String? = null,
+        /** The name exactly as uploaded — already sealed, by whatever key — instead of the resource's, sealed here. */
+        asUploaded: String? = null,
     ) {
         val role = ResourceRoleText.of(resource.role)
-        val path = eventId?.let { Routes.UploadResource.path(it, deviceId, assetId.value, role, resource.filename) }
-            ?: Routes.UploadResourceEventless.path(deviceId, assetId.value, role, resource.filename)
+        val fileName = checkNotNull(resource.filename) { "a seeded resource names the file it uploads" }
+        val path = eventId?.let {
+            val binding = FileBinding(EventId.parse(it)!!, DeviceId.parse(deviceId)!!, assetId, resource.role)
+            val uploaded = asUploaded ?: sealedFileName(binding, fileName) ?: fileName
+            Routes.UploadResource.path(it, deviceId, assetId.value, role, uploaded)
+        } ?: Routes.UploadResourceEventless.path(deviceId, assetId.value, role, fileName)
         val status = network.put(
             base + path,
             versionHeaders() + authorization(deviceId) + (CONTENT_TYPE to JPEG),
             bytes,
         )
         check(status != null && status in SUCCESS) {
-            "upload ${resource.key} for $deviceId was answered $status by the $name backend"
+            "upload of $assetId's $role ($fileName) for $deviceId was answered $status by the $name backend"
         }
     }
 
@@ -306,8 +329,6 @@ private fun MockManifest.onWire(): Manifest = Manifest(
                 app.snapsync.wire.models.ManifestResource(
                     Role.fromValue(ResourceRoleText.of(it.role)) ?: error("no described role for ${it.role}"),
                     it.contentType,
-                    it.key,
-                    it.filename,
                 )
             },
         )

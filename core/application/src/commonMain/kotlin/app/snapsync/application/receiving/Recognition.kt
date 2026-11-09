@@ -72,7 +72,7 @@ class RecognizeReceivedPhotos(
         (
             withTimeoutOrNull(
                 unionTimeout,
-            ) { union.read(active.event.id, UnionReadPlan.Whole, trigger) } as? UnionRead.Ok
+            ) { union.read(active, UnionReadPlan.Whole, trigger) } as? UnionRead.Ok
             )
             ?.page
 

@@ -9,12 +9,11 @@ import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.KeyMaterial
-import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.FileHead
 import app.snapsync.format.Hmac
 import app.snapsync.format.ResourceRoleText
-import app.snapsync.format.UploadKeyText
+import app.snapsync.format.SealedMetaFormat
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.wire.api.Limits
 import app.snapsync.wire.models.Manifest
@@ -89,7 +88,7 @@ class Member(private val http: HttpClient, backend: String) {
             assetId to parts
         }
         val assets = ids.map { (assetId, parts) ->
-            ManifestAsset(assetId.value, creationDate, parts.map { it.resource(assetId) })
+            ManifestAsset(assetId.value, creationDate, parts.map { it.resource() })
         }
         // The backend refuses a manifest without a version; 0 is always admitted (equal is, and a join clears it).
         val manifest = Manifest(requireNotNull(DeviceId.parse(deviceId)).value, assets, version = 0, `final` = false)
@@ -107,12 +106,10 @@ class Member(private val http: HttpClient, backend: String) {
 
     /** One file of a photo, as a device uploads it: its [role], [contentType], camera [filename] and [bytes]. */
     class Part(val role: ResourceRole, val contentType: String, val filename: String, val bytes: ByteArray) {
-        fun resource(assetId: AssetId) =
+        fun resource() =
             ManifestResource(
                 role = Role.fromValue(ResourceRoleText.of(role)) ?: error("no described role for $role"),
                 contentType = contentType,
-                key = UploadKeyText.of(UploadKey.of(assetId, role, filename)),
-                filename = filename,
             )
     }
 
@@ -123,7 +120,7 @@ class Member(private val http: HttpClient, backend: String) {
             http.put(
                 "$backend/events/$eventId/files/devices/$deviceId/$assetId/${ResourceRoleText.of(
                     part.role,
-                )}?filename=${part.filename}",
+                )}?filename=${eventKey?.let { sealedName(it, eventId, assetId, part) } ?: part.filename}",
             ) {
                 served(token)
                 contentType(ContentType.parse(part.contentType))
@@ -133,15 +130,35 @@ class Member(private val http: HttpClient, backend: String) {
     }
 
     /**
+     * [part]'s name sealed for that one photo (decision record `changes/seal-file-names`), as a member's device sends it
+     * into an encrypted event: the sealed metadata format's envelope under the photo's own derived key.
+     */
+    private fun sealedName(key: ByteArray, eventId: String, assetId: AssetId, part: Part): String {
+        val hmac = jdkHmac()
+        val binding = FileBinding(EventId.parse(eventId)!!, DeviceId.parse(deviceId)!!, assetId, part.role)
+        val nonce = ByteArray(SealedMetaFormat.NONCE_LENGTH).also(SecureRandom()::nextBytes)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            Cipher.ENCRYPT_MODE,
+            SecretKeySpec(SealedMetaFormat.fileNameKeyOf(key, binding, hmac), "AES"),
+            GCMParameterSpec(SealedMetaFormat.TAG_LENGTH * Byte.SIZE_BITS, nonce),
+        )
+        val plaintext = SealedMetaFormat.plaintextOf(SealedMetaFormat.recordNamed(part.filename))
+        return SealedMetaFormat.encode(nonce, cipher.doFinal(plaintext))
+    }
+
+    private fun jdkHmac() = object : Hmac {
+        override fun mac(key: ByteArray, message: ByteArray): ByteArray =
+            Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(key, "HmacSHA256")) }.doFinal(message)
+    }
+
+    /**
      * [part]'s bytes in the encrypted file format (`docs/architecture.md`), as a member's device seals it: the format's own
      * derivations from `model/`, over the JDK's HMAC-SHA256 and AES-256-GCM — the primitives the JVM's `Crypto` binds.
      */
     private fun sealed(key: ByteArray, eventId: String, assetId: AssetId, part: Part): ByteArray {
         val plain = part.bytes
-        val hmac = object : Hmac {
-            override fun mac(key: ByteArray, message: ByteArray): ByteArray =
-                Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(key, "HmacSHA256")) }.doFinal(message)
-        }
+        val hmac = jdkHmac()
         val random = SecureRandom()
         val head = FileHead.of(
             keyId = EncryptedFileFormat.keyIdOf(key, hmac),

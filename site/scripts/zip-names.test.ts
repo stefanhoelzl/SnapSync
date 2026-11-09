@@ -70,9 +70,23 @@ Deno.test("an asset with no original, and a resource with no url, are skipped", 
   assertEquals(photos, 1);
 });
 
-Deno.test("a nameless resource is saved under a generic name", () => {
-  assertEquals(names([{ resources: [{ role: "primary", url: "u/k" }] }]), ["photo"]);
-});
+Deno.test(
+  "an asset with a nameless resource is left out whole, a Live Photo's pair never split",
+  () => {
+    const { entries, photos } = zipEntries([
+      { resources: [{ role: "primary", url: "u/k" }] },
+      {
+        resources: [
+          { role: "primary", url: "u/s", filename: "IMG_2.HEIC" },
+          { role: "live", url: "u/v" },
+        ],
+      },
+      { resources: [{ role: "primary", url: "u/y", filename: "y.HEIC" }] },
+    ]);
+    assertEquals(fetched(entries), [{ url: "u/y", name: "y.HEIC" }]);
+    assertEquals(photos, 1);
+  },
+);
 
 Deno.test(
   "each entry names the resource it is, so an encrypted event's file opens only as that resource",

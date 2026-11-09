@@ -332,7 +332,10 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
                 resources = asset.resources.map {
                     val role = it.role.onWire()
                     val url = call.base + Routes.DownloadResource.path(eventId, deviceId, asset.assetId.value, role.value)
-                    UnionResource(role, it.contentType, it.key, it.filename, url.takeIf { urls })
+                    // Named as its bytes were uploaded — sealed in an encrypted event — and keyed as the real union
+                    // derives it for the builds that still read it. A served asset is complete: its file has landed.
+                    val file = state.landedFile(eventId, deviceId, asset.assetId, it.role)!!
+                    UnionResource(role, it.contentType, storedKey(file), file.filename, url.takeIf { urls })
                 },
             )
         }
@@ -657,7 +660,7 @@ private fun Manifest.inApp(deviceId: String): MockManifest? = MockManifest(
             asset.creationDate,
             asset.resources.map { r ->
                 val role = ResourceRoleText.parse(r.role.value) ?: return null
-                MockManifestResource(role, r.contentType, r.key, r.filename)
+                MockManifestResource(role, r.contentType)
             },
         )
     },

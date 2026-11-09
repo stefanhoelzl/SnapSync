@@ -117,8 +117,11 @@ class PublishManifestTest {
         val asset = manifest.assets.single()
         assertEquals(DURING, asset.creationDate)
         assertEquals(listOf(Role.PRIMARY, Role.LIVE), asset.resources.map { it.role })
-        assertEquals("A1-primary.jpg", asset.resources.first().key)
-        assertEquals("IMG.MOV", asset.resources.last().filename)
+        assertEquals(
+            listOf(null to null, null to null),
+            asset.resources.map { it.key to it.filename },
+            "no key and no name: a photo's name travels with its bytes, sealed in an encrypted event",
+        )
         assertFalse(manifest.`final`, "the range has not ended")
         assertEquals(ManifestVersion(3), held().version)
         assertEquals(1, held().assets)

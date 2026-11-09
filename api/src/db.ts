@@ -313,16 +313,13 @@ export async function membershipState(
 // ── The manifest publish ──────────────────────────────────────────────────────────────────────────
 
 /**
- * One resource of one asset, as the device manifest names it (the wire format, `openapi.yaml`).
- *
- * `key` is the client's object name (`<assetId>-<role>.<ext>`); `filename` is the human capture name. Neither
- * is where the bytes are: that is the `resources` row's `path`, which the backend chooses.
+ * One resource of one asset, as the device manifest names it (the wire format, `openapi.yaml`). Where the bytes
+ * are is the `resources` row's `path`, which the backend chooses; what they are called arrives with the bytes.
+ * Builds before `seal-file-names` also send a `key` and a `filename`, which nothing here reads.
  */
 export type ManifestResourceEntry = {
   role: string;
   contentType: string;
-  key: string;
-  filename: string;
 };
 
 export type ManifestAssetEntry = {
@@ -919,7 +916,9 @@ export type UnionResourceRow = {
   contentType: string;
   /**
    * The wire's object name, `<assetId>-<role>.<ext>` — DERIVED ([objectNameFor]), since migration 0010 keeps
-   * no such column. Installed clients key their download records by it, so it never changes shape.
+   * no such column. Read only by builds before `seal-file-names`, which key their download records by it; a
+   * later build derives it itself from the name it holds, since an encrypted event's `filename` is sealed and
+   * names no extension here (`PENDING_CLEANUPS.md`, "The union's `key` and the manifest's `key`/`filename`").
    */
   key: string;
   /** Where the bytes are — the full storage path, unencoded. Empty when not present. */

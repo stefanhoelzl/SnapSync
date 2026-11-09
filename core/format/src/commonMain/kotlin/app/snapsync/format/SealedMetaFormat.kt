@@ -1,5 +1,6 @@
 package app.snapsync.format
 
+import app.snapsync.domain.asset.FileBinding
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -24,6 +25,11 @@ import kotlin.io.encoding.Base64
  * The plaintext grows by ADDING keys only: a reader ignores the keys it does not know and a re-seal keeps them
  * ([MetaRecord]), so a field a newer build writes survives a rename by an older one. A change that is not additive is
  * a new [VERSION].
+ *
+ * **A photo's file name** in an encrypted event is the same envelope and record (decision record
+ * `changes/seal-file-names`, D1), under a key derived PER PHOTO ([fileNameKeyOf]) — its label names the event, the
+ * device, the asset and the role, so a record the service moves onto another photo opens under no key there, as a file
+ * moved elsewhere does not decrypt.
  */
 object SealedMetaFormat {
     const val VERSION: Byte = 1
@@ -38,6 +44,7 @@ object SealedMetaFormat {
     const val MAX_TEXT_LENGTH = 1024
 
     private val LABEL = "snapsync/meta/v1".encodeToByteArray()
+    private const val FILE_NAME_LABEL = "snapsync/file-name/v1"
     private const val NAME = "name"
 
     private val text = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
@@ -45,6 +52,15 @@ object SealedMetaFormat {
     /** The key a record of the event whose key is [eventKey] is sealed with: [KEY_LENGTH] bytes. */
     fun metaKeyOf(eventKey: ByteArray, hmac: Hmac): ByteArray =
         Hkdf.derive(hmac, eventKey, ByteArray(0), LABEL, KEY_LENGTH)
+
+    /** The key the name of the photo [binding] names is sealed with, in the event whose key is [eventKey]. */
+    fun fileNameKeyOf(eventKey: ByteArray, binding: FileBinding, hmac: Hmac): ByteArray =
+        Hkdf.derive(hmac, eventKey, ByteArray(0), fileNameLabel(binding), KEY_LENGTH)
+
+    /** The derivation label binding a file name to its photo — the one place it is spelled. */
+    fun fileNameLabel(binding: FileBinding): ByteArray =
+        "$FILE_NAME_LABEL/${binding.event}/${binding.device}/${binding.asset}/${ResourceRoleText.of(binding.role)}"
+            .encodeToByteArray()
 
     /** The envelope of [sealed] (ciphertext then tag) under [nonce], as the wire and the row carry it. */
     fun encode(nonce: ByteArray, sealed: ByteArray): String = text.encode(byteArrayOf(VERSION) + nonce + sealed)

@@ -395,6 +395,62 @@ class EncryptedEventIntegrationTest {
         given { joinedEvent(name = "The next one") }
     }
 
+    @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The service keeps an encrypted event's photo names only encrypted",
+        scenario = "A received photo keeps its sender's name",
+    )
+    fun an_encrypted_event_s_photo_arrives_under_its_sender_s_name_which_the_service_held_only_sealed() = behaviour {
+        given {
+            val encrypted = createdEvent()
+            joinedWithItsInvite()
+            // Shared as any member's build shares into an encrypted event: its name sealed for that one photo.
+            step("FQ, named IMG_4471.HEIC, on its way", act = {
+                publicBackend.foreignDevice(DEV_F, listOf("FQ"), event = encrypted, filename = "IMG_4471.HEIC")
+                os.foreground()
+            }, until = {
+                event<WorldEvent.DownloadStarted>()
+                settled { true }
+            })
+        }
+
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.LibraryAssetCreated> { created ->
+                created.names.size == 1 && Regex("""IMG_4471\.snapsync-[a-z2-7]{10}\.HEIC""").matches(created.names.single())
+            }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The service keeps an encrypted event's photo names only encrypted",
+        scenario = "A photo whose name does not open",
+    )
+    fun a_photo_whose_sealed_name_does_not_open_never_arrives_and_the_others_still_do() = behaviour {
+        given {
+            val encrypted = createdEvent()
+            joinedWithItsInvite()
+            step("FQ named under no key the event opens, FR named as any build names it", act = {
+                publicBackend.foreignDevice(DEV_F, listOf("FQ"), event = encrypted, sealedFilename = UNOPENABLE_NAME)
+                publicBackend.foreignDevice(OTHER_MEMBER, listOf("FR"), event = encrypted)
+                os.foreground()
+            }, until = {
+                event<WorldEvent.DownloadStarted>()
+                settled { true }
+            })
+        }
+
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.LibraryAssetCreated> { it.asset == "imported-$OTHER_MEMBER-FR" }
+            settled { true }
+            never<WorldEvent.LibraryAssetCreated> { it.asset == "imported-$DEV_F-FQ" }
+        }
+    }
+
     /** Joined through the open gate; answers the joined screen once it offers the whole invite, its key included. */
     private suspend fun Given.joinedWithItsInvite(): Layer.Joined {
         lateinit var joined: Seen<Layer.Joined>
@@ -405,3 +461,9 @@ class EncryptedEventIntegrationTest {
         return joined.value
     }
 }
+
+/** A sealed name's shape that opens under no key: what a member sealing under another key, or a tampering service, uploads. */
+private val UNOPENABLE_NAME = "AQ" + "A".repeat(40)
+
+/** A second fellow member, who shares into the event as any build does. */
+private const val OTHER_MEMBER = "def0f000-0000-4000-8000-0000000000e1"

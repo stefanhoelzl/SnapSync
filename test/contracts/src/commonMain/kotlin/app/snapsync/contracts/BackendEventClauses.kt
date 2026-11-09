@@ -1,8 +1,11 @@
 package app.snapsync.contracts
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.wire.api.AppTooOld
 import app.snapsync.wire.api.ChangeEventReply
 import app.snapsync.wire.api.CreateEventReply
+import app.snapsync.wire.api.EventFilesReply
 import app.snapsync.wire.api.EventNotFound
 import app.snapsync.wire.api.GetEventReply
 import app.snapsync.wire.api.Invalid
@@ -386,4 +389,37 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.sealedNameClau
         assertEquals(null, changed.event.name)
         assertEquals(RESEALED_RECORD, s.details(created.eventId).sealedMeta)
     }
+
+    // An encrypted event takes a photo's name only sealed, shape-checked, and serves it as it came (decision record
+    // `changes/seal-file-names`, D2/D3): the backend never holds a readable name to serve.
+    clause(
+        "UPLOAD_AN_ENCRYPTED_EVENT_TAKES_A_FILE_NAME_ONLY_SEALED_AND_SERVES_IT_AS_IT_CAME",
+        BackendState.SERVING,
+        covers = cells { backend(Routes.EventFiles.ID, EventFilesReply.Page::class) },
+    ) { s ->
+        val eventId = s.setup.createEncryptedEvent(ASCII_KEY_ID, SEALED_RECORD)
+        val device = s.setup.freshId()
+        s.setup.join(eventId, device)
+        val asset = SeededAsset(AssetId.parse("5ea1ed-1")!!, listOf(ResourceRole.PRIMARY))
+        suspend fun upload(name: String) =
+            s.setup.uploadNamed(eventId, device, asset, ResourceRole.PRIMARY, name, SEALED_BODY)
+        assertEquals(BAD_REQUEST, upload("IMG_0001.JPG"), "a readable name is refused")
+        assertEquals(CREATED, upload(SEALED_FILE_NAME), "a sealed one is taken")
+        s.setup.publish(eventId, device, listOf(asset))
+        val page = assertAnswer<EventFilesReply.Page>(
+            s.port.send(Routes.EventFiles.request(eventId, null, false, "foreground")),
+        )
+        assertEquals(SEALED_FILE_NAME, page.items.single().resources.single().filename, "served as it came")
+    }
 }
+
+/** A key id whose bytes are all ASCII, so a text body can open with the encrypted file format's prefix. */
+private const val ASCII_KEY_ID = "0102030405060708"
+
+/** A body an encrypted event of [ASCII_KEY_ID] stores: the format's version byte and that key id, then anything. */
+private const val SEALED_BODY = "\u0001\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008sealed bytes"
+
+/** A sealed file name's shape — all the backend checks of one. */
+private val SEALED_FILE_NAME = "AQ" + "C".repeat(39) + "A"
+private const val BAD_REQUEST = 400
+private const val CREATED = 201

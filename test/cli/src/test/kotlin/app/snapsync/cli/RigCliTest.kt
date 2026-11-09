@@ -98,7 +98,7 @@ class RigCliTest {
             listOf("--device", "D", "--assets", "A1,A2", "--assets", "A3", "--kind", "motion-photo", "--final"),
         )
         assertEquals(
-            listOf("D", listOf("A1", "A2", "A3"), null, PhotoKind.MOTION_PHOTO, null, true, null),
+            listOf("D", listOf("A1", "A2", "A3"), null, PhotoKind.MOTION_PHOTO, null, true, null, null),
             seeded.toList(),
         )
     }

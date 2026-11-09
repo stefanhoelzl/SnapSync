@@ -10,6 +10,8 @@
 //                    without them, the body must already be an encrypted file of THIS event's key: its first
 //                    9 bytes (format version, key id) are read and the rest passes untouched.
 //
+// An encrypted event's upload must also name its file only SEALED (`admitFilename`).
+//
 // Either way plaintext never lands in an encrypted event. The file-key headers are secrets: no line here,
 // nor any caller's, ever logs a header value.
 
@@ -26,6 +28,7 @@ import {
   PREFIX_LENGTH,
 } from "../encrypted-file.ts";
 import { refuse } from "../refusal.ts";
+import { envelopeShape } from "../sealed-meta.ts";
 
 /** The one file's key the edge seals with — 32 bytes, base64url. */
 export const FILE_KEY_HEADER = "x-snapsync-file-key";
@@ -46,6 +49,15 @@ export function uploadOf(req: HonoRequest): Upload {
     fileHead: req.header(FILE_HEAD_HEADER),
     body: req.raw.body,
   };
+}
+
+/**
+ * Refuses an upload whose `filename` the event whose key id is `keyId` may not store: a plain event takes the
+ * capture name as it came, an encrypted one only a SEALED file name (decision record `changes/seal-file-names`,
+ * D2/D3) — whose shape is all the edge can check, since it never holds the key. Decided before a byte is stored.
+ */
+export function admitFilename(filename: string, keyId: string | null): void {
+  if (keyId !== null && !envelopeShape(filename).ok) refuse(400, "invalid filename");
 }
 
 /**

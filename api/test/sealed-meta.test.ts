@@ -5,9 +5,13 @@ import { assert, assertEquals, assertNotEquals } from "@std/assert";
 import { decodeHex, encodeHex } from "@std/encoding/hex";
 import {
   envelopeShape,
+  type FileNameBinding,
+  fileNameLabel,
   META_MAX_TEXT_LENGTH,
   metaKeyBytes,
+  openFileName,
   openRecord,
+  sealFileName,
   sealRecord,
 } from "../src/sealed-meta.ts";
 
@@ -15,6 +19,20 @@ type Vectors = {
   metaKey: { eventKey: string; keyId: string; metaKey: string }[];
   seal: { eventKey: string; keyId: string; nonce: string; plaintext: string; envelope: string }[];
   reject: { reason: string; eventKey: string; keyId: string; envelope: string }[];
+  fileName: {
+    eventKey: string;
+    binding: FileNameBinding;
+    fileNameKey: string;
+    nonce: string;
+    plaintext: string;
+    envelope: string;
+  }[];
+  fileNameReject: {
+    reason: string;
+    eventKey: string;
+    binding: FileNameBinding;
+    envelope: string;
+  }[];
 };
 
 const vectors: Vectors = JSON.parse(
@@ -53,6 +71,31 @@ Deno.test("the edge's shape check: version, length and alphabet, never the key",
   assert(!envelopeShape("not base64!").ok, "alphabet");
   const unknownVersion = vectors.reject.find((r) => r.reason === "unknown version byte")!;
   assert(!envelopeShape(unknownVersion.envelope).ok, "unknown version");
+});
+
+Deno.test("every file-name vector derives its key, seals to its exact envelope and opens to its name", async () => {
+  assert(vectors.fileName.length > 0);
+  for (const v of vectors.fileName) {
+    const key = decodeHex(v.eventKey);
+    assertEquals(encodeHex(await metaKeyBytes(key, fileNameLabel(v.binding))), v.fileNameKey);
+    const record = JSON.parse(v.plaintext);
+    if (Object.keys(record).length === 1) {
+      assertEquals(await sealFileName(key, v.binding, record.name, decodeHex(v.nonce)), v.envelope);
+    }
+    assertEquals(await openFileName(key, v.binding, v.envelope), record.name);
+  }
+});
+
+Deno.test("every file-name reject vector opens to nothing", async () => {
+  assert(vectors.fileNameReject.length > 0);
+  for (const v of vectors.fileNameReject) {
+    assertEquals(await openFileName(decodeHex(v.eventKey), v.binding, v.envelope), null, v.reason);
+  }
+});
+
+Deno.test("a sealed file name passes the edge's shape check", async () => {
+  const v = vectors.fileName[0];
+  assert(envelopeShape(await sealFileName(decodeHex(v.eventKey), v.binding, "IMG_4471.HEIC")).ok);
 });
 
 Deno.test("a seal draws a fresh nonce every time", async () => {

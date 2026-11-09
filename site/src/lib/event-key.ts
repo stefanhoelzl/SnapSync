@@ -3,7 +3,8 @@
 // format itself is `api/src/encrypted-file.ts` — the edge's own module, so the page opens exactly what the edge and
 // the apps seal.
 import { equalBytes, keyIdOf } from "../../../api/src/encrypted-file.ts";
-import { openRecord } from "../../../api/src/sealed-meta.ts";
+import { openFileName, openRecord } from "../../../api/src/sealed-meta.ts";
+import type { UnionAsset } from "./zip-names.ts";
 
 export { decryptFile, fileAssociatedData } from "../../../api/src/encrypted-file.ts";
 
@@ -39,4 +40,40 @@ export async function sealedName(key: Uint8Array, envelope: string): Promise<str
   const record = await openRecord(key, envelope);
   const name = record?.name.trim() ?? "";
   return name === "" ? null : name;
+}
+
+/**
+ * An encrypted event's photo list with every name opened with the invite's key (decision record
+ * `changes/seal-file-names`, D7): each resource's served name is sealed for that one photo — the event, the device that
+ * shared it, the asset and the role — and opens nowhere else. A photo with a name that does not open keeps none, so the
+ * zip leaves the whole photo out (`zip-names.ts`), a Live Photo's still and video together.
+ */
+export async function openedNames(
+  key: Uint8Array,
+  eventId: string,
+  union: UnionAsset[],
+): Promise<UnionAsset[]> {
+  return await Promise.all(
+    union.map(async (asset) => ({
+      ...asset,
+      resources: await Promise.all(
+        (asset.resources ?? []).map(async (r) => ({
+          ...r,
+          filename:
+            r.filename && r.role
+              ? ((await openFileName(
+                  key,
+                  {
+                    eventId,
+                    deviceId: asset.deviceId ?? "",
+                    assetId: asset.assetId ?? "",
+                    role: r.role,
+                  },
+                  r.filename,
+                )) ?? undefined)
+              : undefined,
+        })),
+      ),
+    })),
+  );
 }

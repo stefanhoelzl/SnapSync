@@ -72,11 +72,14 @@ class ManifestAsset private constructor(
                 asset,
                 head.detail.captured,
                 rows.sortedWith(compareBy({ it.key.role.ordinal }, { it.key.extension }))
-                    .map { ManifestResource(it.key, it.detail.contentType, it.detail.originalFilename) },
+                    .map { ManifestResource(it.key, it.detail.contentType) },
             )
         }
     }
 }
 
-/** One resource a manifest declares: its [key] (which names its role), its content type and its original file name. */
-class ManifestResource(val key: UploadKey, val contentType: String, val filename: String)
+/**
+ * One resource a manifest declares: its [key] (which names its role) and its content type. Its name travels with its
+ * bytes, never in the manifest (decision record `changes/seal-file-names`, D5).
+ */
+class ManifestResource(val key: UploadKey, val contentType: String)

@@ -71,7 +71,7 @@ class PlanReceivingTest {
     fun `a union the caller read in this act is planned without a second read`() = runTest {
         r.listed += Listed("A")
         r.position = 1
-        val page = assertIs<UnionRead.Ok>(r.union.read(membership.event.id, UnionReadPlan.Whole, UnionTrigger.JOIN))
+        val page = assertIs<UnionRead.Ok>(r.union.read(membership, UnionReadPlan.Whole, UnionTrigger.JOIN))
 
         val planned = plan(receiving(membership), UnionTrigger.JOIN, known = page.page)
 
