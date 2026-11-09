@@ -31,6 +31,7 @@ internal fun jvmWorld(rig: JvmRig, os: PlayedOs): MockWorld = MockWorld(
     operatorRefusal = { lever -> rig.backend.unavailable(lever) },
     version = rig.version,
     store = rig.store,
+    platform = rig.mocks.platform,
     os = os,
     ownDeviceId = { rig.mocks.ownDeviceId },
     joinedEventId = { joinedEventId(rig) },

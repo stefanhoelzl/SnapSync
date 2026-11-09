@@ -8,6 +8,7 @@ import app.snapsync.android.scene.AndroidLifecycle
 import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.composition.app.AppGraph
 import app.snapsync.contracts.EntryDriver
+import app.snapsync.domain.report.Platform
 import app.snapsync.domain.upload.OsSupport
 import app.snapsync.format.UploadersCarriedText
 import app.snapsync.inbound.Log
@@ -90,6 +91,7 @@ fun androidRigLaunch(real: AppDevicePorts, uploadBase: String): AndroidRigLaunch
         realAdapters = ANDROID_REAL_ADAPTERS,
         whenAbsent = ANDROID_DEFAULT,
         absentSystems = ANDROID_ABSENT_SYSTEMS,
+        platform = Platform.ANDROID,
     )
     val launch = when (val read = LaunchAdapters.load(real.files.value, AdapterProcess.APP, facts)) {
         is LaunchAdapters.Chosen -> read

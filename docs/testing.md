@@ -948,10 +948,14 @@ Settings page, and the levers that refuse a hand-over). Four differ:
 - `dev-controls` (`DevControlsLevers`) is the build's own, served on every host over the mocked controls or the rig's
   `RigDevControls`: the uploader pin (reconciled with the app's uploads as it lands — the host's work, which no mock can
   reach), the invite-link hints, encrypted creation and the reset.
-- `build` (`BuildLevers`) declares another marketing version, where the backend is the mock that reads it; and names
-  another store page, or none, where the build itself is the mock (`BuildInfoMock`) — the JVM host only, since a
-  device's store page is its bundle's, so a device host refuses that one method. The app reads it as it starts, so a
-  test relaunches after it.
+- `build` (`BuildLevers`) declares another marketing version, where the backend is the mock that reads it; and, where
+  the build itself is the mock (`BuildInfoMock`), names another store page, or none, and plays the platform the build
+  is for (`platform(IOS|ANDROID)`) — the JVM host only, since a device's store page and platform are its bundle's, so a
+  device host refuses those two methods. The app reads both as it starts, so a test relaunches after them. The device's
+  integrity mock proves as the played platform does, from the same cell (`MockDevice.platform`), never on a lever of
+  its own: an iPhone's App Attest proof carries no certificates, an Android phone's is a Keystore certificate chain the
+  backend mock verifies, whose summary a report offered for a refused phone carries. (Over the real `api/` the app
+  proves with a software Android key whatever the platform: App Attest needs a device.)
 
 A face's typed values are its own (`NetworkState`, `Footprint`, `ReceivedDump`, …): `:test:levers` sees only the
 screen's vocabulary, so a domain type crosses as the service's word for it. The typed accessors a host or an in-process

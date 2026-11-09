@@ -19,6 +19,7 @@ import app.snapsync.contracts.ThreadLabelState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.domain.report.Platform
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.EntryEvents
@@ -36,7 +37,8 @@ import kotlin.test.Test
  */
 class AttestContractBindingsTest {
 
-    private val integrity = object : Binding<DeviceIntegrityState, DeviceIntegrity> {
+    /** The double as the phone [platform] has it: App Attest's proofs on an iPhone, Keystore's on Android. */
+    private fun integrity(platform: Platform) = object : Binding<DeviceIntegrityState, DeviceIntegrity> {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val adapter = InMemoryDeviceIntegrity::class
@@ -53,12 +55,18 @@ class AttestContractBindingsTest {
                     available = state != DeviceIntegrityState.UNAVAILABLE,
                     unusable = setOf(DeviceIntegrityContract.unusableHandle(clauseId)),
                     vendorReachable = state != DeviceIntegrityState.VENDOR_UNREACHABLE,
+                    platform = platform,
                 ).recorded(log),
             )
     }
 
     @Test
-    fun `the in-memory integrity satisfies the DeviceIntegrity contract`() = verify(DeviceIntegrityContract, integrity)
+    fun `the in-memory integrity satisfies the DeviceIntegrity contract`() =
+        verify(DeviceIntegrityContract, integrity(Platform.IOS))
+
+    @Test
+    fun `the in-memory integrity of an Android phone satisfies the DeviceIntegrity contract`() =
+        verify(DeviceIntegrityContract, integrity(Platform.ANDROID))
 
     private val processInfo = object : Binding<ProcessInfoState, ProcessInfo> {
         override val host = currentHost

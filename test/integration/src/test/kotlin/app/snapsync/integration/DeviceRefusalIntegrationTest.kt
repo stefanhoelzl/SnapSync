@@ -7,6 +7,7 @@ import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.NetworkState
+import app.snapsync.levers.PlayedPlatform
 import app.snapsync.levers.WorldEvent
 import app.snapsync.presentation.message
 import app.snapsync.ui.state.JoinPhase
@@ -197,12 +198,10 @@ class DeviceRefusalIntegrationTest {
     )
     fun only_a_report_offered_for_the_refusal_carries_the_certificates_the_phone_presented() = behaviour {
         // Which root a refused phone's proof ends at reaches the operator — from "Report
-        // this", never from any other report.
+        // this", never from any other report. An Android phone: its key attestation is a certificate chain.
         given {
-            step("the service refuses this phone as unverifiable", act = {
-                backend.refuseAttestation(AttestationRefusal.DEVICE_UNVERIFIABLE, "certificate")
-            }, until = {})
-            tokenless(ScreenMessage.DEVICE_UNVERIFIABLE)
+            on(PlayedPlatform.ANDROID)
+            refusedAsUnverifiable()
         }
 
         lateinit var offeredDump: Seen<WorldEvent.DumpReceived>
@@ -248,6 +247,30 @@ class DeviceRefusalIntegrationTest {
 
     @Test
     @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
+    fun an_iphone_s_offered_report_carries_the_service_s_answer_and_no_certificates() = behaviour {
+        // App Attest exposes no certificates to the app, so an iPhone's offered report has the answer alone.
+        given {
+            on(PlayedPlatform.IOS)
+            refusedAsUnverifiable()
+        }
+
+        lateinit var offeredDump: Seen<WorldEvent.DumpReceived>
+        whenever {
+            tap(UiIntent.ReportRefusal(ScreenMessage.DEVICE_UNVERIFIABLE))
+            tap(UiIntent.SendDiagnostics("offered", "rig"))
+        }
+        then { offeredDump = event<WorldEvent.DumpReceived> { it.dump.note == "offered" } }
+
+        val offered = offeredDump.value.dump.state
+        assertEquals("device-unverifiable (certificate)", offered["attest_failure"])
+        assertEquals(setOf("attest_failure"), offered.keys.filter { it.startsWith("attest_") }.toSet())
+    }
+
+    @Test
+    @Verifies(
         spec = "create-event",
         requirement = "The front screen tells a refused phone before it tries",
         scenario = "Offline outranks a refusal",
@@ -285,6 +308,20 @@ class DeviceRefusalIntegrationTest {
         screen<Layer.CreateEvent> { it.error == told }
         settled { true }
     })
+
+    /** The phone is a [platform] one — the build's constant, so it is read as the app starts, which it does now. */
+    private suspend fun Given.on(platform: PlayedPlatform) = step("a phone on $platform", act = {
+        build.platform(platform)
+        host.relaunch()
+    }, until = { settled { true } })
+
+    /** The service refuses this phone as unverifiable, and it holds no token. */
+    private suspend fun Given.refusedAsUnverifiable() {
+        step("the service refuses this phone as unverifiable", act = {
+            backend.refuseAttestation(AttestationRefusal.DEVICE_UNVERIFIABLE, "certificate")
+        }, until = {})
+        tokenless(ScreenMessage.DEVICE_UNVERIFIABLE)
+    }
 
     /** The service refuses this phone for [reason] from now on. */
     private suspend fun Given.refused(reason: DeviceRefusal) = step("the service refuses this phone: $reason", act = {

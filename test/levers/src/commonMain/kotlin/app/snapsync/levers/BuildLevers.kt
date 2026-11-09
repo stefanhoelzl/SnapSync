@@ -50,7 +50,7 @@ data class DevControlsView(
 
 /**
  * **The build itself**, where the channel may play another: the marketing version it declares on every request, and the
- * store page it names.
+ * store page it names, and the platform it is for.
  */
 @Rpc
 interface BuildLevers {
@@ -68,6 +68,14 @@ interface BuildLevers {
      */
     suspend fun store(name: String? = null, url: String? = null)
 
+    /**
+     * The build is for [platform] — an iPhone unless played otherwise — and so is everything that follows from it: the
+     * device's integrity service proves as that platform's does (App Attest's proof, or Keystore's certificate chain).
+     * A build's constant, so the app reads it at its next launch (`host.relaunch`). Honoured only where the build is a
+     * mock: a device's build is its bundle's.
+     */
+    suspend fun platform(platform: PlayedPlatform)
+
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<BuildLevers>(
         BuildLevers::class,
@@ -76,3 +84,7 @@ interface BuildLevers {
         { serviceDescriptorOf() },
     )
 }
+
+/** The phone a build is for, as [BuildLevers.platform] plays it. */
+@Serializable
+enum class PlayedPlatform { IOS, ANDROID }

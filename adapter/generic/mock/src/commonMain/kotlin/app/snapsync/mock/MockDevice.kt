@@ -1,6 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.data.trust.TrustSlots
+import app.snapsync.domain.report.Platform
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.NetworkAccess
@@ -46,7 +47,13 @@ open class MockDevice(
     val databases = DatabasesMock(directory = databaseDirectory)
     val preferences = PreferencesMock()
     val keychain = SecureStoreMock(mapOf(TrustSlots.DEVICE_ID to ownDeviceId))
-    val enclave = DeviceIntegrityMock()
+
+    /**
+     * The phone this device is — an iPhone unless played otherwise: the build's constant ([BuildInfoMock.platform]),
+     * which the enclave proves by, as a phone's attestation is its platform's.
+     */
+    val platform: BuildPlatform = BuildPlatform(Platform.IOS)
+    val enclave = DeviceIntegrityMock(platform)
     val crashReporter = CrashReporterMock()
     val entryEvents = EntryEventsMock()
     val processInfo = ProcessInfoMock()

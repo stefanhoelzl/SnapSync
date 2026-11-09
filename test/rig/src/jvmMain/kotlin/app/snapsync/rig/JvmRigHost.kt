@@ -159,6 +159,8 @@ class JvmRigHost private constructor(
                 },
                 store = store,
                 pushEnvironment = "sandbox",
+                // The device's own cell, which its enclave proves by: one phone, one platform.
+                platform = mocks.platform,
             )
             val app = JvmApp(scope, threads.lanes, mocks) { device ->
                 device.adapters(

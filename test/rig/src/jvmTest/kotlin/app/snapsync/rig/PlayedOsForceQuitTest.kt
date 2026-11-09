@@ -25,6 +25,7 @@ class PlayedOsForceQuitTest {
         operatorRefusal = { "no backend here" },
         version = null,
         store = null,
+        platform = null,
         os = os,
         ownDeviceId = { device.ownDeviceId },
         joinedEventId = { null },

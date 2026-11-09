@@ -4,6 +4,7 @@ package app.snapsync.launchadapters
 
 import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.composition.extension.ExtensionDevicePorts
+import app.snapsync.domain.report.Platform
 import app.snapsync.inbound.Answered
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Inbound
@@ -64,6 +65,8 @@ class AdapterFacts(
      * coherence rules they trigger do not apply (`AdapterChoice.incoherence`). Empty on iOS.
      */
     val absentSystems: Set<MockedSystem> = emptySet(),
+    /** The phone this build is for — what a mocked integrity service proves as (`MockDevice.platform`). */
+    val platform: Platform = Platform.IOS,
 )
 
 /** A fresh device id, for a Keychain mock that holds none yet. */
@@ -198,6 +201,7 @@ sealed interface LaunchAdapters {
                 acceptsAnyUploadHandle = !choice.isMocked(MockedSystem.LIBRARY),
             )
             device.declaredVersion.value = facts.appVersion
+            device.platform.value = facts.platform
             val problems = choice.mocked.filter { persisted }.mapNotNull { system ->
                 when (val state = files.read(FileArea.SHARED, AdapterFiles.state(system))) {
                     is FileResult.Ok -> PlatformCalls.attempt {
