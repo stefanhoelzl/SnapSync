@@ -45,12 +45,12 @@ class SealVerdictsTest {
 
     @Test
     fun `an encrypted event's upload is sealed under its key, as this device`() {
-        val sealed = assertIs<SealVerdict.Sealed>(SealVerdict.of(encrypted, event, KeyPresence.Held(key), device))
+        val sealed = assertIs<SealVerdict.Sealed>(SealVerdict.of(encrypted, event, KeyFact.Kept(key), device))
         assertSame(key, sealed.key)
         assertEquals(device, sealed.device)
         assertEquals(
             SealVerdict.Plain,
-            SealVerdict.of(plain, event, KeyPresence.NotNeeded, null),
+            SealVerdict.of(plain, event, KeyFact.Absent, null),
             "a plain one's as it is",
         )
     }
@@ -60,51 +60,47 @@ class SealVerdictsTest {
         fun because(verdict: SealVerdict) = assertIs<SealVerdict.Withheld>(verdict).because
         assertEquals(
             SealVerdict.Withheld.Because.KEY_UNREADABLE,
-            because(SealVerdict.of(encrypted, event, KeyPresence.Unknown, device)),
+            because(SealVerdict.of(encrypted, event, KeyFact.Unreadable, device)),
         )
         assertEquals(
             SealVerdict.Withheld.Because.KEY_LOST,
-            because(SealVerdict.of(encrypted, event, KeyPresence.Lost, device)),
-        )
-        assertEquals(
-            SealVerdict.Withheld.Because.KEY_LOST,
-            because(SealVerdict.of(encrypted, event, KeyPresence.NotNeeded, device)),
+            because(SealVerdict.of(encrypted, event, KeyFact.Absent, device)),
         )
         assertEquals(
             SealVerdict.Withheld.Because.DEVICE_UNKNOWN,
-            because(SealVerdict.of(encrypted, event, KeyPresence.Held(key), null)),
+            because(SealVerdict.of(encrypted, event, KeyFact.Kept(key), null)),
         )
         assertEquals(
             SealVerdict.Withheld.Because.NOT_JOINED,
-            because(SealVerdict.of(null, event, KeyPresence.NotNeeded, device)),
+            because(SealVerdict.of(null, event, KeyFact.Absent, device)),
             "a leave mid-cycle",
         )
         assertEquals(
             SealVerdict.Withheld.Because.NOT_JOINED,
-            because(SealVerdict.of(encrypted, other, KeyPresence.Held(key), device)),
+            because(SealVerdict.of(encrypted, other, KeyFact.Kept(key), device)),
             "a cycle that outlived its membership: a switch to another event",
         )
         assertEquals(
             SealVerdict.Withheld.Because.NOT_JOINED,
-            because(SealVerdict.of(plain, other, KeyPresence.NotNeeded, device)),
+            because(SealVerdict.of(plain, other, KeyFact.Absent, device)),
             "never plaintext to an event left behind, whatever the new one is",
         )
     }
 
     @Test
     fun `a download opens only with the joined event's key, for that event`() {
-        val opened = assertIs<OpenVerdict.OpenWith>(OpenVerdict.of(encrypted, event, KeyPresence.Held(key)))
+        val opened = assertIs<OpenVerdict.OpenWith>(OpenVerdict.of(encrypted, event, KeyFact.Kept(key)))
         assertSame(key, opened.key)
         assertEquals(event, opened.event)
         assertIs<OpenVerdict.OpenWith>(
-            OpenVerdict.of(encrypted, null, KeyPresence.Held(key)),
+            OpenVerdict.of(encrypted, null, KeyFact.Kept(key)),
             "fetched before transfers named their event",
         )
-        assertEquals(OpenVerdict.NotJoined, OpenVerdict.of(null, event, KeyPresence.NotNeeded))
-        assertEquals(OpenVerdict.OtherEvent, OpenVerdict.of(encrypted, other, KeyPresence.Held(key)))
-        assertEquals(OpenVerdict.KeyUnreadable, OpenVerdict.of(encrypted, event, KeyPresence.Unknown))
-        assertEquals(OpenVerdict.NoKey, OpenVerdict.of(encrypted, event, KeyPresence.Lost))
-        assertEquals(OpenVerdict.NoKey, OpenVerdict.of(plain, event, KeyPresence.NotNeeded))
+        assertEquals(OpenVerdict.NotJoined, OpenVerdict.of(null, event, KeyFact.Absent))
+        assertEquals(OpenVerdict.OtherEvent, OpenVerdict.of(encrypted, other, KeyFact.Kept(key)))
+        assertEquals(OpenVerdict.KeyUnreadable, OpenVerdict.of(encrypted, event, KeyFact.Unreadable))
+        assertEquals(OpenVerdict.NoKey, OpenVerdict.of(encrypted, event, KeyFact.Absent))
+        assertEquals(OpenVerdict.NoKey, OpenVerdict.of(plain, event, KeyFact.Absent))
     }
 
     @Test

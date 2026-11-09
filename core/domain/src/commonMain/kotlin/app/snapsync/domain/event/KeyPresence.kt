@@ -22,16 +22,19 @@ sealed interface KeyPresence {
     /** No membership, or a plain event's. */
     data object NotNeeded : KeyPresence
 
+    /** An encrypted event's: whether its key is kept. */
+    sealed interface Needed : KeyPresence
+
     /** The event's own [key]. */
-    class Held(val key: IdentifiedKey) : KeyPresence
+    class Held(val key: IdentifiedKey) : Needed
 
     /** The slot could not be read: shown as nothing, and never mistaken for a lost key. */
-    data object Unknown : KeyPresence
+    data object Unknown : Needed
 
     /**
      * An encrypted event's, and no key of its id is kept: nothing goes up or comes down until its invite gives it back.
      */
-    data object Lost : KeyPresence
+    data object Lost : Needed
 
     companion object {
         /** [membership]'s (any, active or deleted) key presence, given what the slot holds. */
@@ -40,10 +43,11 @@ sealed interface KeyPresence {
             fact: KeyFact,
         ): KeyPresence = when (val encryption = membership?.event?.encryption) {
             null, is Encryption.Plain -> NotNeeded
-            is Encryption.Encrypted -> encrypted(encryption, fact)
+            is Encryption.Encrypted -> of(encryption, fact)
         }
 
-        private fun encrypted(encryption: Encryption.Encrypted, fact: KeyFact): KeyPresence = when (fact) {
+        /** An event encrypted as [encryption]: its key presence, given what the slot holds. */
+        fun of(encryption: Encryption.Encrypted, fact: KeyFact): Needed = when (fact) {
             is KeyFact.Kept -> if (fact.key.id == encryption.keyId) Held(fact.key) else Lost
             KeyFact.Absent, KeyFact.Invalid -> Lost
             KeyFact.Unreadable -> Unknown
