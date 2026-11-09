@@ -19,3 +19,10 @@ suspend fun Given.gateOpenOn(event: String) {
         until = { screen<Layer.JoiningEvent> { it.eventId == event && it.phase is JoinPhase.Detailed } },
     )
 }
+
+/**
+ * The events this device creates are plain, as a shipped build creates them until encrypted creation is re-enabled
+ * (`PENDING_CLEANUPS.md`) — a rig build creates encrypted ones unless asked.
+ */
+suspend fun Given.creatingPlain() =
+    step("events created plain", act = { devControls.encryptNewEvents(false) }, until = {})

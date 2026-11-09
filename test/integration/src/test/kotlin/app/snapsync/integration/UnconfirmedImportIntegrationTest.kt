@@ -4,6 +4,8 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.FileOp
+import app.snapsync.levers.FilePlace
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.DirectionCount
@@ -36,6 +38,28 @@ class UnconfirmedImportIntegrationTest {
             screen<Layer.Joined> { it.counts?.received == SETTLED }
         }
     }
+
+    @Test
+    @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice", scenario = "Killed while saving")
+    fun an_import_killed_before_the_photo_was_created_is_imported_once_though_its_bytes_cannot_be_looked_for() =
+        behaviour {
+            given {
+                joinedEvent()
+                downloadStarted()
+                killedWhileSaving(createdFirst = false)
+            }
+
+            // The next process cannot look for the staged bytes: no evidence that the library took them, so it imports.
+            whenever {
+                files.fail(FilePlace.DOWNLOAD_STAGING, FileOp.EXISTS)
+                relaunched()
+            }
+            then {
+                event<WorldEvent.FilesFaulted> { it.place == FilePlace.DOWNLOAD_STAGING && it.op == FileOp.EXISTS }
+                times(1) { event<WorldEvent.LibraryAssetCreated> { it.asset.startsWith(imported()) } }
+                screen<Layer.Joined> { it.counts?.received == SETTLED }
+            }
+        }
 
     @Test
     fun an_unconfirmed_import_a_partial_grant_cannot_see_is_never_imported_again() = behaviour {

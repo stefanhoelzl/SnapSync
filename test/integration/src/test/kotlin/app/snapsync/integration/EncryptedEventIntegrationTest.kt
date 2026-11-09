@@ -8,6 +8,7 @@ import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.levers.KeychainItem
+import app.snapsync.levers.StoreFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -25,9 +26,6 @@ import kotlin.test.assertTrue
  * an invite without it — a link cut short in sharing — opens the incomplete-invite wall and joins nothing.
  */
 class EncryptedEventIntegrationTest {
-
-    private suspend fun Given.creatingPlain() =
-        step("events created plain", act = { devControls.encryptNewEvents(false) }, until = {})
 
     @Test
     @Verifies(
@@ -375,6 +373,26 @@ class EncryptedEventIntegrationTest {
             never<WorldEvent.MemberJoined> { it.device != DEV_F }
             settled { true }
         }
+    }
+
+    @Test
+    @Verifies(spec = "manage-membership", requirement = "Leaving asks first, then is instant and works offline")
+    fun a_leave_whose_key_the_keychain_will_not_delete_still_leaves_and_the_next_event_joins() = behaviour {
+        given { joinedEvent() }
+
+        whenever {
+            keychain.fail(KeychainItem.EVENT_KEY, StoreFault.WRITE)
+            tap(UiIntent.LeaveEvent)
+        }
+        then {
+            event<WorldEvent.KeychainFaulted> { it.item == KeychainItem.EVENT_KEY && it.kind == StoreFault.WRITE }
+            event<WorldEvent.MemberLeft>()
+            screen<Layer.CreateEvent>()
+            settled { true }
+        }
+
+        // The key left behind keeps nothing from the next event: it is joined with a key of its own.
+        given { joinedEvent(name = "The next one") }
     }
 
     /** Joined through the open gate; answers the joined screen once it offers the whole invite, its key included. */
