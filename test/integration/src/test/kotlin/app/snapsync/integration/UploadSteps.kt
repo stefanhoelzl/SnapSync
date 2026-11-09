@@ -23,3 +23,16 @@ suspend fun Given.uploaded(vararg ids: String) = step("${ids.joinToString()} upl
 /** Only the app uploads: the extension is switched off — a behaviour about the app's own wakes drives them alone. */
 suspend fun Given.appUploadsOnly() =
     step("only the app uploads", act = { devControls.pin(app = true, extension = false) }, until = {})
+
+/**
+ * The phone runs iOS 26.1 or later, which carries iOS's own background uploader: a fact the app reads at launch, so the
+ * process is started again over it, in front, as a member opening the app finds it.
+ */
+suspend fun Given.iosUploaderCarried() = step(
+    "iOS's own uploader carried",
+    act = {
+        extensionRegistry.carried(true)
+        host.relaunch(scene = true)
+    },
+    until = { settled { true } },
+)

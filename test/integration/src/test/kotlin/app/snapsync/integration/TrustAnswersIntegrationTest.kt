@@ -29,7 +29,11 @@ class TrustAnswersIntegrationTest {
     )
     fun a_create_whose_first_proof_the_service_fails_to_mint_fails_without_a_refusal() = behaviour {
         given {
-            step("the service fails every mint", act = { backend.fail(MINT, BackendFault.SERVER_ERROR, ALWAYS) }, until = {})
+            step(
+                "the service fails every mint",
+                act = { backend.fail(MINT, BackendFault.SERVER_ERROR, ALWAYS) },
+                until = {},
+            )
             inFront()
         }
 
@@ -121,6 +125,10 @@ class TrustAnswersIntegrationTest {
         /** Past the 30 days a proof lasts. */
         val PROOF_EXPIRED = 31.days
 
-        val REFUSALS = setOf(ScreenMessage.DEVICE_MODIFIED, ScreenMessage.DEVICE_UNVERIFIABLE, ScreenMessage.APP_NOT_GENUINE)
+        val REFUSALS = setOf(
+            ScreenMessage.DEVICE_MODIFIED,
+            ScreenMessage.DEVICE_UNVERIFIABLE,
+            ScreenMessage.APP_NOT_GENUINE,
+        )
     }
 }

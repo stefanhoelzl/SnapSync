@@ -151,32 +151,3 @@ suspend fun Acts.takePhoto(id: String) {
 
 /** One upload cycle, as the OS-driven extension runs it. Answers what it tells the system (`completed`, `processing`). */
 suspend fun Acts.cycle(): String = extensionHost.process().name.lowercase()
-
-/**
- * [device]'s photo [asset], which the capturing device named [filename], shared to the joined event and its download
- * started — the app in front, its reconcile done.
- */
-suspend fun Given.namedPhotoOnItsWay(filename: String, device: String = DEV_F, asset: String = "FQ") = step(
-    "$device's $asset, named $filename, on its way",
-    act = {
-        publicBackend.foreignDevice(device, listOf(asset), filename = filename)
-        os.foreground()
-    },
-    until = {
-        event<WorldEvent.DownloadStarted>()
-        settled { true }
-    },
-)
-
-/**
- * The phone runs iOS 26.1 or later, which carries iOS's own background uploader: a fact the app reads at launch, so the
- * process is started again over it, in front, as a member opening the app finds it.
- */
-suspend fun Given.iosUploaderCarried() = step(
-    "iOS's own uploader carried",
-    act = {
-        extensionRegistry.carried(true)
-        host.relaunch(scene = true)
-    },
-    until = { settled { true } },
-)

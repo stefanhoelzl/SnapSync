@@ -18,10 +18,12 @@ import kotlin.test.Test
 class SenderNameIntegrationTest {
 
     @Test
-    fun a_sender_name_without_an_extension_is_kept_with_the_mark_at_its_end() = arrivesNamed("IMG_4471", "IMG_4471\\.$MARK")
+    fun a_sender_name_without_an_extension_is_kept_with_the_mark_at_its_end() =
+        arrivesNamed("IMG_4471", "IMG_4471\\.$MARK")
 
     @Test
-    fun a_sender_name_ending_in_its_dot_is_kept_with_the_mark_after_it() = arrivesNamed("IMG_4471.", "IMG_4471\\.$MARK")
+    fun a_sender_name_ending_in_its_dot_is_kept_with_the_mark_after_it() =
+        arrivesNamed("IMG_4471.", "IMG_4471\\.$MARK")
 
     @Test
     fun a_sender_name_that_is_only_an_earlier_mark_carries_only_this_photos_mark() =

@@ -9,15 +9,18 @@ import app.snapsync.levers.WorldEvent
 import kotlin.test.Test
 
 /**
- * **A cut-off upload goes on only once the service says where its bytes stand** (decision record
- * `changes/resume-failed-uploads`), read off the operating system's session and the backend: an upload an Android
- * revoke cut off is resumed from what the service holds — and while the service cannot be asked, none is started, so
- * nothing is sent twice; once it answers, the photo goes up.
+ * **A cut-off upload goes on only once the service says where its bytes stand** (`UploadStandings`), read off the
+ * operating system's session and the backend: an upload an Android revoke cut off is resumed from what the service
+ * holds — and while the service cannot be asked, none is started; once it answers, the photo goes up.
  */
 class UploadStandingIntegrationTest {
 
     @Test
-    @Verifies(spec = "delivery", requirement = "A photo is never lost on the way", scenario = "A failed upload is retried")
+    @Verifies(
+        spec = "delivery",
+        requirement = "A photo is never lost on the way",
+        scenario = "A failed upload is retried",
+    )
     fun a_cut_off_upload_whose_standing_cannot_be_asked_waits_and_goes_up_once_it_can() = behaviour {
         given {
             androidProcess()
