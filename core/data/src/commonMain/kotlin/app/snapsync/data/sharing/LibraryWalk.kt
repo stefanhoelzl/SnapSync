@@ -46,20 +46,17 @@ sealed interface WalkRead {
  * [GalleryWalk] reads every time; [MemoizedWalk], the app's, answers an unchanged library from its last walk.
  */
 interface LibraryWalk {
-    /** The library within [bounds]; [WalkBounds.None] reads nothing — the policy admits nothing. */
-    suspend fun read(bounds: WalkBounds): WalkRead
+    /**
+     * The library within [bounds] — always a policy's that contributes: one that admits nothing ([WalkBounds.None])
+     * reads nothing, so it is never walked.
+     */
+    suspend fun read(bounds: WalkBounds.Within): WalkRead
 }
 
 /** The walk itself: one facts read of the library narrowed to the bounds, resources deferred to [GalleryResources]. */
 class GalleryWalk(private val gallery: GalleryReader, private val clock: WallClock) : LibraryWalk {
 
-    override suspend fun read(bounds: WalkBounds): WalkRead {
-        val takenAt = clock.now()
-        return when (bounds) {
-            WalkBounds.None -> WalkRead.Walked(emptyList(), takenAt, GalleryResources(gallery))
-            is WalkBounds.Within -> walk(bounds.range, takenAt)
-        }
-    }
+    override suspend fun read(bounds: WalkBounds.Within): WalkRead = walk(bounds.range, clock.now())
 
     private suspend fun walk(bounds: CaptureRange, takenAt: Timestamp): WalkRead =
         when (val read = gallery.assets(AssetFilter(bounds.from.at.at, bounds.until.at.at))) {
@@ -88,8 +85,8 @@ class MemoizedWalk @AppProcessOnly constructor(
     private val clock: WallClock,
 ) : LibraryWalk {
 
-    private class Entry(val token: LibraryChangeToken, val bounds: WalkBounds, val read: WalkRead.Walked) {
-        fun matches(token: LibraryChangeToken, bounds: WalkBounds): Boolean =
+    private class Entry(val token: LibraryChangeToken, val bounds: WalkBounds.Within, val read: WalkRead.Walked) {
+        fun matches(token: LibraryChangeToken, bounds: WalkBounds.Within): Boolean =
             this.bounds == bounds && this.token.sameLibraryAs(token)
     }
 
@@ -98,17 +95,17 @@ class MemoizedWalk @AppProcessOnly constructor(
     private var entry: Entry? = null
     private val log = Log("WalkMemo")
 
-    override suspend fun read(bounds: WalkBounds): WalkRead {
+    override suspend fun read(bounds: WalkBounds.Within): WalkRead {
         val now = token.changeToken() ?: return walk.read(bounds)
         return remembered(now, bounds)
     }
 
-    private suspend fun remembered(token: LibraryChangeToken, bounds: WalkBounds): WalkRead {
+    private suspend fun remembered(token: LibraryChangeToken, bounds: WalkBounds.Within): WalkRead {
         val held = held(token, bounds) ?: return fresh(token, bounds)
         return served(held.read)
     }
 
-    private suspend fun held(token: LibraryChangeToken, bounds: WalkBounds): Entry? =
+    private suspend fun held(token: LibraryChangeToken, bounds: WalkBounds.Within): Entry? =
         lock.withLock { entry }?.takeIf { it.matches(token, bounds) }
 
     private suspend fun served(read: WalkRead.Walked): WalkRead {
@@ -116,7 +113,7 @@ class MemoizedWalk @AppProcessOnly constructor(
         return WalkRead.Walked(read.assets, clock.now(), read.resources)
     }
 
-    private suspend fun fresh(token: LibraryChangeToken, bounds: WalkBounds): WalkRead {
+    private suspend fun fresh(token: LibraryChangeToken, bounds: WalkBounds.Within): WalkRead {
         val read = walk.read(bounds)
         lock.withLock {
             entry = when (read) {

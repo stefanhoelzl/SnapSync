@@ -47,7 +47,7 @@ internal fun range(from: String = "2026-07-14T18:00:00Z", until: String = "2026-
     share(from = from, until = until).range
 
 /** A walk narrowed to the [range] of [from]..[until]. */
-internal fun within(from: String = "2026-07-14T18:00:00Z", until: String = "2026-07-21T18:00:00Z"): WalkBounds =
+internal fun within(from: String = "2026-07-14T18:00:00Z", until: String = "2026-07-21T18:00:00Z"): WalkBounds.Within =
     WalkBounds.Within(range(from, until))
 
 /**
@@ -103,7 +103,7 @@ internal class Library(
 
     /** The full walk, counted. */
     val counted = object : LibraryWalk {
-        override suspend fun read(bounds: WalkBounds): WalkRead {
+        override suspend fun read(bounds: WalkBounds.Within): WalkRead {
             walks++
             return walk.read(bounds)
         }
