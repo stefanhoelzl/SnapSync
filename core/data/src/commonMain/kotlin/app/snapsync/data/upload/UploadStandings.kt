@@ -1,8 +1,6 @@
 package app.snapsync.data.upload
 
 import app.snapsync.data.backend.BackendGateway
-import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.ResumePoint
@@ -28,19 +26,14 @@ import app.snapsync.wire.api.UploadStateReply
  *
  * The backend is asked, never the device's own count: after a network cut that count runs ahead of what arrived by the
  * platform's whole send buffer (0.7–1.1 MB, measured at every speed). An answer that is not about these bytes sends the
- * file whole, as it always went; a question that cannot be asked — no network, no readable device id — defers.
+ * file whole, as it always went; a question the network cannot carry defers. It is asked under the device id the
+ * upload's request was built with ([BuiltRequest.device]), so the identity is never resolved a second time.
  */
-class UploadStandings(private val gateway: BackendGateway, private val identity: DeviceIdentity) {
+class UploadStandings(private val gateway: BackendGateway) {
     private val log = Log("UploadStandings")
 
-    /** Where [key]'s file in [event], whose bytes have the SHA-256 [sha256], goes on from. */
-    suspend fun of(event: EventId, key: UploadKey, sha256: String): ResumePoint = when (val id = identity.id()) {
-        is DeviceIdRead.Ok -> asked(event, id.value, key, sha256)
-        DeviceIdRead.Absent -> ResumePoint.From(0)
-        is DeviceIdRead.Unavailable -> deferred(key, id.detail)
-    }
-
-    private suspend fun asked(event: EventId, device: DeviceId, key: UploadKey, sha256: String): ResumePoint {
+    /** Where [key]'s file in [event], sent as [device], whose bytes have the SHA-256 [sha256], goes on from. */
+    suspend fun of(event: EventId, device: DeviceId, key: UploadKey, sha256: String): ResumePoint {
         val request = Routes.UploadState.request(
             event.value,
             device.value,
@@ -71,10 +64,5 @@ class UploadStandings(private val gateway: BackendGateway, private val identity:
             "reply" of reply,
         )
         return ResumePoint.From(0)
-    }
-
-    private suspend fun deferred(key: UploadKey, detail: String): ResumePoint {
-        log.i("no device id to ask with — deferred", "key" of UploadKeyText.of(key), "detail" of detail)
-        return ResumePoint.Deferred
     }
 }

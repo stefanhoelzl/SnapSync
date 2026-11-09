@@ -83,7 +83,7 @@ internal class SessionWorld(takesResources: Boolean = false) {
     val digests = StagedDigests(files, crypto, staged)
     val sealing = UploadSealing(membership, keys, identity, FileCipher(crypto, files))
     val export = UploadExport(library, files, sealing, staged)
-    val standings = UploadStandings(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")), identity)
+    val standings = UploadStandings(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")))
     val create = SessionCreate(session, mobileDataAnswering { network }, record)
     val fromFiles = FileUploads(staged, digests, export, standings, create)
     val held = Held(token = token(30))
