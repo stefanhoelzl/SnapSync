@@ -6,8 +6,12 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.MembershipRead
+import app.snapsync.domain.process.ProcessMetricReport
+import app.snapsync.domain.process.ProcessMetricRules
 import app.snapsync.format.InviteLinkText
+import app.snapsync.levers.MetricReport
 import app.snapsync.mock.MockedSystem
+import app.snapsync.mock.metricPayloadOf
 import app.snapsync.ui.state.Layer
 
 // The JVM host's world, its own services and what it refuses of the shared vocabulary (`docs/testing.md`, "One control
@@ -93,9 +97,12 @@ internal fun jvmHostServices(rig: JvmRig, hooks: RigHooks): List<HostService<*>>
         disk = refusing(
             "the JVM host's files are the mocked disk's, which a test reads through the app's own outcomes",
         ),
-        processMetrics = refusing(
-            "the JVM host plays process-metric reports through the typed service `process-metrics`, `deliver`",
-        ),
+        // A report of any shape the platform's open bag can hold, handed over as the mocked provider hands one — beside
+        // `process-metrics.deliver`'s recorded ones, so the rule meets the shapes no recording has.
+        processMetrics = honoured { fields ->
+            rig.mocks.processMetrics.hand(metricPayloadOf(fields))
+            MetricReport(fields.size, ProcessMetricRules.account(ProcessMetricReport(fields)).crossings.map { it.key })
+        },
     ),
     galleryService(
         seed = honoured { n, kind -> rig.world.seedMockLibrary(n, kind) },
