@@ -7,6 +7,7 @@ import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
+import app.snapsync.levers.WriteKind
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -150,6 +151,58 @@ class InterruptedImportIntegrationTest {
             times(1) { event<WorldEvent.LibraryAssetCreated> { it.asset.startsWith(photo) } }
             screen<Layer.Joined> { it.received() == SETTLED }
             settled { it.photos() == before.photos() + 1 } // the photo still arrives
+        }
+    }
+
+    @Test
+    @Verifies(spec = "delivery", requirement = "Download problems delay photos, never corrupt or lose them")
+    fun an_import_the_phone_cannot_claim_waits_for_the_next_pass_and_arrives() = behaviour {
+        given {
+            joinedEvent()
+            downloadStarted(foreignDevice, foreignAsset)
+            downloadRowsUnwritable()
+        }
+
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "downloadAsset" && it.kind == WriteKind.UPDATE }
+            never<WorldEvent.LibraryAssetCreated>()
+            settled { true }
+        }
+
+        whenever { heartbeat() }
+        then { times(1) { event<WorldEvent.LibraryAssetCreated> { it.asset == imported(foreignAsset, foreignDevice) } } }
+    }
+
+    @Test
+    @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice")
+    fun an_import_the_phone_cannot_record_is_settled_without_a_second_copy() = behaviour {
+        val before = given {
+            joinedEvent()
+            downloadStarted(foreignDevice, foreignAsset).also {
+                step("its bytes staged, the import parked before the library commits it", act = {
+                    library.suspendNextImport()
+                    downloadSession.finish()
+                }, until = {
+                    event<WorldEvent.LibraryImportParked>()
+                    settled { true }
+                })
+                downloadRowsUnwritable()
+            }
+        }
+
+        whenever { library.resumeImport(succeeded = true) }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "downloadAsset" && it.kind == WriteKind.UPDATE }
+            times(1) { event<WorldEvent.LibraryAssetCreated>() }
+            settled { true }
+        }
+
+        whenever { relaunched() }
+        then {
+            screen<Layer.Joined> { it.received() == SETTLED }
+            never<WorldEvent.LibraryAssetCreated>()
+            settled { it.photos() == before.photos() + 1 }
         }
     }
 
@@ -414,6 +467,13 @@ class InterruptedImportIntegrationTest {
      * arrived ([base]) and with them staged ([staged]).
      */
     private class Abandoned(val photos: Int, val base: Long, val staged: Long)
+
+    /** The download store's next change to a received photo's row refused. */
+    private suspend fun Given.downloadRowsUnwritable() = step(
+        "the download store's next change to a photo's row refused",
+        act = { databases.fail("downloads.db", "downloadAsset", WriteKind.UPDATE) },
+        until = {},
+    )
 
     /** Process death and a cold launch, then the operating system brings the new app to the front — which assembles it. */
     private suspend fun Acts.relaunched() {

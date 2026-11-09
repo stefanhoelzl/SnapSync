@@ -11,6 +11,7 @@ import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
+import app.snapsync.levers.WriteKind
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -451,6 +452,56 @@ class AlbumIntegrationTest {
             event<WorldEvent.LibraryAssetCreated> { it.asset == RECEIVED }
             never<WorldEvent.LibraryJoinedAlbum>()
             never<WorldEvent.LibraryAlbumCreated>() // a deleted album comes back only when the member asks
+        }
+    }
+
+    @Test
+    @Verifies(spec = "event-album", requirement = "Album problems never affect sharing or receiving")
+    fun an_album_the_phone_cannot_remember_making_stops_no_join_and_no_received_photo() = behaviour {
+        given {
+            gateOpenOn(registeredEvent(name = "Party"))
+            step(
+                "the album map's next write refused",
+                act = { databases.fail("ledger.db", "eventAlbum", WriteKind.INSERT) },
+                until = {},
+            )
+        }
+
+        whenever { confirmJoin(Choices(saveToAlbum = true)) }
+        then {
+            event<WorldEvent.LibraryAlbumCreated>()
+            event<WorldEvent.DatabaseFaulted> { it.table == "eventAlbum" && it.kind == WriteKind.INSERT }
+            screen<Layer.Joined>()
+            settled { true }
+        }
+
+        whenever {
+            publicBackend.foreignDevice(DEV_F, listOf("FQ"))
+            os.foreground()
+        }
+        then { event<WorldEvent.DownloadStarted>() }
+
+        whenever { downloadSession.finish() }
+        then { event<WorldEvent.LibraryAssetCreated> { it.asset == RECEIVED } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "Album problems never affect sharing or receiving",
+        scenario = "A placement fails",
+    )
+    fun a_received_photo_whose_album_cannot_be_looked_up_is_still_saved() = behaviour {
+        given {
+            joinedSavingToAlbum(name = "Party")
+            downloadStarted()
+            step("the album map unreadable", act = { databases.unreadable("ledger.db", on = true) }, until = {})
+        }
+
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.LibraryAssetCreated> { it.asset == RECEIVED }
+            never<WorldEvent.LibraryJoinedAlbum>()
         }
     }
 

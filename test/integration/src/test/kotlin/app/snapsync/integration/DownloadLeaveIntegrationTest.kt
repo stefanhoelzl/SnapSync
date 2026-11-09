@@ -5,6 +5,7 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.TransferEnd
 import app.snapsync.levers.WorldEvent
+import app.snapsync.levers.WriteKind
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -47,6 +48,40 @@ class DownloadLeaveIntegrationTest {
             settled { true }
         }
         // …and the retry imports — the bytes were re-fetched.
+        whenever { downloadSession.finish() }
+        then { event<WorldEvent.LibraryAssetCreated> { it.asset == RECEIVED } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Download problems delay photos, never corrupt or lose them",
+        scenario = "A broken download is retried",
+    )
+    fun a_download_the_phone_cannot_record_as_kept_is_downloaded_again_and_arrives() = behaviour {
+        given {
+            joinedEvent()
+            fellowMember(DEV_F, "FQ")
+            itsDownloadStarted()
+            step(
+                "the download store's next record of a kept file refused",
+                act = { databases.fail("downloads.db", "downloadResource", WriteKind.UPDATE) },
+                until = {},
+            )
+        }
+
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "downloadResource" && it.kind == WriteKind.UPDATE }
+            never<WorldEvent.LibraryAssetCreated>()
+            settled { true }
+        }
+
+        whenever { os.foreground() }
+        then {
+            event<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
         whenever { downloadSession.finish() }
         then { event<WorldEvent.LibraryAssetCreated> { it.asset == RECEIVED } }
     }

@@ -72,6 +72,41 @@ class LostUploadAckIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "delivery", requirement = "A photo is never lost on the way")
+    @Verifies(spec = "delivery", requirement = "A finished upload is recognised no later than the next opening")
+    fun a_completion_heard_while_the_membership_cannot_be_read_is_settled_at_the_next_opening() = behaviour {
+        given {
+            appUploadsOnly()
+            joinedEvent()
+            step("A taken, its transfer created", act = {
+                takePhoto("A")
+                os.foreground()
+            }, until = {
+                event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("A") }
+                settled { true }
+            })
+            step("the membership's store unreadable", act = { databases.unreadable("ledger.db", on = true) }, until = {})
+        }
+
+        whenever { uploadSession.complete(primaryKey("A")) }
+        then {
+            event<WorldEvent.BytesStored> { it.asset == "A" }
+            settled { true }
+        }
+
+        whenever {
+            databases.unreadable("ledger.db", on = false)
+            os.foreground()
+            advance(SCREEN_REREAD)
+        }
+        then {
+            screen<Layer.Joined> { it.health == SyncHealth.InSync }
+            never<WorldEvent.SessionTransferCreated>()
+            never<WorldEvent.BytesStored>()
+        }
+    }
+
+    @Test
     @Verifies(
         spec = "delivery",
         requirement = "A finished upload is recognised no later than the next opening",

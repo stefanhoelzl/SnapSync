@@ -1,7 +1,9 @@
 package app.snapsync.integration
 
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.BackendFault
 import app.snapsync.levers.WorldEvent
+import app.snapsync.levers.WriteKind
 import kotlin.test.Test
 
 /**
@@ -46,5 +48,72 @@ class ManifestVersionIntegrationTest {
             cycle()
         }
         then { never<WorldEvent.ManifestPublished>() }
+    }
+
+    @Test
+    fun a_publish_the_phone_cannot_record_is_sent_again_until_it_is_recorded() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+            step("published, and republished once", act = {
+                cycle()
+                cycle()
+            }, until = {
+                times(2) { event<WorldEvent.ManifestPublished>() }
+                settled { true }
+            })
+            step(
+                "the manifest record's writes refused",
+                act = { databases.fail("ledger.db", "uploadedManifest", WriteKind.INSERT, times = UNRECORDED) },
+                until = {},
+            )
+        }
+
+        // A change publishes, the counter's cost republishes once — and with nothing recorded, every cycle after that
+        // publishes the same set again rather than skipping.
+        whenever {
+            takePhoto("B")
+            cycle()
+            cycle()
+            cycle()
+        }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "uploadedManifest" }
+            times(3) { event<WorldEvent.ManifestPublished>() }
+        }
+    }
+
+    @Test
+    fun a_manifest_the_service_says_is_already_fixed_is_taken_as_published() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+        }
+
+        whenever {
+            backend.fail(PUBLISH, BackendFault.CLOSED, times = 1)
+            cycle()
+        }
+        then {
+            event<WorldEvent.BackendReceived> { it.operation == PUBLISH }
+            never<WorldEvent.ManifestPublished>()
+            settled { true }
+        }
+
+        // Taken as published, as a publish is: the counter's cost republishes once, then an unchanged set skips.
+        whenever {
+            cycle()
+            cycle()
+        }
+        then { times(1) { event<WorldEvent.BackendReceived> { it.operation == PUBLISH } } }
+    }
+
+    private companion object {
+        const val PUBLISH = "publishManifest"
+
+        /** More record writes than the behaviour's cycles make. */
+        const val UNRECORDED = 100
     }
 }

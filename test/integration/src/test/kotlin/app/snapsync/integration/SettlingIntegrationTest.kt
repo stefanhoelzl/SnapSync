@@ -51,6 +51,29 @@ class SettlingIntegrationTest {
     }
 
     @Test
+    fun a_settled_share_stays_settled_when_a_later_look_fails() = behaviour(startAt = DURING) {
+        given {
+            extensionUploadsOnly()
+            joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END)
+            photoTaken("P", date = TAKEN_DURING)
+            laterInThePocket(AFTER_THE_END)
+            step("the share settled", act = { cycle() }, until = {
+                event<WorldEvent.ManifestPublished> { "P" in it.added && it.final }
+                settled { true }
+            })
+        }
+
+        whenever {
+            library.failNextEnumeration()
+            cycle()
+        }
+        then {
+            never<WorldEvent.ManifestPublished> { !it.final }
+            settled { true }
+        }
+    }
+
+    @Test
     @Verifies(
         spec = "event-lifetime",
         requirement = "A member's share is settled only after their own range has ended",

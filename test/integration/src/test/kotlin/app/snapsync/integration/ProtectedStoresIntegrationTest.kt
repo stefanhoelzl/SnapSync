@@ -304,6 +304,36 @@ class ProtectedStoresIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "sync-status", requirement = "A device that lost the event's key asks for its invite")
+    fun a_reopened_invite_whose_key_the_phone_cannot_keep_still_asks_for_the_invite() = behaviour {
+        val invite = given {
+            val event = joinedEvent()
+            val invite = inviteFor(event)
+            step("the event's key lost", act = { keychain.forget(KeychainItem.EVENT_KEY) }, until = {})
+            step(
+                "the joined screen asks for the invite",
+                act = { os.foreground() },
+                until = {
+                    screen<Layer.Joined> { it.health == SyncHealth.KeyLost }
+                    settled { true }
+                },
+            )
+            step("the key's next write refused", act = { keychain.fail(KeychainItem.EVENT_KEY, StoreFault.WRITE) }, until = {})
+            invite
+        }
+
+        whenever { openLink(invite) }
+        then {
+            event<WorldEvent.KeychainFaulted> { it.item == KeychainItem.EVENT_KEY && it.kind == StoreFault.WRITE }
+            neverScreen<Layer.Joined> { it.health != SyncHealth.KeyLost }
+            settled { true }
+        }
+
+        whenever { openLink(invite) }
+        then { screen<Layer.Joined> { it.health != SyncHealth.KeyLost } }
+    }
+
+    @Test
     @Verifies(
         spec = "invite-link",
         requirement = "Reopening the current event's invite changes nothing",
@@ -350,6 +380,34 @@ class ProtectedStoresIntegrationTest {
         then {
             never<WorldEvent.DownloadStarted>()
             neverScreen<Layer.Joined> { it.health != SyncHealth.KeyLost }
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(spec = "delivery", requirement = "A locked phone delays uploads and never ends the membership")
+    fun a_wake_that_cannot_read_the_device_identity_receives_nothing_and_enrols_nothing() = behaviour {
+        given {
+            joinedEvent()
+            step(
+                "a background launch whose device-id reads are refused",
+                act = {
+                    keychain.fail(KeychainItem.DEVICE_ID, StoreFault.READ, always)
+                    host.relaunch(scene = false)
+                },
+                until = { settled { true } },
+            )
+        }
+
+        whenever {
+            publicBackend.foreignDevice(DEV_F, listOf("FQ"))
+            os.silentPush()
+        }
+        then {
+            event<WorldEvent.KeychainFaulted> { it.item == KeychainItem.DEVICE_ID && it.kind == StoreFault.READ }
+            never<WorldEvent.DownloadStarted>()
+            never<WorldEvent.MemberJoined> { it.device != DEV_F }
+            never<WorldEvent.MemberLeft>()
             settled { true }
         }
     }
