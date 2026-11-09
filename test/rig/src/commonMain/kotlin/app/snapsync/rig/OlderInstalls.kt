@@ -378,7 +378,7 @@ internal class OlderInstalls(private val world: MockWorld) {
         val joined: String? = ledger.of("membership").singleOrNull()?.get("eventId")
     }
 
-    private companion object {
+    internal companion object {
         /** 11.sqm: the oldest ledger.db the chain builds — 0.4's. */
         const val LEDGER_BASELINE = 12L
 

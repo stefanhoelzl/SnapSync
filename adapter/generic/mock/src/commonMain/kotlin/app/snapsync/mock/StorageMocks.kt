@@ -3,6 +3,7 @@ package app.snapsync.mock
 import app.snapsync.levers.DatabaseFault
 import app.snapsync.levers.DatabaseSwitches
 import app.snapsync.levers.DatabasesLevers
+import app.snapsync.levers.FileOp
 import app.snapsync.levers.StoreFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WriteKind
@@ -45,12 +46,27 @@ class FileSystemMock {
 
     private val seal = Seal()
 
+    private val faults = ArmedFaults<Pair<FileArea, String>, FileOp>()
+
     /** A process's face. The upload extension reaches only the shared area: pass `privateArea = false`. */
     fun port(privateArea: Boolean = true): Files = InMemoryFiles(
         mapOf(FileArea.SHARED to shared, FileArea.PRIVATE to private.takeIf { privateArea }),
         denied.keys,
         seal = seal,
+        faults = faults,
     )
+
+    /**
+     * The next [times] calls of [kind] on the files under [root] in [area] fail with an I/O error — the inspector's
+     * hand behind the channel's `FilesLevers.fail`, which names the place and the [told] event.
+     */
+    fun fail(area: FileArea, root: String, kind: FileOp, times: Int = 1, told: WorldEvent? = null) =
+        faults.arm(area to root, kind, times, told)
+
+    /** Told each failure an armed fault names, as the app's call spends it. */
+    fun watch(listener: StoreWatcher) {
+        faults.watcher = listener
+    }
 
     /** An area's files, path → bytes — live: a write here is a write to the device's disk. */
     fun area(area: FileArea): MutableMap<String, ByteArray> = held(area)
@@ -178,7 +194,7 @@ class DatabasesOperator internal constructor(private val mock: DatabasesMock) : 
 class PreferencesMock {
     internal val values = SnapshotMap<String, String>()
 
-    private val faults = ArmedFaults<String>()
+    private val faults = ArmedFaults<String, StoreFault>()
 
     fun port(): Preferences = InMemoryPreferences(values, StoreRefusals(faults = faults))
 
@@ -207,7 +223,7 @@ class SecureStoreMock(seed: Map<SecureSlot, String> = emptyMap()) {
         putAll(seed.mapValues { SecureStoreRead.Found(it.value, StoredProtection.BACKGROUND_READABLE) })
     }
 
-    private val faults = ArmedFaults<SecureSlot>()
+    private val faults = ArmedFaults<SecureSlot, StoreFault>()
 
     /**
      * Whether every call is refused — a device not unlocked since it restarted. The channel's is `DeviceLevers.lock`;

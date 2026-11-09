@@ -7,11 +7,14 @@ import app.snapsync.data.receiving.DOWNLOADS_DB_NAME
 import app.snapsync.data.receiving.db.DownloadDatabase
 import app.snapsync.data.report.SavedReport
 import app.snapsync.data.trust.TrustSlots
+import app.snapsync.data.upload.UPLOAD_STAGING_DIR
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.receiving.StagedPath
 import app.snapsync.format.DeviceLogText
 import app.snapsync.levers.DeviceLevers
+import app.snapsync.levers.FileOp
+import app.snapsync.levers.FilePlace
 import app.snapsync.levers.FilesLevers
 import app.snapsync.levers.KeychainItem
 import app.snapsync.levers.KeychainLevers
@@ -46,6 +49,19 @@ internal class DeviceFiles(private val disk: FileSystemMock) : FilesLevers {
     override suspend fun stagedFiles(): Int = disk.stagedFiles()
 
     override suspend fun appStorageBytes(): Long = disk.appStorageBytes()
+
+    override suspend fun fail(place: FilePlace, op: FileOp, times: Int?) = rootsOf(place).forEach { root ->
+        disk.fail(FileArea.SHARED, root, op, times ?: 1, WorldEvent.FilesFaulted(place, op))
+    }
+
+    /** The directories, or root files, a place's files lie under — all in the shared area. */
+    private fun rootsOf(place: FilePlace): List<String> = when (place) {
+        FilePlace.UPLOAD_STAGING -> listOf(UPLOAD_STAGING_DIR)
+        FilePlace.DOWNLOAD_STAGING -> listOf(StagedPath.ROOT)
+        // Where 0.4 kept them, as the older-install layer writes them.
+        FilePlace.LEGACY_RECORDS -> listOf(OlderInstalls.CONFIG_FILE, OlderInstalls.MANIFEST_FILE, OlderInstalls.PENDING_LEAVES_FILE)
+            .map { it.substringBefore('/') }
+    }
 }
 
 /** [KeychainLevers] over the mocked Keychain: an item named by what it is, acted on at the address the app keeps it. */
@@ -58,6 +74,8 @@ internal class Keychain(private val world: MockWorld) : KeychainLevers {
     private fun slotOf(item: KeychainItem): SecureSlot = when (item) {
         KeychainItem.EVENT_KEY -> EncryptionSlots.EVENT_KEY
         KeychainItem.DEVICE_ID -> TrustSlots.DEVICE_ID
+        KeychainItem.ATTEST_TOKEN -> TrustSlots.ATTEST_TOKEN
+        KeychainItem.ATTEST_KEY_ID -> TrustSlots.ATTEST_KEY_ID
     }
 }
 

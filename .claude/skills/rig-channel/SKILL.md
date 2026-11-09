@@ -870,10 +870,12 @@ it — and refused, naming the real system, everywhere else:
   blocked); read `switches()` (the faults not yet spent), read `opened()` (every database any process opened, by
   name, in order).
 - `files` (`FilesLevers`) — `appendLog(process, text)` (`LogProcess.APP|EXTENSION`: text a process's device log
-  carries, what a diagnostic dump reads back); reads `stagedFiles()` (the download staging directory's files) and
-  `appStorageBytes()`.
+  carries, what a diagnostic dump reads back), `fail(place, op, times?)` (`FilePlace.UPLOAD_STAGING|DOWNLOAD_STAGING|
+  LEGACY_RECORDS`, `FileOp.READ|WRITE|DELETE|LIST|EXISTS|MOVE`: the next `times` — once by default — such operations
+  on that place fail with an I/O error, everything else reachable; each told as `FilesFaulted`); reads `stagedFiles()`
+  (the download staging directory's files) and `appStorageBytes()`.
 - `keychain` (`KeychainLevers`) — `forget(item)` (`KeychainItem.EVENT_KEY`: the joined event's key gone, the membership
-  kept — a restore onto a new phone), `fail(item, kind, times?)` (`KeychainItem.EVENT_KEY|DEVICE_ID`,
+  kept — a restore onto a new phone), `fail(item, kind, times?)` (`KeychainItem.EVENT_KEY|DEVICE_ID|ATTEST_TOKEN|ATTEST_KEY_ID`,
   `StoreFault.READ|WRITE`: the next `times` — once by default — reads answer that the Keychain could not be looked in,
   or writes and removals fail; each told on the stream as `KeychainFaulted`).
 - `preferences` (`PreferencesLevers`) — `fail(item, kind, times?)` (`PreferenceItem.MOBILE_DATA|PUSH_REGISTRATION`,

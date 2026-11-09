@@ -5,28 +5,28 @@ import app.snapsync.levers.WorldEvent
 import kotlin.concurrent.Volatile
 
 /**
- * The faults an operator armed on a small store — the Keychain, the preferences — each refusing the next calls of its
- * [StoreFault] at one address, spent one call at a time. Both processes call the store from their own threads and the
- * operator arms from another, so every change is made under one lock.
+ * The faults an operator armed on a store — the Keychain, the preferences, the disk — each refusing the next calls of
+ * its kind [K] at one address [A], spent one call at a time. Both processes call the store from their own threads and
+ * the operator arms from another, so every change is made under one lock.
  */
-internal class ArmedFaults<A> {
-    private class Armed<A>(val address: A, val kind: StoreFault, val remaining: Int, val told: WorldEvent?)
+internal class ArmedFaults<A, K> {
+    private class Armed<A, K>(val address: A, val kind: K, val remaining: Int, val told: WorldEvent?)
 
     private val lock = mockLock()
-    private val armed = mutableListOf<Armed<A>>()
+    private val armed = mutableListOf<Armed<A, K>>()
 
     /** Told each [WorldEvent] an armed fault names, as a call spends it, on the thread that made the call. */
     @Volatile
     var watcher: StoreWatcher = StoreWatcher {}
 
     /** The next [times] calls of [kind] at [address] refused; [told] is what the watcher hears each time, if anything. */
-    fun arm(address: A, kind: StoreFault, times: Int, told: WorldEvent?) = lock.locked {
+    fun arm(address: A, kind: K, times: Int, told: WorldEvent?) = lock.locked {
         require(times >= 1) { "times must be at least one, was $times" }
         armed += Armed(address, kind, times, told)
     }
 
     /** Whether a call of [kind] at [address] is refused — spending one armed fault when it is. */
-    fun spend(address: A, kind: StoreFault): Boolean {
+    fun spend(address: A, kind: K): Boolean {
         val spent = lock.locked {
             val i = armed.indexOfFirst { it.address == address && it.kind == kind }
             if (i < 0) return@locked null
@@ -63,7 +63,7 @@ internal class Seal {
  */
 internal class StoreRefusals<A>(
     private val seal: Seal? = null,
-    private val faults: ArmedFaults<A>? = null,
+    private val faults: ArmedFaults<A, StoreFault>? = null,
     private val always: String? = null,
 ) {
     fun of(address: A, kind: StoreFault): String? = when {
