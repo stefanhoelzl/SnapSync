@@ -85,7 +85,11 @@ class LostUploadAckIntegrationTest {
                 event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("A") }
                 settled { true }
             })
-            step("the membership's store unreadable", act = { databases.unreadable("ledger.db", on = true) }, until = {})
+            step(
+                "the membership's store unreadable",
+                act = { databases.unreadable("ledger.db", on = true) },
+                until = {},
+            )
         }
 
         whenever { uploadSession.complete(primaryKey("A")) }

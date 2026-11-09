@@ -223,6 +223,39 @@ class LeaveIntegrationTest {
     @Verifies(
         spec = "manage-membership",
         requirement = "Leaving asks first, then is instant and works offline",
+        scenario = "Leave cancels transfers under way",
+    )
+    fun a_leave_whose_download_store_cannot_be_cleared_still_stops_the_download_under_way() = behaviour {
+        given {
+            joinedEvent()
+            step("a fellow member's photo downloading", act = {
+                publicBackend.foreignDevice(DEV_F, listOf("FQ"))
+                os.foreground()
+            }, until = {
+                event<WorldEvent.DownloadStarted>()
+                settled { true }
+            })
+            step(
+                "the download store's next clearing refused",
+                act = { databases.fail("downloads.db", "unionCursor", WriteKind.DELETE) },
+                until = {},
+            )
+        }
+
+        whenever { tap(UiIntent.LeaveEvent) }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "unionCursor" && it.kind == WriteKind.DELETE }
+            screen<Layer.CreateEvent>()
+        }
+
+        whenever { downloadSession.finish() }
+        then { never<WorldEvent.LibraryAssetCreated>() }
+    }
+
+    @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Leaving asks first, then is instant and works offline",
         scenario = "Leaving a deleted event does not ask",
     )
     fun leaving_a_deleted_event_shows_the_create_screen_at_once() = behaviour {

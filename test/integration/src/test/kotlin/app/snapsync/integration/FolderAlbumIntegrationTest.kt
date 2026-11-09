@@ -7,6 +7,7 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.WorldEvent
+import app.snapsync.levers.WriteKind
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinedSurface
@@ -68,6 +69,28 @@ class FolderAlbumIntegrationTest {
         whenever { downloadSession.finish() }
         then {
             event<WorldEvent.LibraryAssetCreated> { it.asset == received(FIRST) }
+            event<WorldEvent.LibraryJoinedAlbum> { it.album == album && it.asset == received(FIRST) }
+        }
+    }
+
+    @Test
+    @Verifies(spec = "event-album", requirement = "Album problems never affect sharing or receiving")
+    fun a_received_photo_whose_filing_the_phone_cannot_record_is_still_saved_into_the_event_s_folder() = behaviour {
+        val album = given {
+            androidLibrary()
+            val (_, album) = joinedSavingToAlbum()
+            aMembersPhotoOnItsWay(FIRST)
+            step(
+                "the album map's next change refused",
+                act = { databases.fail("ledger.db", "eventAlbum", WriteKind.UPDATE) },
+                until = {},
+            )
+            album
+        }
+
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "eventAlbum" && it.kind == WriteKind.UPDATE }
             event<WorldEvent.LibraryJoinedAlbum> { it.album == album && it.asset == received(FIRST) }
         }
     }
