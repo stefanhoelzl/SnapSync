@@ -607,6 +607,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
                 Routes.EventFiles.TEMPLATE,
                 Access.OPTIONAL,
                 online = true,
+                hold = BackendCall.UNION,
             ),
             Route(Routes.DeviceFiles.ID, Routes.DeviceFiles.METHOD, Routes.DeviceFiles.TEMPLATE, Access.GATED),
             Route(Routes.PutDevice.ID, Routes.PutDevice.METHOD, Routes.PutDevice.TEMPLATE, Access.GATED),
