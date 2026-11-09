@@ -3,6 +3,7 @@ package app.snapsync.data.legacy
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileFailure
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.Preferences
@@ -19,7 +20,7 @@ internal class LegacyHomes(private val files: Files, private val preferences: Pr
      */
     fun delete(path: String) = when (val deleted = files.delete(FileArea.SHARED, path)) {
         is FileResult.Ok, FileResult.NotFound -> Unit
-        FileResult.AreaUnavailable, is FileResult.Denied, is FileResult.Failed -> log.unlabelled.w(
+        is FileFailure -> log.unlabelled.w(
             "legacy home copied but not deleted — its mark outranks it; deleted at a later open",
             "path" of path,
             "deleted" of deleted,

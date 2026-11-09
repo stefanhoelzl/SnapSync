@@ -10,6 +10,7 @@ import app.snapsync.format.LegacyMembershipText
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileFailure
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 
@@ -29,7 +30,7 @@ internal class LegacyMembershipCopy(private val files: Files, private val homes:
             db.ledgerQueries.dropParked()
             db.legacyImportQueries.markImported(LegacySource.MEMBERSHIP.key)
         }
-        FileResult.AreaUnavailable, is FileResult.Denied, is FileResult.Failed ->
+        is FileFailure ->
             log.unlabelled.w("legacy membership unreadable — retried at the next open", "read" of read)
     }
 

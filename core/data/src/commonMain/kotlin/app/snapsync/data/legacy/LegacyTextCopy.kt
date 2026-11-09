@@ -8,6 +8,7 @@ import app.snapsync.domain.sharing.PublishedDeclaration
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileFailure
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import kotlinx.serialization.SerializationException
@@ -41,7 +42,7 @@ internal class LegacyTextCopy(private val files: Files, private val homes: Legac
         when (val read = files.read(FileArea.SHARED, path)) {
             is FileResult.Ok -> copyText(db, Copied(source, path, read.value.decodeToString()), rows)
             FileResult.NotFound -> db.legacyImportQueries.markImported(source.key)
-            FileResult.AreaUnavailable, is FileResult.Denied, is FileResult.Failed -> log.unlabelled.w(
+            is FileFailure -> log.unlabelled.w(
                 "legacy source unreadable — retried at the next open",
                 "source" of source.key,
                 "read" of read,
