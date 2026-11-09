@@ -169,7 +169,7 @@ class MembershipRepositoryTest {
 
     @Test
     fun `a stored event id that spells none is unreadable, and its leave fails and owes nothing`() {
-        stored(id = Stored.Invalid("E1"))
+        stored(id = Stored.Empty)
         assertIs<MembershipRead.Unavailable>(repository.read(), "never a throw, never not joined")
         assertIs<LeaveResult.Failed>(repository.leave())
         assertIs<MembershipRead.Unavailable>(repository.read(), "the row stays as it was")

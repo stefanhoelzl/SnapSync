@@ -62,7 +62,7 @@ internal class LegacyChecksCopy(private val preferences: Preferences) {
 
     private fun joinedOf(stored: Stored<EventId>): Joined = when (stored) {
         is Stored.Valid -> Joined.Event(stored.value)
-        is Stored.Invalid -> Joined.Unreadable
+        Stored.Empty -> Joined.Unreadable
     }
 
     private fun checkKey(check: EventCheck, eventId: EventId) = "app.snapsync.check.${check.key}.$eventId"

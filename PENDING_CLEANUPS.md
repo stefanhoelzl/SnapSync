@@ -133,6 +133,9 @@ such membership is live.
   - **Remove:** both queries, their calls in `LegacyMembershipCopy`, and `LedgerMigrationTest`'s parked-row cases. Squash
     the ledger chain to a v13 baseline in the same PR: a v12 device's rows would stay parked, and the update test's v12
     case re-uploads them.
+  - **Also owns** `Stored.Empty` (`core/data/.../store/DomainColumnAdapters.kt`) with the download rows below: the empty
+    event is the one text an id column holds that spells no id. Once both shims are gone, `Stored` is the id alone —
+    delete `Empty`, its `''` decoding, and every reader's `Empty` arm.
   - **Keep:** 12.sqm itself, until the migration chain is squashed again.
 - **3-field download task tags.**
   - **What:** `TransferTag.parse` (`core/data/.../receiving/DownloadTransfers.kt`, `FIELDS` from three) reads tags
@@ -154,7 +157,8 @@ such membership is live.
     but seeds no row planned with no event: 0.4 tagged every row it planned
     (`v0.4:domain/services/src/commonMain/sqldelight/download/app/snapsync/services/downloads/db/DownloadStore.sq:49`),
     so only an install older than 0.4 left one.
-  - **Remove:** add a downloads migration that deletes the `eventId = ''` rows, then drop the tolerance.
+  - **Remove:** add a downloads migration that deletes the `eventId = ''` rows, then drop the tolerance. With
+    the parked ledger rows gone too, delete `Stored.Empty` (see that entry).
 
 ### Leave without `?received` (api, optional)
 - **What:** `api/src/routes/shared.ts` reads an absent `received` as "no", so a 0.4 leave always records `left`,

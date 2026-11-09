@@ -11,6 +11,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.time.Timestamp
@@ -20,16 +21,21 @@ import app.snapsync.format.TimestampText
 // place each column's encoding lives, wired once per database.
 
 /**
- * What an id column held, as it was read: the id it spells, or the text when it spells none. A column is written only
- * from an id, but the rows a device holds were also written by earlier builds and copied in by migrations, so a read
- * cannot promise one — each reader says what a row that holds none means (`docs/patterns.md`, "The data layer").
+ * What an id column held, as it was read: the id it spells, or [Empty]. A column is written only from an id, but the
+ * rows a device holds were also written by earlier builds and copied in by migrations, so a read cannot promise one —
+ * each reader says what a row that holds none means (`docs/patterns.md`, "The data layer").
+ *
+ * The ONE text an earlier build left that spells no id is the empty string: ledger.db's `12.sqm` parked every row
+ * under the empty event, and downloads.db's `6.sqm` gave the rows planned before it one (`PENDING_CLEANUPS.md`,
+ * "Parked ledger rows" and "Download rows with an empty event"). Every id any build wrote was the backend's or the
+ * platform's canonical id, so any other text is an [InvalidProgramState]: there is no reading of it to offer.
  */
 sealed interface Stored<out T : Any> {
     /** The column spells an id. */
     data class Valid<out T : Any>(val value: T) : Stored<T>
 
-    /** The column holds [text], which spells none. Written back as it was read. */
-    data class Invalid(val text: String) : Stored<Nothing>
+    /** The column holds the empty string a migration left: no id. Written back as it was read. */
+    data object Empty : Stored<Nothing>
 }
 
 /** An id column: the id's text exactly as it arrived, and [parse]'s reading of it. */
@@ -38,12 +44,18 @@ abstract class StoredIdColumnAdapter<T : Any> : ColumnAdapter<Stored<T>, String>
 
     protected abstract fun text(value: T): String
 
-    override fun decode(databaseValue: String): Stored<T> =
-        parse(databaseValue)?.let { Stored.Valid(it) } ?: Stored.Invalid(databaseValue)
+    override fun decode(databaseValue: String): Stored<T> = when (databaseValue) {
+        EMPTY -> Stored.Empty
+        else -> Stored.Valid(parse(databaseValue) ?: throw InvalidProgramState("an id column holds an id or no text"))
+    }
 
     override fun encode(value: Stored<T>): String = when (value) {
         is Stored.Valid -> text(value.value)
-        is Stored.Invalid -> value.text
+        Stored.Empty -> EMPTY
+    }
+
+    private companion object {
+        const val EMPTY = ""
     }
 }
 

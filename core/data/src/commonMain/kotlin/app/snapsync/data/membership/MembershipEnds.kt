@@ -21,7 +21,7 @@ object MembershipEnds {
 
     private fun LedgerDatabase.leaving(stored: Stored<EventId>): LeaveResult = when (stored) {
         is Stored.Valid -> left(stored)
-        is Stored.Invalid -> LeaveResult.Failed("the stored membership's event id is no id")
+        Stored.Empty -> LeaveResult.Failed("the stored membership has no event id")
     }
 
     @OptIn(MintsLeftMembership::class)

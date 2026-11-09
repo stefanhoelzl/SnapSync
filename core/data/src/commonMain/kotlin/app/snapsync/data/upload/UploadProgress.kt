@@ -4,6 +4,7 @@ import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.domain.upload.AssetProgress
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.ports.DbResult
@@ -24,16 +25,16 @@ class UploadProgress(private val db: SharedDatabase) {
             }.executeAsList()
         }
     ) {
-        is DbResult.Ok -> ProgressRead.Read(read.value.mapNotNull(::progressOf).toMap())
+        is DbResult.Ok -> ProgressRead.Read(read.value.map(::progressOf).toMap())
         is DbResult.Failed -> ProgressRead.Unavailable(read.detail)
     }
 
-    /** One photo's progress — none for an id column that spells no id: no photo of this device's is its. */
-    private fun progressOf(row: Triple<Stored<AssetId>, Long, Long>): Pair<AssetId, AssetProgress>? =
-        when (val asset = row.first) {
-            is Stored.Valid -> asset.value to AssetProgress.of(notDone = row.second, handedOver = row.third)
-            is Stored.Invalid -> null
-        }
+    /** One photo's progress. */
+    private fun progressOf(row: Triple<Stored<AssetId>, Long, Long>): Pair<AssetId, AssetProgress> {
+        val asset = row.first
+        if (asset !is Stored.Valid) throw InvalidProgramState("no build left an empty asset id; only event ids were emptied")
+        return asset.value to AssetProgress.of(notDone = row.second, handedOver = row.third)
+    }
 }
 
 /** Per photo, how far it has got — or that the read could not be made. */

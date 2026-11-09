@@ -17,6 +17,8 @@ import app.snapsync.data.store.DeviceIdColumnAdapter
 import app.snapsync.data.store.EventIdColumnAdapter
 import app.snapsync.data.store.OwnedDatabase
 import app.snapsync.data.store.Stored
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.receiving.AssetRef
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.ports.Databases
@@ -74,22 +76,20 @@ class DownloadDatabaseFile @AppProcessOnly constructor(databases: Databases) :
         }
 
         /**
-         * The id a column holds, as a list of one — or of none when it spells no id. A row an earlier build wrote whose
-         * id is
-         * no id names no photo the union serves or the library holds, so it plans, imports and suppresses nothing.
+         * The id a column holds, as a list of one — or of none when it is [Stored.Empty]. A row an earlier build left
+         * with no id names no photo the union serves or the library holds, so it plans, imports and suppresses nothing.
          */
         internal fun <T : Any> Stored<T>.held(): List<T> = when (this) {
             is Stored.Valid -> listOf(value)
-            is Stored.Invalid -> emptyList()
+            Stored.Empty -> emptyList()
         }
 
         /**
-         * The ref the texts [device] and [asset] spell — a tag's, a correlation's, a reply's — read as a stored id is:
-         * a list
-         * of one, or of none when either spells no id.
+         * The ref the texts [device] and [asset] spell — a tag's, a correlation's, a reply's, which arrive from outside
+         * and may spell anything: a list of one, or of none when either spells no id.
          */
         internal fun refOf(device: String, asset: String): List<AssetRef> =
-            refsOf(DeviceIdColumnAdapter.decode(device).held() to AssetIdColumnAdapter.decode(asset).held())
+            refsOf(listOfNotNull(DeviceId.parse(device)) to listOfNotNull(AssetId.parse(asset)))
     }
 }
 

@@ -60,7 +60,7 @@ class ReceivingCleanupTest {
         listOf(flightPath.value, legacyPath.value, "${flightPath.value}.sealed", "download-staging/stray")
             .forEach(device.files::staged)
         device.sql(
-            "INSERT INTO downloadResource VALUES ('not-a-device', 'X', 'k', 'u', 'primary', 'image/heic', 'n', " +
+            "INSERT INTO downloadResource VALUES ('', 'X', 'k', 'u', 'primary', 'image/heic', 'n', " +
                 "'download-staging/orphan', 0, '')",
         )
         device.files.staged("download-staging/orphan")
