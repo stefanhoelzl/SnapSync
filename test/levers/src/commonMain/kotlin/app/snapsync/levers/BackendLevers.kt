@@ -126,6 +126,10 @@ enum class BackendCall(val key: String) {
     /** A device's manifest publish — what an upload pass waits on before it ends. */
     @SerialName("publish")
     PUBLISH("publish"),
+
+    /** A page of the event's union — what every member shares — which the receiving read pages through. */
+    @SerialName("union")
+    UNION("union"),
     ;
 
     companion object {
