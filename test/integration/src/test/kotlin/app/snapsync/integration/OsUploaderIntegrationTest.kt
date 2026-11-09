@@ -284,19 +284,6 @@ class OsUploaderIntegrationTest {
         assertEquals(true, registered, "iOS refused the deregistration, so its record survives")
     }
 
-    /**
-     * The phone runs iOS 26.1 or later, which carries iOS's own background uploader: a fact the app reads at launch, so the
-     * process is started again over it, in front, as a member opening the app finds it.
-     */
-    private suspend fun Given.iosUploaderCarried() = step(
-        "iOS's own uploader carried",
-        act = {
-            extensionRegistry.carried(true)
-            host.relaunch(scene = true)
-        },
-        until = { settled { true } },
-    )
-
     /** The app in front once, then left for the background, and whatever both did done. */
     private suspend fun Given.inBackground() {
         inFront()
