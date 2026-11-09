@@ -92,7 +92,6 @@ class TrustVerdictsTest {
         for (none in listOf(
             TokenIssuance.NoAnswer(ServiceFault.UNREACHABLE),
             TokenIssuance.ChallengeStale,
-            TokenIssuance.NotAttested,
             TokenIssuance.ProofFailed,
         )) {
             assertEquals(MintAnswerVerdict.NoVerdict, MintAnswerVerdict.of(none), "$none is no verdict on the phone")

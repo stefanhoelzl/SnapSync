@@ -46,14 +46,10 @@ sealed interface MintAnswerVerdict {
     data object NoVerdict : MintAnswerVerdict
 
     companion object {
-        fun of(answer: TokenIssuance): MintAnswerVerdict = when (answer) {
+        fun of(answer: MintIssuance): MintAnswerVerdict = when (answer) {
             is TokenIssuance.Minted -> Accept(answer.token)
             is TokenIssuance.Refused -> Refused(answer.reason, answer.detail)
-            is TokenIssuance.NoAnswer,
-            TokenIssuance.ChallengeStale,
-            TokenIssuance.NotAttested,
-            TokenIssuance.ProofFailed,
-            -> NoVerdict
+            is TokenIssuance.NoAnswer, TokenIssuance.ChallengeStale, TokenIssuance.ProofFailed -> NoVerdict
         }
     }
 }
