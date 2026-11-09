@@ -1,5 +1,7 @@
 package app.snapsync.domain.membership
 
+import app.snapsync.domain.event.Encryption
+import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.event.EventLookupFact
 import app.snapsync.domain.event.anEvent
 import app.snapsync.domain.event.ts
@@ -44,6 +46,19 @@ class DeletionVerdictTest {
         assertEquals(
             DeletionVerdict.Inconclusive,
             DeletionVerdict.of(event, EventLookupFact.Unanswered(ServiceFault.UNREACHABLE), afterDeadline),
+        )
+    }
+
+    @Test
+    fun `a name withheld tells a membership nothing`() {
+        val encryption = Encryption.Encrypted(EventKeyId("0011223344556677"))
+        assertEquals(
+            DeletionVerdict.Inconclusive,
+            DeletionVerdict.of(event, EventLookupFact.Withheld(encryption, completed = true), beforeDeadline),
+        )
+        assertEquals(
+            DeletionVerdict.Inconclusive,
+            DeletionVerdict.of(event, EventLookupFact.Withheld(encryption, completed = false), afterDeadline),
         )
     }
 }

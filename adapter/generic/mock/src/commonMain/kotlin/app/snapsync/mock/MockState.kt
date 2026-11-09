@@ -464,7 +464,8 @@ private class QueueDto(
 
 @Serializable
 private class EventDto(
-    val name: String,
+    /** `null` for a sealed event, whose name is [sealedMeta] (decision record `changes/seal-event-name`). */
+    val name: String?,
     val createdAtMillis: Long,
     val startsAtMillis: Long,
     val endsAtMillis: Long,
@@ -473,6 +474,8 @@ private class EventDto(
     val closed: Boolean = false,
     val completed: Boolean = false,
     val keyId: String? = null,
+    /** Absent in a state saved before names were sealed. */
+    val sealedMeta: String? = null,
 )
 
 @Serializable
@@ -574,6 +577,7 @@ private class BackendDto(
                 e.closed,
                 e.completed,
                 e.keyId,
+                e.sealedMeta,
             )
         }
         memberships.forEach {
@@ -617,6 +621,7 @@ private class BackendDto(
                     e.closed,
                     e.completed,
                     e.keyId,
+                    e.sealedMeta,
                 )
             },
             memberships = state.memberships.map { (key, m) ->

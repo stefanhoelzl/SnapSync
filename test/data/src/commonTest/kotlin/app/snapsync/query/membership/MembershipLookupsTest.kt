@@ -25,6 +25,7 @@ import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.SwitchFacts
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.service.ServiceFault
+import app.snapsync.format.SealedMetaFormat
 import app.snapsync.ports.HttpResult
 import app.snapsync.query.RequestStatus
 import app.snapsync.testids.testEventId
@@ -43,16 +44,22 @@ import app.snapsync.wire.models.MemberCounts as WireCounts
 class MembershipLookupsTest {
 
     private val device = Device()
-    private val directory = EventDirectory(device.gateway)
+    private val directory = EventDirectory(device.gateway, device.cipher)
     private val details = JoinDetailsLookup(directory, testKeyIds, Dispatchers.Unconfined)
     private val switch = SwitchLookup(device.membership, directory, device.wallClock)
 
-    private fun found(keyId: String? = null, completedAt: String? = null, waiting: Int = 2) = json(
+    private fun found(
+        keyId: String? = null,
+        completedAt: String? = null,
+        waiting: Int = 2,
+        name: String? = "Lake weekend",
+        sealedMeta: String? = null,
+    ) = json(
         200,
         WireJson.encodeToString(
             EventDetails.serializer(),
             EventDetails(
-                eventId = EVENT, name = "Lake weekend", createdAt = "2026-07-01T10:00:00Z",
+                eventId = EVENT, name = name, sealedMeta = sealedMeta, createdAt = "2026-07-01T10:00:00Z",
                 startsAt = "2026-07-14T18:00:00Z", endsAt = "2026-07-21T18:00:00Z", openUntil = "2026-07-21T18:00:00Z",
                 deletesAt = "2026-08-21T18:00:00Z", closedAt = null, completedAt = completedAt, keyId = keyId,
                 members = WireCounts(active = 3, `final` = 1, waiting = waiting),
@@ -95,6 +102,26 @@ class MembershipLookupsTest {
         assertEquals(JoinDetails.Unanswered(ServiceFault.TROUBLE), details.ask(invite()), "and how the service failed")
     }
 
+    // ---- a sealed name (decision record `changes/seal-event-name`, D6) ----
+
+    private fun sealedFor(key: String, name: String) =
+        device.cipher.seal(testKeyIds.identify(testKey(key)), SealedMetaFormat.recordNamed(name))
+
+    @Test
+    fun `the whole invite opens a sealed name, and an invite without the key names no event`() = runTest {
+        answering(found(keyId = testKeyId("k1"), name = null, sealedMeta = sealedFor("k1", "Ana's 30th")))
+        assertEquals("Ana's 30th", assertIs<JoinDetails.Found>(details.ask(invite("k1"))).event.name.text)
+        assertEquals(JoinDetails.WrongLink, details.ask(invite()), "a key cut short in sharing")
+        assertEquals(JoinDetails.WrongLink, details.ask(invite("other")), "another event's key")
+    }
+
+    @Test
+    fun `a whole invite whose sealed name does not open is a load that failed, retried, never an unnamed join`() =
+        runTest {
+            answering(found(keyId = testKeyId("k1"), name = null, sealedMeta = sealedFor("other", "Not this one")))
+            assertEquals(JoinDetails.Unanswered(ServiceFault.UNREACHABLE), details.ask(invite("k1")))
+        }
+
     // ---- the switch's read of the joined membership ----
 
     @Test
@@ -129,7 +156,7 @@ class MembershipLookupsTest {
     fun `a membership marked deleted reads nothing`() = runTest {
         EnterMembership(device.membership)(enrolled())
         answering(found(completedAt = "2026-08-01T00:00:00Z"))
-        RefreshMembership(device.membership, directory, device.wallClock)(active())
+        RefreshMembership(device.membership, directory, device.keys, device.wallClock)(active())
         val calls = device.transport.calls.size
         assertEquals(SwitchFacts.Deleted, switch.facts())
         assertEquals(calls, device.transport.calls.size)
@@ -156,7 +183,7 @@ class MembershipLookupsTest {
         assertEquals(MembershipRead.Joined(active()), query.state.value)
         assertEquals(active(), query.active())
         answering(found(completedAt = "2026-08-01T00:00:00Z"))
-        RefreshMembership(device.membership, directory, device.wallClock)(active())
+        RefreshMembership(device.membership, directory, device.keys, device.wallClock)(active())
         assertEquals(null, query.active(), "a deleted one is no active one")
     }
 

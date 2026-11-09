@@ -35,7 +35,7 @@ import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
-import app.snapsync.domain.invite.InviteText
+import app.snapsync.domain.invite.JoinedInvite
 import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.Membership
@@ -188,8 +188,9 @@ internal class ContainerRig(
             key = EventKeyView(
                 presence = MutableStateFlow(KeyPresence.NotNeeded),
                 invite = object : InviteRead {
-                    override fun invite(): InviteText? =
+                    override fun invite(): JoinedInvite? =
                         this@ContainerRig.config.value?.let { InviteLinkText.format(InviteLink(it.event.id, null)) }
+                            ?.let { JoinedInvite(it, it) }
                 },
             ),
             invites = invites,

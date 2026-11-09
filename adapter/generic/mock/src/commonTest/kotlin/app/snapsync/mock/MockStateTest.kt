@@ -120,7 +120,7 @@ class MockStateTest {
             mint,
             "even a genuine proof, as v2 names it",
         )
-        val create = Routes.CreateEvent.request(EventCreate("Party", "2026-06-01T00:00:00Z"))
+        val create = Routes.CreateEvent.request(EventCreate(name = "Party", startsAt = "2026-06-01T00:00:00Z"))
         assertEquals(Unauthorized, backend.send(create))
 
         copy.backend.operator.refuseAttestation(null)
@@ -177,7 +177,9 @@ class MockStateTest {
     private suspend fun drive(): MockDevice {
         val device = MockDevice(ownDeviceId = DEVICE, osDrivenUpload = true)
         val backend = Wire(device.backend.port())
-        val created = backend.send(Routes.CreateEvent.request(EventCreate("Party", "2026-06-01T00:00:00Z")))
+        val created = backend.send(
+            Routes.CreateEvent.request(EventCreate(name = "Party", startsAt = "2026-06-01T00:00:00Z")),
+        )
         val event = assertIs<CreateEventReply.Created>(created).event.eventId
         backend.send(Routes.JoinEvent.request(event, DEVICE))
         backend.send(Routes.JoinEvent.request(event, OTHER))

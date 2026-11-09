@@ -201,9 +201,12 @@ the joined screen. The rename dialog SHALL open with the current name, accept at
 disable confirming while the name is empty or unchanged; surrounding whitespace SHALL be dropped. On
 success the dialog SHALL close and the new name SHALL show at once; every other member SHALL see it the
 next time they open the app, and the event's web page shows it too (capability `event-site`). A rename
-SHALL change nothing but the name — not the invite, the dates, or anyone's settings. Once the event's
-photos have been deleted, rename SHALL NOT be offered, and a rename confirmed just before the deletion SHALL
-fail, saying the event is over (as "A failed rename keeps the dialog and never ends the membership" requires).
+SHALL change nothing but the name — not the invite, the dates, or anyone's settings; an invite shared before it keeps
+opening the same event. Once the event's photos have been deleted, rename SHALL NOT be offered, and a rename confirmed
+just before the deletion SHALL fail, saying the event is over (as "A failed rename keeps the dialog and never ends the
+membership" requires). While the phone cannot read an encrypted event's key — after it lost the key (capability
+`sync-status`) or while the phone is locked since it was started — rename SHALL NOT be offered, since only the key can
+keep the new name encrypted (capability `invite-link`); it SHALL return as soon as the key can be read again.
 
 #### Scenario: A guest fixes a typo in the name
 - **WHEN** a member who did not create the event renames it from "Ana's 3oth" to "Ana's 30th"
@@ -228,6 +231,10 @@ fail, saying the event is over (as "A failed rename keeps the dialog and never e
 #### Scenario: A deleted event cannot be renamed
 - **WHEN** a member opens the joined screen of an event whose photos were deleted
 - **THEN** no rename action is offered
+
+#### Scenario: A phone that lost the event's key cannot rename
+- **WHEN** a member of an encrypted event whose phone lost the event's key opens the joined screen
+- **THEN** no rename action is offered, and it returns once they open the event's whole invite
 
 ### Requirement: Event settings change as they are made, without leaving, until the event's photos are deleted
 Until the event's photos are deleted (capability `event-lifetime`), the joined screen SHALL offer a settings action
@@ -291,4 +298,3 @@ photos have been deleted, settings SHALL NOT be offered.
 #### Scenario: Settings hold no mobile-data choice
 - **WHEN** a member opens settings
 - **THEN** no mobile-data choice is offered there; it is the device's, in the app menu (capability `mobile-data`)
-

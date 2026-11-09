@@ -47,8 +47,8 @@ import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.invite.JoinedInvite
 import app.snapsync.domain.invite.InviteLinkVerdict
-import app.snapsync.domain.invite.InviteText
 import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
@@ -348,8 +348,9 @@ abstract class StatusScreenTour {
                 key = EventKeyView(
                     presence = MutableStateFlow(KeyPresence.NotNeeded),
                     invite = object : InviteRead {
-                        override fun invite(): InviteText? =
+                        override fun invite(): JoinedInvite? =
                             this@Rig.config.value.held?.let { InviteLinkText.format(InviteLink(it.event.id, null)) }
+                                ?.let { JoinedInvite(it, it) }
                     },
                 ),
                 invites = invites,

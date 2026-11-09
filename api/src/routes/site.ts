@@ -300,7 +300,9 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
       config,
       c.req.method,
       200,
-      eventFilling(origin, event, members, now(), deletesAt),
+      // `n`: the name an encrypted event's invite carries for link previews (decision record
+      // `changes/seal-event-name`, D5) — read here to render this one page, and kept nowhere.
+      eventFilling(origin, event, members, now(), deletesAt, c.req.query("n") ?? null),
     );
   });
 

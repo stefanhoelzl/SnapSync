@@ -134,7 +134,8 @@ class InviteLinkTextTest {
             "$LINK_ORIGIN/join/",
             "$LINK_ORIGIN/join/not-a-uuid",
             "$LINK_ORIGIN/join/$id/extra",
-            "$LINK_ORIGIN/join/$id?x=1",
+            // A query is no longer one: it is read past (an encrypted event's shared invite carries its preview name in
+            // one, `changes/seal-event-name`), so `/join/<id>?x=1` is the invite `/join/<id>` — pinned below.
         )) {
             assertEquals(InviteLinkVerdict.NotAnInvite, InviteLinkText.parse(raw), raw)
         }
@@ -180,5 +181,45 @@ class InviteLinkTextTest {
         assertNull(EventKeyText.decode(spelled(ByteArray(16))), "another length")
         assertNull(EventKeyText.decode("$keyText="), "padded")
         assertNull(EventKeyText.decode("not base64!"))
+    }
+
+    // ---- the preview name an encrypted event's shared invite carries (decision record `changes/seal-event-name`) ----
+
+    @OptIn(RendersInvite::class)
+    @Test
+    fun `a shared encrypted invite carries its name before the fragment, percent-encoded`() {
+        val shared = InviteLinkText.shared(keyed, "Ana's 30th & co #1 %").raw
+        assertEquals("$LINK_ORIGIN/join/$id?n=Ana%27s%2030th%20%26%20co%20%231%20%25#k=$keyText", shared)
+        assertEquals(keyed, invite(shared), "it opens the same invite as its QR code")
+        val emoji = InviteLinkText.shared(keyed, "🎉 Fête").raw
+        assertEquals("$LINK_ORIGIN/join/$id?n=%F0%9F%8E%89%20F%C3%AAte#k=$keyText", emoji)
+        assertEquals(keyed, invite(emoji))
+        val marks = InviteLinkText.shared(keyed, "a-b_c.d~e").raw
+        assertEquals(
+            "$LINK_ORIGIN/join/$id?n=a-b_c.d~e#k=$keyText",
+            marks,
+            "RFC 3986's unreserved marks stay as they are",
+        )
+    }
+
+    @OptIn(RendersInvite::class)
+    @Test
+    fun `the QR code's invite carries no name, and a plain event's shared invite is its plain one`() {
+        assertEquals("$LINK_ORIGIN/join/$id#k=$keyText", InviteLinkText.format(keyed).raw)
+        assertEquals(InviteLinkText.format(plain), InviteLinkText.shared(plain, "Picnic"))
+    }
+
+    @Test
+    fun `any query is read past - a stale, edited, empty or malformed name opens the same invite`() {
+        for (query in listOf("?n=Old%20name", "?n=", "?n=%ZZ", "?", "?x=1&n=a&n=b", "?n=a?b")) {
+            assertEquals(keyed, invite("$LINK_ORIGIN/join/$id$query#k=$keyText"), query)
+            assertEquals(plain, invite("$LINK_ORIGIN/join/$id$query"), "$query, with no key")
+        }
+        assertEquals(keyed, invite("$LINK_ORIGIN/join/$id/?n=a#k=$keyText"), "a trailing slash too")
+    }
+
+    @Test
+    fun `a query never rescues an id that is none`() {
+        assertEquals(InviteLinkVerdict.NotAnInvite, InviteLinkText.parse("$LINK_ORIGIN/join/not-an-id?n=x#k=$keyText"))
     }
 }

@@ -223,7 +223,8 @@ class EdgeSetup(private val transport: HttpTransport, base: String, private val 
         )
         val reply = send(Routes.CreateEvent.request(body), creator)
         val created = (reply as? CreateEventReply.Created ?: refused("create event", reply)).event
-        return CreatedEvent(created.eventId, created.name, created.createdAt)
+        // A plain event, so its name comes back readable.
+        return CreatedEvent(created.eventId, checkNotNull(created.name), created.createdAt)
     }
 
     override suspend fun join(eventId: String, deviceId: String) {

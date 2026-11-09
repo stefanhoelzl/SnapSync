@@ -198,7 +198,10 @@ class AppGraph(
 
     /** Create an event: minted with its key, for the creator to join through the gate a scanned invite takes. */
     private val createEvent: CreateEvent =
-        CreateEvent(EventCreation(backend.gateway), NewEventKeys(services.eventKeyIds, ports.devControls))
+        CreateEvent(
+            EventCreation(backend.gateway, services.metaCipher),
+            NewEventKeys(services.eventKeyIds, ports.devControls),
+        )
 
     /** The transfer sessions' drain reports, which a relaunch for their events waits for. */
     val uploadDrains: SessionDrains = SessionDrains()

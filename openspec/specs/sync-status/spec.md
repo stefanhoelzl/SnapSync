@@ -601,7 +601,7 @@ started — SHALL NOT show this line.
 Once an event is joined, the app SHALL show one joined screen carrying the event's name, a statement that
 this device has joined the event, the event's dates, a single status line, an explanation of how the event
 works for this member, its invite (capability `invite-link`), and the membership actions — settings,
-leave and rename. Every one of those SHALL be present whatever the status line says, including without photo
+leave and rename (rename as capability `manage-membership` offers it). Every one of those SHALL be present whatever the status line says, including without photo
 access, before the event starts, after it ended, and while the device cannot be verified. The invite and the
 settings and leave actions SHALL stay in reach at the bottom of the screen however much the screen above them
 holds. The joined statement SHALL read the same for the member who created the event and for every other

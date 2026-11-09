@@ -16,6 +16,7 @@
 import type { Context, ErrorHandler, MiddlewareHandler } from "hono";
 import { Refusal } from "./refusal.ts";
 import { APP_VERSION_HEADER } from "./version.ts";
+import { withoutPreviewName } from "./preview-name.ts";
 
 /** A field's value as the line spells it. */
 export type FieldValue = string | number | boolean;
@@ -235,7 +236,8 @@ export function requestLogMiddleware(
         at: new Date(),
         reqid: log.reqid,
         method: c.req.method,
-        url: c.req.url,
+        // Never the invite's preview name (`preview-name.ts`): the log keeps the request, not the name it rode with.
+        url: withoutPreviewName(c.req.url),
         status: c.res.status,
         ms: Math.round(performance.now() - started),
         version: c.req.header(APP_VERSION_HEADER),

@@ -124,6 +124,11 @@ class BackendReach(
     attester: () -> Attester,
     /** The token the app holds when [deviceId] is its own device, else `null`. */
     private val ownToken: suspend (deviceId: String) -> String?,
+    /**
+     * The sealed record that names an encrypted event, as its creating device seals it — `null` for an event this
+     * world did not create encrypted (`EventKeyLedger.sealedName`; decision record `changes/seal-event-name`).
+     */
+    private val sealedName: (eventId: String, name: String) -> String? = { _, _ -> null },
 ) {
     private val tokens = DeviceTokens(transport, base, attester, { declared.value ?: SERVED_APP_VERSION })
 
@@ -185,9 +190,17 @@ class BackendReach(
         if (reply != LeaveEventReply.Left) refused("leave $deviceId from $eventId", reply)
     }
 
+    /** [deviceId] renames [eventId] to the sealed record [sealedMeta], as any member's sealed rename reaches the backend. */
+    suspend fun renameSealed(eventId: String, deviceId: String, sealedMeta: String) {
+        val reply = send(Routes.ChangeEvent.request(eventId, EventChange(sealedMeta = sealedMeta)), by = deviceId)
+        if (reply !is ChangeEventReply.Changed) refused("$deviceId's sealed rename of $eventId", reply)
+    }
+
     /** [deviceId] renames [eventId] to [name], as any member's rename reaches the backend. */
     suspend fun rename(eventId: String, deviceId: String, name: String) {
-        val reply = send(Routes.ChangeEvent.request(eventId, EventChange(name = name)), by = deviceId)
+        // An encrypted event is renamed only sealed, as every build that renames one sends it.
+        val change = sealedName(eventId, name)?.let { EventChange(sealedMeta = it) } ?: EventChange(name = name)
+        val reply = send(Routes.ChangeEvent.request(eventId, change), by = deviceId)
         if (reply !is ChangeEventReply.Changed) refused("$deviceId's rename of $eventId", reply)
     }
 

@@ -54,8 +54,8 @@ class BackendGraph(ports: AppPorts, process: ProcessGraph, services: ServicesGra
     /** The one gateway: a rejected token is dropped, a new one obtained, and the request retried once. */
     val gateway: BackendGateway = BackendGateway(exchange, attestation)
 
-    val directory: EventDirectory = EventDirectory(gateway)
-    val rename: EventRename = EventRename(gateway)
+    val directory: EventDirectory = EventDirectory(gateway, services.metaCipher)
+    val rename: EventRename = EventRename(gateway, services.metaCipher)
     val join: EventJoin = EventJoin(gateway)
     val leave: LeaveNotifier = LeaveNotifier(gateway, services.deviceIdentity)
     val push: PushEndpointPublisher = PushEndpointPublisher(gateway, services.deviceIdentity)

@@ -97,8 +97,12 @@ class JoinDetailsLookup(
     private val ids: EventKeyIds,
     lane: CoroutineDispatcher,
 ) : ScreenLookup<InviteLink, JoinDetails>("query.joinDetails", lane) {
-    override suspend fun read(arg: InviteLink): JoinDetails = when (val found = directory.lookup(arg.event)) {
+    override suspend fun read(arg: InviteLink): JoinDetails = when (
+        val found = directory.lookup(arg.event, arg.key?.let(ids::identify), lastKnown = null)
+    ) {
         is EventLookupFact.Found -> keyed(arg, found)
+        // Named only under a key the invite does not carry: the invite is not the whole invite.
+        is EventLookupFact.Withheld -> JoinDetails.WrongLink
         EventLookupFact.NotFound -> JoinDetails.NotFound
         is EventLookupFact.Unanswered -> JoinDetails.Unanswered(found.fault, found.retryAfterSeconds)
     }
@@ -143,13 +147,15 @@ class SwitchLookup(
     private suspend fun held(held: Membership): SwitchFacts = when (held) {
         is Membership.Deleted -> SwitchFacts.Deleted
         is Membership.Active -> when (held.event.range.phaseAt(clock.now())) {
-            EventPhase.Ended -> served(directory.lookup(held.event.id))
+            EventPhase.Ended -> served(directory.lookup(held.event.id, key = null, lastKnown = held.event.name))
             EventPhase.Upcoming, EventPhase.Running -> SwitchFacts.Undecided
         }
     }
 
     private fun served(lookup: EventLookupFact): SwitchFacts = when (lookup) {
         is EventLookupFact.Found -> SwitchFacts.served(lookup.event, lookup.completed)
-        EventLookupFact.NotFound, is EventLookupFact.Unanswered -> SwitchFacts.Undecided
+        // Every other answer is undecided — a withheld name among them, which a membership's own read, knowing the
+        // name, never meets.
+        else -> SwitchFacts.Undecided
     }
 }

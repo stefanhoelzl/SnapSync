@@ -273,6 +273,110 @@ class EncryptedEventIntegrationTest {
         }
     }
 
+    @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The service keeps an encrypted event's name only encrypted",
+        scenario = "The stored event does not reveal its name",
+    )
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The service keeps an encrypted event's name only encrypted",
+        scenario = "A renamed event's new name is stored encrypted",
+    )
+    @Verifies(
+        spec = "invite-link",
+        requirement = "Every invite form opens in every future version",
+        scenario = "A stale preview name changes nothing in the app",
+    )
+    fun an_encrypted_event_s_name_is_served_only_sealed_and_a_stale_shared_invite_opens_under_its_current_name() =
+        behaviour {
+            val event = given { createdEvent(name = "Ana's 3oth") }
+            whenever { confirmJoin() }
+            then { screen<Layer.Joined> { it.membership.name == "Ana's 3oth" && it.inviteUrl != null } }
+            // The backend serves the event — its key id, its dates — but no readable name (`changes/seal-event-name`).
+            var served: String? = "unread"
+            whenever { served = publicBackend.event(event).name }
+            assertEquals(null, served, "the backend serves no readable name")
+
+            // The invite shared before the rename carries the old name for previews.
+            lateinit var shared: String
+            whenever { tap(UiIntent.ShareInvite) }
+            then {
+                event<WorldEvent.Shared> {
+                    shared = it.text
+                    it.text.contains("?n=")
+                }
+            }
+
+            whenever { rename("Ana's 30th") }
+            then {
+                screen<Layer.Joined> { it.membership.name == "Ana's 30th" }
+                event<WorldEvent.EventRenamed> { it.event == event && it.name == "Ana's 30th" }
+                settled { true }
+            }
+            served = "unread"
+            whenever { served = publicBackend.event(event).name }
+            assertEquals(null, served, "and the new one is sealed too")
+
+            // Another device opening that stale invite meets the event under the name its members gave it now.
+            whenever { tap(UiIntent.LeaveEvent) }
+            then { screen<Layer.CreateEvent>() }
+            whenever { openLink(shared) }
+            then {
+                screen<Layer.JoiningEvent> {
+                    it.eventId == event && (it.phase as? JoinPhase.Detailed)?.eventName == "Ana's 30th"
+                }
+                neverScreen<Layer.JoiningEvent> { it.phase == JoinPhase.WrongLink }
+            }
+        }
+
+    @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "Every invite form opens in every future version",
+        scenario = "An invite without a preview name still opens",
+    )
+    fun a_whole_invite_without_its_preview_name_opens_the_event_named() = behaviour {
+        val (event, invite) = given {
+            val event = createdEvent(name = "Ski Trip")
+            val invite = joinedWithItsInvite().inviteUrl!!.raw
+            step("left", act = { tap(UiIntent.LeaveEvent) }, until = { screen<Layer.CreateEvent>() })
+            event to invite
+        }
+        // The QR code's invite: the key, and no preview name.
+        assertTrue(!invite.contains("?"), invite)
+        whenever { openLink(invite) }
+        then {
+            screen<Layer.JoiningEvent> {
+                it.eventId == event && (it.phase as? JoinPhase.Detailed)?.eventName == "Ski Trip"
+            }
+        }
+    }
+
+    @Test
+    @Verifies(spec = "join-event", requirement = "The join screen verifies the event before offering to join")
+    fun a_whole_invite_whose_sealed_name_does_not_open_is_a_load_that_failed_never_an_unnamed_join() = behaviour {
+        val (event, invite) = given {
+            val event = createdEvent()
+            val invite = joinedWithItsInvite().inviteUrl!!.raw
+            step("left", act = { tap(UiIntent.LeaveEvent) }, until = { screen<Layer.CreateEvent>() })
+            event to invite
+        }
+        // A record the event's key does not open — the service misbehaving, or a member sealing under another key.
+        whenever {
+            publicBackend.foreignDevice(DEV_F, listOf("FQ"), event = event)
+            publicBackend.foreignDeviceSealedRename(DEV_F, "AQ" + "A".repeat(40), event)
+        }
+        whenever { openLink(invite) }
+        then {
+            screen<Layer.JoiningEvent> { it.eventId == event && it.phase == JoinPhase.LoadFailed }
+            neverScreen<Layer.JoiningEvent> { it.phase is JoinPhase.Detailed }
+            never<WorldEvent.MemberJoined> { it.device != DEV_F }
+            settled { true }
+        }
+    }
+
     /** Joined through the open gate; answers the joined screen once it offers the whole invite, its key included. */
     private suspend fun Given.joinedWithItsInvite(): Layer.Joined {
         lateinit var joined: Seen<Layer.Joined>

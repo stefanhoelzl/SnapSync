@@ -184,9 +184,11 @@ class JvmRigHost private constructor(
                     network,
                     version,
                     backend::attester,
-                ) { device ->
-                    heldToken(mocks.keychain.port(), device.takeIf { it == mocks.ownDeviceId })
-                },
+                    ownToken = { device ->
+                        heldToken(mocks.keychain.port(), device.takeIf { it == mocks.ownDeviceId })
+                    },
+                    sealedName = mocks.eventKeys::sealedName,
+                ),
                 PlayedOs(mocks).also { os -> os.watch { threads.events.tell(it) } },
             )
             // The app's process is this JVM's, so the played OS can end it as a force-quit does.

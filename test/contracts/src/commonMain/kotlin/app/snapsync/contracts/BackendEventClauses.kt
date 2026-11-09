@@ -73,14 +73,21 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.eventClauses()
             backend(Routes.GetEvent.ID, GetEventReply.Found::class)
         },
     ) { s ->
-        // The encrypted file format (`docs/architecture.md`): the backend keeps the key's id, never the key.
+        // The encrypted file format (`docs/architecture.md`): the backend keeps the key's id, never the key — and an
+        // encrypted event's name only sealed (decision record `changes/seal-event-name`, D4).
         val keyId = "de30249b854310c8"
-        val encrypted = assertAnswer<CreateEventReply.Created>(s.create("Secret", keyId = keyId)).event
-        assertEquals(keyId, s.details(encrypted.eventId).keyId, "an encrypted event names its key id")
+        val encrypted = assertAnswer<CreateEventReply.Created>(
+            s.create(null, keyId = keyId, sealedMeta = SEALED_RECORD),
+        ).event
+        val served = s.details(encrypted.eventId)
+        assertEquals(keyId, served.keyId, "an encrypted event names its key id")
+        assertEquals(SEALED_RECORD, served.sealedMeta, "and serves its name sealed, as it was sent")
+        assertEquals(null, served.name, "never readable")
         val plain = assertAnswer<CreateEventReply.Created>(s.create("Open")).event
         assertEquals(null, s.details(plain.eventId).keyId, "a plain event names none")
+        assertEquals(null, s.details(plain.eventId).sealedMeta, "and holds no record")
         assertAnswer<Invalid>(
-            s.create("Bad", keyId = "DE30249B854310C8"),
+            s.create(null, keyId = "DE30249B854310C8", sealedMeta = SEALED_RECORD),
             "a malformed key id is refused, never created as a plain event",
         )
     }
@@ -277,13 +284,25 @@ internal inline fun <reified T : Reply> assertAnswer(reply: Reply, message: Stri
 
 /** Create an event as the app does, over the seeded window unless told otherwise. */
 private suspend fun EdgeSubject<BackendClient>.create(
-    name: String,
+    name: String?,
     startsAt: String = SEEDED_STARTS_AT,
     endsAt: String? = SEEDED_ENDS_AT,
     keyId: String? = null,
     openUntil: String? = null,
+    sealedMeta: String? = null,
 ): CreateEventReply =
-    port.send(Routes.CreateEvent.request(EventCreate(name, startsAt, endsAt, openUntil = openUntil, keyId = keyId)))
+    port.send(
+        Routes.CreateEvent.request(
+            EventCreate(
+                name = name,
+                sealedMeta = sealedMeta,
+                startsAt = startsAt,
+                endsAt = endsAt,
+                openUntil = openUntil,
+                keyId = keyId,
+            ),
+        ),
+    )
 
 /** The wall clock plus [after], whole-second UTC — the description's `Timestamp`. */
 private fun wholeSecondsFromNow(after: Duration): String =
@@ -291,7 +310,18 @@ private fun wholeSecondsFromNow(after: Duration): String =
 
 /** Change this state's event's name. */
 private suspend fun EdgeSubject<BackendClient>.rename(name: String): ChangeEventReply =
-    port.send(Routes.ChangeEvent.request(seeded.eventId, EventChange(name)))
+    port.send(Routes.ChangeEvent.request(seeded.eventId, EventChange(name = name)))
+
+/** Change [eventId]'s name as [change] spells it. */
+private suspend fun EdgeSubject<BackendClient>.change(eventId: String, change: EventChange): ChangeEventReply =
+    port.send(Routes.ChangeEvent.request(eventId, change))
+
+/**
+ * A sealed metadata record of the shape the backend takes — version 1, longer than an empty record. Never opened: the
+ * backend holds no key, so the contract cannot tell it from a real one (`changes/seal-event-name`).
+ */
+private val SEALED_RECORD = "AQ" + "A".repeat(40)
+private val RESEALED_RECORD = "AQ" + "B".repeat(39) + "A"
 
 /** The details of [eventId], which must be found. */
 internal suspend fun EdgeSubject<BackendClient>.details(eventId: String) =
@@ -299,4 +329,61 @@ internal suspend fun EdgeSubject<BackendClient>.details(eventId: String) =
 
 private fun assertSameInstant(expected: String, actual: String?, message: String) {
     assertEquals(Instant.parse(expected), actual?.let(Instant::parse), "$message: $actual")
+}
+
+/**
+ * An encrypted event's name, sealed (decision record `changes/seal-event-name`, D4): which form of name a create and a
+ * change take for which event. Part of [BackendContract]'s clause list, a split for size only.
+ */
+internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.sealedNameClauses() {
+    clause(
+        "CREATE_AN_ENCRYPTED_EVENT_TAKES_ITS_NAME_SEALED_AND_A_PLAIN_ONE_READABLE",
+        BackendState.SERVING,
+        covers = cells {
+            backend(Routes.CreateEvent.ID, CreateEventReply.InvalidName::class)
+            backend(Routes.CreateEvent.ID, Invalid::class)
+        },
+    ) { s ->
+        val keyId = "de30249b854310c8"
+        assertAnswer<CreateEventReply.InvalidName>(
+            s.create("Secret", keyId = keyId),
+            "an encrypted event's readable name is refused",
+        )
+        assertAnswer<CreateEventReply.InvalidName>(
+            s.create("Secret", keyId = keyId, sealedMeta = SEALED_RECORD),
+            "and so is a readable name beside its record",
+        )
+        assertAnswer<CreateEventReply.InvalidName>(s.create(null, keyId = keyId), "an encrypted event with no name")
+        assertAnswer<CreateEventReply.InvalidName>(
+            s.create(null, sealedMeta = SEALED_RECORD),
+            "a plain event with a record and no name",
+        )
+        assertAnswer<Invalid>(
+            s.create(null, keyId = keyId, sealedMeta = "Ag" + "A".repeat(40)),
+            "a record of a version the backend does not know",
+        )
+    }
+
+    clause(
+        "CHANGE_A_SEALED_EVENT_TAKES_A_RECORD_AND_NEVER_A_READABLE_NAME",
+        BackendState.SERVING,
+        covers = cells {
+            backend(Routes.ChangeEvent.ID, ChangeEventReply.Changed::class)
+            backend(Routes.ChangeEvent.ID, Invalid::class)
+        },
+    ) { s ->
+        val created = assertAnswer<CreateEventReply.Created>(
+            s.create(null, keyId = "de30249b854310c8", sealedMeta = SEALED_RECORD),
+        ).event
+        assertAnswer<Invalid>(
+            s.change(created.eventId, EventChange(name = "Readable")),
+            "a sealed event is never handed a readable name",
+        )
+        val changed = assertAnswer<ChangeEventReply.Changed>(
+            s.change(created.eventId, EventChange(sealedMeta = RESEALED_RECORD)),
+        )
+        assertEquals(RESEALED_RECORD, changed.event.sealedMeta, "the backend answers the record it stored")
+        assertEquals(null, changed.event.name)
+        assertEquals(RESEALED_RECORD, s.details(created.eventId).sealedMeta)
+    }
 }

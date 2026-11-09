@@ -4,6 +4,7 @@ import app.snapsync.composition.process.ProcessGraph
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.FileCipher
+import app.snapsync.data.crypto.MetaCipher
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.legacy.LegacyRecords
 import app.snapsync.data.membership.EventCheckRecord
@@ -75,6 +76,9 @@ class ServicesGraph(ports: AppPorts, process: ProcessGraph) {
 
     /** An encrypted event's files, sealed and opened a segment at a time over this process's files. */
     val fileCipher: FileCipher = FileCipher(process.crypto, process.files)
+
+    /** An encrypted event's sealed metadata record — its name — sealed and opened (`changes/seal-event-name`). */
+    val metaCipher: MetaCipher = MetaCipher(process.crypto)
 
     /** The device's mobile-data choice — over the shared preferences, which the upload extension reads too. */
     val mobileData: MobileDataStore = MobileDataStore(ports.preferences)

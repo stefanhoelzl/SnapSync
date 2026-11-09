@@ -18,4 +18,14 @@ class InviteTextTest {
         assertEquals("InviteText(‹invite›)", InviteText(text).toString())
         assertFalse("AAECAwQFBgcICQ" in "${InviteText(text)}")
     }
+
+    @Test
+    fun `the joined invite carries both forms, each printed masked`() {
+        val shared = InviteText(text.replace("#k=", "?n=Ana#k="))
+        val invite = JoinedInvite(scanned = InviteText(text), shared = shared)
+        assertEquals(text, invite.scanned.raw)
+        assertEquals(shared, invite.shared)
+        assertEquals("InviteText(‹invite›)", invite.shared.toString())
+        assertFalse("Ana" in "${invite.shared}")
+    }
 }

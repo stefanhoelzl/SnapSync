@@ -21,9 +21,14 @@ class MembershipGraph(services: ServicesGraph, backend: BackendGraph, lane: Coro
         EnrollDevice(services.membership, services.deviceIdentity, backend.join, services.eventKeyIds)
     val enter: EnterMembership = EnterMembership(services.membership)
     val leave: LeaveEvent = LeaveEvent(services.membership)
-    val refresh: RefreshMembership = RefreshMembership(services.membership, backend.directory, services.wallClock)
+    val refresh: RefreshMembership = RefreshMembership(
+        services.membership,
+        backend.directory,
+        services.eventKeyStore,
+        services.wallClock,
+    )
     val reconfigure: ReconfigureEvent = ReconfigureEvent(services.membership)
-    val rename: RenameEvent = RenameEvent(services.membership, backend.rename)
+    val rename: RenameEvent = RenameEvent(services.membership, backend.rename, services.eventKeyStore)
     val deliver: DeliverPendingLeaves = DeliverPendingLeaves(services.pendingLeaves, backend.leave)
     val claimState: ClaimStateCheck = ClaimStateCheck(services.eventChecks, services.wallClock)
     val restoreKey: RestoreEventKey = RestoreEventKey(services.membership, services.eventKeyStore, services.eventKeyIds)

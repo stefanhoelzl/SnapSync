@@ -58,7 +58,7 @@ Deno.test("report → a throw reaches the tracker with its tags and the request;
       throw new TypeError("x is undefined");
     })
   );
-  const res = await app.request("/events/E1/boom?n=1", {
+  const res = await app.request("/events/E1/boom?page=1", {
     headers: {
       "x-snapsync-app-version": "0.14",
       "user-agent": "SnapSync/0.14",
@@ -75,7 +75,7 @@ Deno.test("report → a throw reaches the tracker with its tags and the request;
   assertEquals(event.tags?.route, "/events/:eventId/boom");
   assertEquals(event.tags?.v, "0.14");
   assertMatch(event.tags?.reqid ?? "", /^[0-9a-f]{6}$/);
-  assertEquals(event.request?.url, "http://localhost/events/E1/boom?n=1");
+  assertEquals(event.request?.url, "http://localhost/events/E1/boom?page=1");
   // The request's details are kept — the browser or app, the country — but never the address.
   const headers = event.request?.headers ?? {};
   assertEquals(headers["user-agent"], "SnapSync/0.14");
@@ -137,4 +137,35 @@ Deno.test("withoutAddress → strips every address-bearing header and the user's
   });
   assertEquals(event.user, { id: "u" });
   assertEquals(event.request?.headers, { accept: "*/*" });
+});
+
+// @Verifies(spec = "privacy-security", requirement = "The service reports its own failures to the operator", scenario = "A failing preview carries no event name")
+// The invite's preview name rides the page request's URL; neither the report nor the request's line keeps it.
+Deno.test("report → a failing page request carries the event, never the invite's preview name", async () => {
+  sent.length = 0;
+  const { app, lines } = reporting((a) =>
+    a.get("/join/:eventId", () => {
+      throw new TypeError("render failed");
+    })
+  );
+  const name = encodeURIComponent("Ana's 30th");
+  await app.request(`/join/E1?n=${name}&v=2`);
+  assertEquals(sent.length, 1);
+  const event = sent[0];
+  assertEquals(event.request?.url, "http://localhost/join/E1?v=2", "the event's identifier stays");
+  // The request as reported, and the line — not the whole event, whose source context quotes this very file.
+  const everything = JSON.stringify(event.request) + JSON.stringify(event.tags) + lines.join("\n");
+  assert(!everything.includes("Ana") && !everything.includes(name), everything);
+});
+
+Deno.test("withoutAddress → strips the preview name from wherever the SDK copied the URL", () => {
+  const event = withoutAddress<Sentry.Event>({
+    request: { url: "https://x.example/join/E1?n=Secret&v=2", query_string: "n=Secret&v=2" },
+  });
+  assertEquals(event.request?.url, "https://x.example/join/E1?v=2");
+  assertEquals(event.request?.query_string, "v=2");
+  const pairs = withoutAddress<Sentry.Event>({
+    request: { query_string: [["n", "Secret"], ["v", "2"]] },
+  });
+  assertEquals(pairs.request?.query_string, [["v", "2"]]);
 });

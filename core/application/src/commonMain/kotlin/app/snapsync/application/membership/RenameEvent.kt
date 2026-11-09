@@ -1,12 +1,14 @@
 package app.snapsync.application.membership
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.event.EventRename
 import app.snapsync.data.event.RenameFact
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventName
 import app.snapsync.domain.event.EventNameVerdict
+import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.membership.DeletionVerdict
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.RenameResult
@@ -17,7 +19,11 @@ import app.snapsync.domain.service.ServiceFault
  * the one the server stored. Only the server's positive word that the event's photos were deleted marks the membership
  * so — it stays, shown as over; a "not found" is one witness, and a rename is no road to a deletion.
  */
-class RenameEvent(private val membership: MembershipRepository, private val rename: EventRename) {
+class RenameEvent(
+    private val membership: MembershipRepository,
+    private val rename: EventRename,
+    private val keys: EventKeyStore,
+) {
     @EntryPointCall
     suspend operator fun invoke(active: Membership.Active, event: EventId, name: String): RenameOutcome =
         when (event == active.event.id) {
@@ -28,8 +34,20 @@ class RenameEvent(private val membership: MembershipRepository, private val rena
 
     private suspend fun named(active: Membership.Active, name: String): RenameOutcome =
         when (val parsed = EventName.of(name)) {
-            is EventNameVerdict.Ok -> renamed(active, rename.rename(active.event.id, parsed.name))
+            is EventNameVerdict.Ok -> keyed(active, parsed.name)
             EventNameVerdict.Blank, EventNameVerdict.TooLong -> RenameOutcome.InvalidName
+        }
+
+    /**
+     * An encrypted event's name is renamed only sealed under its own kept key (decision record
+     * `changes/seal-event-name`, D6): without it nothing is sent. The joined screen offers no rename then, so this is
+     * the guard behind it.
+     */
+    private suspend fun keyed(active: Membership.Active, name: EventName): RenameOutcome =
+        when (val presence = KeyPresence.of(active, keys.state.value)) {
+            KeyPresence.NotNeeded -> renamed(active, rename.rename(active.event.id, name))
+            is KeyPresence.Held -> renamed(active, rename.renameSealed(active.event.id, name, presence.key))
+            KeyPresence.Lost, KeyPresence.Unknown -> RenameOutcome.Failed(fault = null)
         }
 
     private fun renamed(active: Membership.Active, fact: RenameFact): RenameOutcome = when (fact) {

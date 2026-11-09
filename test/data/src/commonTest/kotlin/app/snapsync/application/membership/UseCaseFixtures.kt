@@ -1,10 +1,13 @@
 package app.snapsync.application.membership
 
+import app.snapsync.data.RecordingSecureStore
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.ScriptedCredential
 import app.snapsync.data.backend.ScriptedTransport
 import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.EventKeyStore
+import app.snapsync.data.crypto.MetaCipher
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
@@ -30,6 +33,13 @@ internal class Device {
     val clock = ClockMock(Instant.parse("2026-07-22T12:00:00Z"))
     val wallClock = WallClock(clock.port())
     val identity = FixedIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE_ID), DeviceIdRead.Via.READ))
+
+    /** The joined event's key, as the device keeps it — empty until a test keeps one. */
+    val secure = RecordingSecureStore()
+    val keys = EventKeyStore(secure, testKeyIds)
+
+    /** An encrypted event's name, sealed and opened over the fake platform's primitives. */
+    val cipher = MetaCipher(fakeCrypto())
 }
 
 internal class FixedIdentity(var read: DeviceIdRead) : DeviceIdentity {

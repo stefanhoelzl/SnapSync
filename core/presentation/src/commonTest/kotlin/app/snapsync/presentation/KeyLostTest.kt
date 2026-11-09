@@ -11,6 +11,9 @@ import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.event.MintsIdentifiedKey
 import app.snapsync.domain.invite.InviteText
+import app.snapsync.domain.invite.JoinedInvite
+import app.snapsync.domain.invite.MintsInviteText
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
@@ -173,8 +176,8 @@ class KeyLostTest {
                 eventKey = testKeys(
                     presence = presence,
                     invite = object : InviteRead {
-                        override fun invite(): InviteText? = (presence.value as? KeyPresence.Held)?.let {
-                            inviteText(testEventId(EVENT), it.key.key)
+                        override fun invite(): JoinedInvite? = (presence.value as? KeyPresence.Held)?.let {
+                            inviteText(testEventId(EVENT), it.key.key).let { text -> JoinedInvite(text, text) }
                         }
                     },
                 ),
@@ -208,6 +211,46 @@ class KeyLostTest {
             host.onShareInvite()
             runCurrent()
             assertEquals(emptyList(), shared, "nothing is shared")
+        }
+    }
+
+    // @Verifies(spec = "invite-link", requirement = "Every invite form opens in every future version", scenario = "An encrypted event's invite carries its key")
+    // The QR code is the invite as scanned; the share sheet's carries the event's name for link previews.
+    @OptIn(MintsInviteText::class, RendersInvite::class)
+    @Test
+    fun `the QR code is the invite as scanned, and the share sheet hands on the one named for previews`() = runTest {
+        val shared = mutableListOf<String>()
+        val scanned = inviteText(testEventId(EVENT), LINK_KEY)
+        val named = InviteText(scanned.raw + "?n=named")
+        val host = testHost(
+            testQueries(
+                Sync(),
+                MutableStateFlow(PhotoGrant.FULL),
+                MutableStateFlow(ENCRYPTED).held(),
+                eventKey = testKeys(
+                    presence = MutableStateFlow(KeyPresence.Held(HELD)),
+                    invite = object : InviteRead {
+                        override fun invite(): JoinedInvite = JoinedInvite(scanned = scanned, shared = named)
+                    },
+                ),
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
+            ),
+            backgroundScope,
+            shareableCount = noQueries,
+            commands = sharingCommands { url -> shared += url }.door,
+            cutoffFormatter = CutoffFormatter(now = instants({ NOW }), zone = TimeZone.UTC),
+            joinDetails = unanswered,
+            reduction = Dispatchers.Default,
+        )
+        driving(host) {
+            assertEquals(shownInvite(testEventId(EVENT), LINK_KEY), (host.screen.value.layer as Layer.Joined).inviteUrl)
+            host.onIntent(UiIntent.QrOpen)
+            runCurrent()
+            assertEquals(shownInvite(testEventId(EVENT), LINK_KEY), host.screen.value.overlays.shownQr, "no name in it")
+            host.onShareInvite()
+            runCurrent()
+            assertEquals(listOf(named.raw), shared, "the share sheet's invite is named for previews")
         }
     }
 

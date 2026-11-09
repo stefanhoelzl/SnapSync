@@ -148,6 +148,25 @@ Deno.test("createApp → with the store sink, every request is one row", async (
   db.close();
 });
 
+// @Verifies(spec = "invite-link", requirement = "The service keeps an encrypted event's name only encrypted", scenario = "Showing a preview leaves no name behind")
+// The page request's preview name reaches the page it renders and no row or line the service keeps.
+Deno.test("createApp → an invite's preview name is in neither the request's row nor its line", async () => {
+  const db = await store();
+  const lines: string[] = [];
+  const app = createRealApp({
+    config: CONFIG,
+    db,
+    fetch: recorder().fetchImpl,
+    logSink: storeSink(db, (line) => lines.push(line)),
+  });
+  const name = encodeURIComponent("Ana's 30th");
+  await (await app.request(`/join/${E}?n=${name}`)).text();
+  const got = await rows(db, "SELECT url FROM request_log");
+  assertEquals(got, [{ url: `http://localhost/join/${E}` }]);
+  assert(!lines.join("\n").includes(name) && !lines.join("\n").includes("Ana"), lines.join("\n"));
+  db.close();
+});
+
 Deno.test("the sweep's reads → a window's counts, its 5xx newest first, the age limit, the size", async () => {
   const db = await store();
   const at = (iso: string) => new Date(iso);

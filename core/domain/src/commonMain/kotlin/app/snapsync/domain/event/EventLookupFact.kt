@@ -8,6 +8,13 @@ sealed interface EventLookupFact {
     /** The event exists, as [event]. [completed] is the server's positive word that its photos are deleted. */
     data class Found(val event: Event, val completed: Boolean) : EventLookupFact
 
+    /**
+     * The event exists, encrypted as [encryption], but its name is sealed under a key this device does not hold and it
+     * knew no name from before ([NameVerdict.Withheld]) — so no [Event] can be built. [completed] is still the
+     * server's positive word that its photos are deleted.
+     */
+    data class Withheld(val encryption: Encryption, val completed: Boolean) : EventLookupFact
+
     /** The server holds no such event — which alone proves nothing: a missing row is no deletion. */
     data object NotFound : EventLookupFact
 

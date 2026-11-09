@@ -8,6 +8,7 @@ import { assert, assertEquals } from "@std/assert";
 import { encodeBase64Url } from "@std/encoding/base64url";
 import { encodeHex } from "@std/encoding/hex";
 import { insertEvent } from "../src/db.ts";
+import { sealRecord } from "../src/sealed-meta.ts";
 import {
   decryptFile,
   encodeHead,
@@ -87,7 +88,8 @@ Deno.test("create → a key id makes an encrypted event, and its metadata names 
       headers: { ...V2, "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-  const encrypted = await post({ name: "Secret", startsAt: EVENT.startsAt, keyId: KEY_ID });
+  const sealedMeta = await sealRecord(EVENT_KEY, { name: "Secret" });
+  const encrypted = await post({ sealedMeta, startsAt: EVENT.startsAt, keyId: KEY_ID });
   assertEquals(encrypted.status, 201);
   const created = await encrypted.json();
   assertEquals(created.keyId, KEY_ID);
@@ -103,7 +105,7 @@ Deno.test("create → a key id makes an encrypted event, and its metadata names 
   );
   for (const bad of ["DE30249B854310C8", "de30249b854310c", "zz30249b854310c8", 12]) {
     assertEquals(
-      (await post({ name: "X", startsAt: EVENT.startsAt, keyId: bad })).status,
+      (await post({ sealedMeta, startsAt: EVENT.startsAt, keyId: bad })).status,
       400,
       `${bad}`,
     );

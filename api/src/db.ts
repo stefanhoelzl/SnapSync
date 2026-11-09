@@ -78,7 +78,17 @@ export interface Db {
 /** An event row, in the shape the wire and the lifecycle rules already speak. */
 export type EventRow = {
   eventId: string;
-  name: string;
+  /**
+   * A plain event's name, and an encrypted event's created before its name was sealed (migration 0017). `null`
+   * exactly when [sealedMeta] is set: the service never holds a readable name for an event created encrypted since.
+   */
+  name: string | null;
+  /**
+   * An encrypted event's sealed metadata record (migration 0017; decision record `changes/seal-event-name`): an
+   * envelope only the event's key opens, so the service checks its shape and nothing else. With `name`, the one
+   * column a rename writes. Absent/null on a plain event and on a legacy encrypted one.
+   */
+  sealedMeta?: string | null;
   createdAt: string;
   startsAt: string;
   endsAt: string;
@@ -116,7 +126,8 @@ export type EventRow = {
 function toEventRow(r: Row): EventRow {
   return {
     eventId: String(r.id),
-    name: String(r.name),
+    name: r.name == null ? null : String(r.name),
+    sealedMeta: r.sealed_meta == null ? null : String(r.sealed_meta),
     createdAt: String(r.created_at),
     startsAt: String(r.starts_at),
     endsAt: String(r.ends_at),
@@ -135,12 +146,13 @@ function toEventRow(r: Row): EventRow {
 
 export async function insertEvent(db: Db, e: EventRow): Promise<void> {
   await db.execute(
-    `INSERT INTO events (id, name, created_at, starts_at, ends_at, open_until, capacity, lifetime_seconds,
-                         zone, key_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (id, name, sealed_meta, created_at, starts_at, ends_at, open_until, capacity,
+                         lifetime_seconds, zone, key_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       e.eventId,
       e.name,
+      e.sealedMeta ?? null,
       e.createdAt,
       e.startsAt,
       e.endsAt,
@@ -163,17 +175,29 @@ export async function readEvent(db: Db, eventId: string): Promise<EventRow | nul
   return rows.length === 0 ? null : toEventRow(rows[0]);
 }
 
+/** What a rename writes: a plain event's readable name, or an encrypted event's re-sealed record. */
+export type NameChange = { name: string } | { sealedMeta: string };
+
 /**
- * Rename. The ONLY write to an existing event, and it writes `name` ALONE — every other column is
- * write-once. Under an object store violating that meant rewriting a whole
- * document; here it is one careless `SET` away, which is why the statement is spelled out in one place
- * rather than composed.
+ * Rename. The ONLY write to an existing event, and it writes the name ALONE — `name` for a plain event, `sealed_meta`
+ * for an encrypted one (migration 0017) — every other column is write-once. Under an object store violating that
+ * meant rewriting a whole document; here it is one careless `SET` away, which is why each statement is spelled out
+ * in one place rather than composed.
+ *
+ * A sealed rename also clears `name`: renaming a LEGACY encrypted event (a readable name, no record) moves it to the
+ * sealed shape, so its readable name leaves the row with the first rename after this change.
  */
-export async function renameEvent(db: Db, eventId: string, name: string): Promise<WriteResult> {
-  const { rowsAffected } = await db.execute(`UPDATE events SET name = ? WHERE id = ?`, [
-    name,
-    eventId,
-  ]);
+export async function renameEvent(
+  db: Db,
+  eventId: string,
+  change: NameChange,
+): Promise<WriteResult> {
+  const { rowsAffected } = "sealedMeta" in change
+    ? await db.execute(`UPDATE events SET name = NULL, sealed_meta = ? WHERE id = ?`, [
+      change.sealedMeta,
+      eventId,
+    ])
+    : await db.execute(`UPDATE events SET name = ? WHERE id = ?`, [change.name, eventId]);
   return { rowsAffected };
 }
 
