@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.WorldEvent
 import kotlin.test.Test
@@ -9,6 +10,7 @@ import kotlin.test.Test
  * `changes/timely-background-receiving`, D5), counted at the backend: a recorded read that lies ahead of now says
  * nothing about the hour, so the wake reads.
  */
+@Verifies(spec = "delivery", requirement = "Photos travel without the app being opened")
 class ClockMovedBackIntegrationTest {
 
     @Test

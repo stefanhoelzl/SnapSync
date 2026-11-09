@@ -82,7 +82,11 @@ internal class InMemoryFiles(
             ?: if (files.keys.any { it.startsWith("$path/") }) FileResult.Failed("$path is a directory") else FileResult.NotFound
     }
 
-    override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = at(area, path, FileOp.READ) { files ->
+    override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = at(
+        area,
+        path,
+        FileOp.READ,
+    ) { files ->
         if (files.isDirectory(path)) return@at FileResult.Failed("$path is a directory")
         val bytes = files[path] ?: return@at FileResult.NotFound
         val take = minOf(bytes.size, maxOf(maxBytes, 0))
@@ -113,7 +117,12 @@ internal class InMemoryFiles(
             FileResult.Ok(Unit)
         }
 
-    override fun delete(area: FileArea, path: String): FileResult<Unit> = at(area, path, FileOp.DELETE, changing = true) { files ->
+    override fun delete(area: FileArea, path: String): FileResult<Unit> = at(
+        area,
+        path,
+        FileOp.DELETE,
+        changing = true,
+    ) { files ->
         when {
             files.isDirectory(path) -> FileResult.Failed("$path is a directory")
             files.remove(path) != null -> FileResult.Ok(Unit)

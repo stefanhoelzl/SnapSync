@@ -57,7 +57,11 @@ internal class InMemoryDeviceIntegrity(
         handle != null && handle in unusable ->
             ProveResult.Refused.Failed("$sign: the secure hardware will not use $handle")
         handle == null && !vendorReachable -> ProveResult.Refused.Failed("$attest: the server is unavailable")
-        handle == null -> keys.create().let { key -> ProveResult.Ok(fresh(key, MockKeyAttestation.payload(key, challenge))) }
+        handle == null -> keys.create().let { key ->
+            ProveResult.Ok(
+                fresh(key, MockKeyAttestation.payload(key, challenge)),
+            )
+        }
         !keys.holds(handle) -> ProveResult.Refused.UnknownKey("$sign: no such key $handle")
         else -> ProveResult.Ok(Proof(handle, format, "assertion:$handle:$challenge".encodeToByteArray()))
     }

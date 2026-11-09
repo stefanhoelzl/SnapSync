@@ -31,9 +31,9 @@ class UploadProgress(private val db: SharedDatabase) {
 
     /** One photo's progress. */
     private fun progressOf(row: Triple<Stored<AssetId>, Long, Long>): Pair<AssetId, AssetProgress> {
-        val asset = row.first
-        if (asset !is Stored.Valid) throw InvalidProgramState("no build left an empty asset id; only event ids were emptied")
-        return asset.value to AssetProgress.of(notDone = row.second, handedOver = row.third)
+        val asset = row.first.value
+            ?: throw InvalidProgramState("no build left an empty asset id; only event ids were emptied")
+        return asset to AssetProgress.of(notDone = row.second, handedOver = row.third)
     }
 }
 

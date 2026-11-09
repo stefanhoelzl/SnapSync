@@ -17,10 +17,8 @@ import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Limits
 import app.snapsync.wire.api.Routes
-import app.snapsync.wire.models.AndroidKeyProof
 import app.snapsync.wire.models.AppTooOldError
 import app.snapsync.wire.models.AppTooOldErrorError
-import app.snapsync.wire.models.AppleAppAttestProof
 import app.snapsync.wire.models.Challenge
 import app.snapsync.wire.models.ClosedError
 import app.snapsync.wire.models.ClosedErrorError
@@ -32,7 +30,6 @@ import app.snapsync.wire.models.EventDetails
 import app.snapsync.wire.models.Manifest
 import app.snapsync.wire.models.MemberCounts
 import app.snapsync.wire.models.MintRequest
-import app.snapsync.wire.models.Proof
 import app.snapsync.wire.models.Received
 import app.snapsync.wire.models.RenewRequest
 import app.snapsync.wire.models.Role
@@ -156,24 +153,10 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
             return text(UNAUTHORIZED, "attestation rejected: ${refusal.wireName}$detail")
         }
         if (req.challenge !in state.challenges) return text(CONFLICT, "stale challenge")
-        val key = attestedKey(req.proof, req.challenge)
+        val key = MockKeyAttestation.attestedKey(req.proof, req.challenge)
             ?: return text(UNAUTHORIZED, "attestation rejected: ${DeviceRefusal.DEVICE_UNVERIFIABLE.wireName}")
         state.attestedKeys[req.deviceId] = key
         return json(CREATED, Token.serializer(), Token(state.mint(req.deviceId, req.challenge)))
-    }
-
-    /**
-     * The key [proof] attests over [challenge], where the in-memory integrity produced it: App Attest's names its key and
-     * IS the payload; an Android key attestation's leaf certificate carries the payload, which names the key.
-     */
-    @OptIn(ExperimentalEncodingApi::class)
-    private fun attestedKey(proof: Proof, challenge: String): String? = when (proof) {
-        is AppleAppAttestProof -> proof.keyId.takeIf {
-            base64OrNull(proof.attestation)
-                ?.contentEquals(MockKeyAttestation.payload(proof.keyId, challenge).encodeToByteArray()) == true
-        }
-        is AndroidKeyProof -> proof.chain.firstOrNull()?.let(::base64OrNull)?.let(MockKeyAttestation::textOf)
-            ?.let { payload -> MockKeyAttestation.keyOf(payload, challenge) }
     }
 
     // A renewal is an assertion by the key the device attested with, over a challenge this backend issued.
@@ -683,7 +666,7 @@ private fun Manifest.inApp(deviceId: String): MockManifest? = MockManifest(
 )
 
 /** [text]'s bytes, or `null` when it is no Base64. */
-private fun base64OrNull(text: String): ByteArray? = try {
+internal fun base64OrNull(text: String): ByteArray? = try {
     Base64.decode(text)
 } catch (_: IllegalArgumentException) {
     null

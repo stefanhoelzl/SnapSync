@@ -3,7 +3,6 @@ package app.snapsync.data.receiving
 import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.downloadDatabase
-import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.held
 import app.snapsync.data.receiving.RowStatements.refsOf
 import app.snapsync.data.receiving.db.DownloadAsset
 import app.snapsync.data.receiving.db.DownloadDatabase
@@ -79,10 +78,7 @@ class DownloadDatabaseFile @AppProcessOnly constructor(databases: Databases) :
          * The id a column holds, as a list of one — or of none when it is [Stored.Empty]. A row an earlier build left
          * with no id names no photo the union serves or the library holds, so it plans, imports and suppresses nothing.
          */
-        internal fun <T : Any> Stored<T>.held(): List<T> = when (this) {
-            is Stored.Valid -> listOf(value)
-            Stored.Empty -> emptyList()
-        }
+        internal fun <T : Any> Stored<T>.held(): List<T> = listOfNotNull(value)
 
         /**
          * The ref the texts [device] and [asset] spell — a tag's, a correlation's, a reply's, which arrive from outside
