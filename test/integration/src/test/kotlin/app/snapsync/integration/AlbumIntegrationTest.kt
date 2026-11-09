@@ -156,6 +156,32 @@ class AlbumIntegrationTest {
     @Test
     @Verifies(
         spec = "event-album",
+        requirement = "Turning the album on gathers what is already there",
+        scenario = "On Android, turning the album on later moves received photos into it",
+    )
+    fun on_android_a_gather_the_phone_cannot_record_still_moves_the_received_photo_into_the_album() = behaviour {
+        given {
+            androidLibrary()
+            joinedEvent(Choices(saveToAlbum = false))
+            receivedFrom(DEV_F, "FQ", into = { settled { it.state.albums.orEmpty().isEmpty() } })
+            step(
+                "the album map's next change refused",
+                act = { databases.fail("ledger.db", "eventAlbum", WriteKind.UPDATE) },
+                until = {},
+            )
+        }
+
+        whenever { reconfigure(Choices(saveToAlbum = true)) }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "eventAlbum" && it.kind == WriteKind.UPDATE }
+            event<WorldEvent.LibraryJoinedAlbum> { it.asset == RECEIVED }
+            settled { it.state.albums?.singleOrNull()?.photos == listOf(RECEIVED) }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "event-album",
         requirement = "A deleted album is recreated only when the member asks",
         scenario = "Opting in again recreates it",
     )

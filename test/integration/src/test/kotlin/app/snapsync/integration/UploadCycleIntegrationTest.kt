@@ -277,6 +277,36 @@ class UploadCycleIntegrationTest {
         }
     }
 
+    @Test
+    @Verifies(spec = "delivery", requirement = "A photo is never lost on the way")
+    fun photos_whose_ledger_turns_unreadable_while_they_are_filed_are_shared_once_it_reads_again() = behaviour {
+        given {
+            appUploadsOnly()
+            joinedSavingToAlbum()
+            step("A and B taken while the album's adds wait", act = {
+                library.holdAdds(true)
+                takePhoto("A")
+                takePhoto("B")
+                os.foreground()
+            }, until = { event<WorldEvent.LibraryAddHeld>() })
+        }
+
+        whenever {
+            databases.unreadable("ledger.db", on = true)
+            library.holdAdds(false)
+        }
+        then {
+            never<WorldEvent.SessionTransferCreated> { it.key == primaryKey("B") }
+            settled { true }
+        }
+
+        whenever {
+            databases.unreadable("ledger.db", on = false)
+            os.foreground()
+        }
+        then { event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("B") } }
+    }
+
     // ---- a planned photo looked up again --------------------------------------------------------------------------
 
     @Test

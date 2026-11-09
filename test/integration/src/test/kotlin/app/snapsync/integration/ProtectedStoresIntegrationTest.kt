@@ -339,6 +339,64 @@ class ProtectedStoresIntegrationTest {
 
     @Test
     @Verifies(
+        spec = "manage-membership",
+        requirement = "A failed rename keeps the dialog and never ends the membership",
+    )
+    fun a_rename_confirmed_after_the_event_s_key_was_lost_sends_nothing() = behaviour {
+        given {
+            joinedEvent()
+            step(
+                "the rename dialog open",
+                act = { tap(UiIntent.RenameOpen) },
+                until = { event<WorldEvent.UiChanged> { it.ui.overlays.renaming } },
+            )
+            step("the event's key lost", act = { keychain.forget(KeychainItem.EVENT_KEY) }, until = {})
+            step(
+                "the joined screen asks for the invite",
+                act = { os.foreground() },
+                until = {
+                    screen<Layer.Joined> { it.health == SyncHealth.KeyLost }
+                    settled { true }
+                },
+            )
+        }
+
+        whenever { rename("Ana's 30th") }
+        then {
+            never<WorldEvent.BackendReceived> { it.operation == "changeEvent" }
+            neverScreen<Layer.Joined> { it.membership.name != Defaults.EVENT_NAME }
+            neverScreen<Layer.CreateEvent>()
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(spec = "sync-status", requirement = "A device that lost the event's key asks for its invite")
+    fun an_invite_carrying_another_key_does_not_restore_a_lost_key() = behaviour {
+        val event = given {
+            val event = joinedEvent()
+            step("the event's key lost", act = { keychain.forget(KeychainItem.EVENT_KEY) }, until = {})
+            step(
+                "the joined screen asks for the invite",
+                act = { os.foreground() },
+                until = {
+                    screen<Layer.Joined> { it.health == SyncHealth.KeyLost }
+                    settled { true }
+                },
+            )
+            event
+        }
+
+        whenever { openLink("$LINK_ORIGIN/join/$event#k=" + "A".repeat(42) + "E") }
+        then {
+            neverScreen<Layer.Joined> { it.health != SyncHealth.KeyLost }
+            never<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(
         spec = "invite-link",
         requirement = "Reopening the current event's invite changes nothing",
         scenario = "An incomplete invite does not restore a lost key",
