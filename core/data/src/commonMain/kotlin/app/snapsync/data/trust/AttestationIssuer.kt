@@ -4,6 +4,7 @@ import app.snapsync.data.backend.BackendExchange
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.trust.AttestKeyId
 import app.snapsync.domain.trust.ChallengeVerdict
+import app.snapsync.domain.trust.MintIssuance
 import app.snapsync.domain.trust.TokenIssuance
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
@@ -93,7 +94,7 @@ class AttestationIssuer(private val integrity: DeviceIntegrity, private val exch
             }
         }
 
-    private suspend fun mintWith(device: DeviceId, challenge: String, proved: ProveResult.Ok): TokenIssuance {
+    private suspend fun mintWith(device: DeviceId, challenge: String, proved: ProveResult.Ok): MintIssuance {
         val proof = Proofs.wire(proved.proof) ?: return TokenIssuance.ProofFailed
         return IssuerReplies.minted(
             exchange.send(Routes.MintToken.request(MintRequest(device.value, challenge, proof))),
@@ -102,10 +103,10 @@ class AttestationIssuer(private val integrity: DeviceIntegrity, private val exch
 }
 
 /** One mint's answer: with the key it was proved with, or without a proof at all. */
-sealed class Minting(val issuance: TokenIssuance) {
-    class Proved(issuance: TokenIssuance, val key: ProvedKey) : Minting(issuance)
+sealed class Minting(val issuance: MintIssuance) {
+    class Proved(issuance: MintIssuance, val key: ProvedKey) : Minting(issuance)
 
-    class Unproved(issuance: TokenIssuance) : Minting(issuance)
+    class Unproved(issuance: MintIssuance) : Minting(issuance)
 }
 
 /** The key a mint was proved with: its id, and the chain it presented where the platform exposes one. */

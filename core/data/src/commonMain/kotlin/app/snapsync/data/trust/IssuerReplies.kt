@@ -3,6 +3,7 @@ package app.snapsync.data.trust
 import app.snapsync.data.backend.ServiceFaults
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.domain.trust.MintIssuance
 import app.snapsync.domain.trust.TokenIssuance
 import app.snapsync.ports.Proof
 import app.snapsync.ports.ProofFormat
@@ -23,7 +24,7 @@ import kotlin.io.encoding.Base64
  */
 internal object IssuerReplies {
     /** An `/attest/token` answer: [MintTokenReply.Rejected] names the reason the user is told. */
-    fun minted(reply: MintTokenReply): TokenIssuance = when (reply) {
+    fun minted(reply: MintTokenReply): MintIssuance = when (reply) {
         is MintTokenReply.Minted -> TokenIssuance.Minted(TokenText.parse(reply.token.token))
         is MintTokenReply.Rejected -> RefusalText.parse(reply.text)
         StaleChallenge -> TokenIssuance.ChallengeStale
