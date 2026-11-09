@@ -8,7 +8,6 @@ import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.OpenFailures
 import app.snapsync.domain.event.OpenVerdict
 import app.snapsync.inbound.Field.Companion.of
@@ -65,7 +64,7 @@ class DownloadOpening(
         fetchedFor: EventId?,
     ): OpenAnswer {
         val held = held(membership.state.value)
-        val verdict = OpenVerdict.of(held, fetchedFor, KeyPresence.of(held, keys.state.value))
+        val verdict = OpenVerdict.of(held, fetchedFor, keys.state.value)
         val resource = Resource(landed, source, asset, role)
         return opened(resource, verdict).also { files.delete(FileArea.SHARED, landed.sealedPath) }
     }

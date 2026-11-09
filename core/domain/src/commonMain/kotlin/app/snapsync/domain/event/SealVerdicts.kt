@@ -31,30 +31,30 @@ sealed interface SealVerdict {
     companion object {
         /**
          * How bytes bound for [sendingTo] — the event the cycle's requests address — go up, given the [membership]
-         * held, its key's [presence] and this device's id ([device], `null` when it cannot be read).
+         * held, what its key slot holds ([fact]) and this device's id ([device], `null` when it cannot be read).
          */
-        fun of(membership: Membership?, sendingTo: EventId, presence: KeyPresence, device: DeviceId?): SealVerdict =
+        fun of(membership: Membership?, sendingTo: EventId, fact: KeyFact, device: DeviceId?): SealVerdict =
             when (membership) {
                 null -> Withheld(Withheld.Because.NOT_JOINED)
-                else -> sending(membership.event, sendingTo, presence, device)
+                else -> sending(membership.event, sendingTo, fact, device)
             }
 
-        private fun sending(joined: Event, sendingTo: EventId, presence: KeyPresence, device: DeviceId?): SealVerdict =
+        private fun sending(joined: Event, sendingTo: EventId, fact: KeyFact, device: DeviceId?): SealVerdict =
             when (joined.id == sendingTo) {
-                true -> joined(joined.encryption, presence, device)
+                true -> joined(joined.encryption, fact, device)
                 false -> Withheld(Withheld.Because.NOT_JOINED)
             }
 
-        private fun joined(encryption: Encryption, presence: KeyPresence, device: DeviceId?): SealVerdict =
+        private fun joined(encryption: Encryption, fact: KeyFact, device: DeviceId?): SealVerdict =
             when (encryption) {
-                is Encryption.Encrypted -> keyed(presence, device)
+                is Encryption.Encrypted -> keyed(KeyPresence.of(encryption, fact), device)
                 is Encryption.Plain -> Plain
             }
 
-        private fun keyed(presence: KeyPresence, device: DeviceId?): SealVerdict = when (presence) {
+        private fun keyed(presence: KeyPresence.Needed, device: DeviceId?): SealVerdict = when (presence) {
             is KeyPresence.Held -> device?.let { Sealed(presence.key, it) } ?: Withheld(Withheld.Because.DEVICE_UNKNOWN)
             is KeyPresence.Unknown -> Withheld(Withheld.Because.KEY_UNREADABLE)
-            is KeyPresence.Lost, is KeyPresence.NotNeeded -> Withheld(Withheld.Because.KEY_LOST)
+            is KeyPresence.Lost -> Withheld(Withheld.Because.KEY_LOST)
         }
     }
 }
@@ -78,25 +78,31 @@ sealed interface OpenVerdict {
 
     companion object {
         /**
-         * Whether a resource fetched for [fetchedFor] opens, given the [membership] held and its key's [presence].
-         * [fetchedFor] is `null` for a transfer started before transfers named their event (`PENDING_CLEANUPS.md`): it
-         * was fetched for the event joined then, which is the one joined now.
+         * Whether a resource fetched for [fetchedFor] opens, given the [membership] held and what its key slot holds
+         * ([fact]). [fetchedFor] is `null` for a transfer started before transfers named their event
+         * (`PENDING_CLEANUPS.md`): it was fetched for the event joined then, which is the one joined now.
          */
-        fun of(membership: Membership?, fetchedFor: EventId?, presence: KeyPresence): OpenVerdict = when (membership) {
+        fun of(membership: Membership?, fetchedFor: EventId?, fact: KeyFact): OpenVerdict = when (membership) {
             null -> NotJoined
-            else -> joined(membership.event.id, fetchedFor ?: membership.event.id, presence)
+            else -> joined(membership.event, fetchedFor ?: membership.event.id, fact)
         }
 
-        private fun joined(joined: EventId, fetchedFor: EventId, presence: KeyPresence): OpenVerdict =
-            when (fetchedFor == joined) {
-                true -> keyed(joined, presence)
+        private fun joined(joined: Event, fetchedFor: EventId, fact: KeyFact): OpenVerdict =
+            when (fetchedFor == joined.id) {
+                true -> opened(joined, fact)
                 false -> OtherEvent
             }
 
-        private fun keyed(joined: EventId, presence: KeyPresence): OpenVerdict = when (presence) {
+        /** A plain event keeps no key: a sealed file fetched for it has none to open it. */
+        private fun opened(joined: Event, fact: KeyFact): OpenVerdict = when (val encryption = joined.encryption) {
+            is Encryption.Encrypted -> keyed(joined.id, KeyPresence.of(encryption, fact))
+            is Encryption.Plain -> NoKey
+        }
+
+        private fun keyed(joined: EventId, presence: KeyPresence.Needed): OpenVerdict = when (presence) {
             is KeyPresence.Held -> OpenWith(presence.key, joined)
             is KeyPresence.Unknown -> KeyUnreadable
-            is KeyPresence.Lost, is KeyPresence.NotNeeded -> NoKey
+            is KeyPresence.Lost -> NoKey
         }
     }
 }

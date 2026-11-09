@@ -10,7 +10,6 @@ import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.IdentifiedKey
-import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.SealVerdict
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
@@ -31,7 +30,7 @@ class UploadSealing(
     /** How [asset]'s [role] goes up to [event] — the event the cycle's requests address. */
     fun sealFor(event: EventId, asset: AssetId, role: ResourceRole): UploadSeal {
         val held = held(membership.state.value)
-        val verdict = SealVerdict.of(held, event, KeyPresence.of(held, keys.state.value), device(identity.id()))
+        val verdict = SealVerdict.of(held, event, keys.state.value, device(identity.id()))
         return sealed(verdict, event, asset, role)
     }
 
