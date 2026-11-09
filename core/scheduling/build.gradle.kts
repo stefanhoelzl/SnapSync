@@ -40,5 +40,9 @@ coverage {
     // membership change's exclusion moved in from model and services: a root's uncaught failure and a sweep that
     // meets a join are the unit suite's (`RootScopeFailuresTest`, `ExclusionTest`). No test was lost. Measured
     // 91.43 / 72.35 %.
+    // Steady since phase 6, when an act began landing only once the app is quiet (`docs/testing.md`, "An act lands when
+    // the app is quiet"): before, one run in about six measured 91.54 / 73.17 % — a grant's recognition sharing an
+    // import's pass at the moment the import yielded, reaching `SingleFlight`'s withdrawal from a pass another still
+    // waits for, which the unit suite holds (`SingleFlightTest`). Five runs since, byte-identical.
     integration(instructions = 91, branches = 72)
 }

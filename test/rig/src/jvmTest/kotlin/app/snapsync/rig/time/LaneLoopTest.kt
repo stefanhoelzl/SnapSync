@@ -3,14 +3,19 @@ package app.snapsync.rig.time
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
@@ -181,6 +186,56 @@ class LaneLoopTest {
         withContext(app) {}
         assertEquals(1, violations.size, "$violations")
         assertTrue("lane composition" in violations.single())
+    }
+
+    @Test
+    fun an_act_waits_for_the_app_to_be_still_and_for_outside_work_to_end() = runBlocking {
+        val loop = loop()
+        val app = loop.lane("composition", checked = true)
+        val held = CompletableDeferred<Unit>()
+        val outsideBegun = CompletableDeferred<Unit>()
+        val outside = launch(Dispatchers.Default) {
+            loop.outside("a request to the backend") {
+                outsideBegun.complete(Unit)
+                held.await()
+            }
+        }
+        outsideBegun.await()
+        val acted = async(Dispatchers.Default) { loop.awaitActable() }
+        assertNull(withTimeoutOrNull(200.milliseconds) { acted.await() }, "outside work in flight keeps an act out")
+        held.complete(Unit)
+        outside.join()
+        withTimeout(5.seconds) { acted.await() }
+        withContext(app) {}
+    }
+
+    @Test
+    fun relayed_work_keeps_an_act_out_until_it_hands_the_app_its_work_and_then_only_while_the_app_runs() = runBlocking {
+        val loop = loop()
+        val app = loop.lane("extension", checked = true)
+        val os = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val parked = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val relay = launch(Dispatchers.Default) {
+            loop.relayed("the extension's process()") {
+                // The operating system's thread: it hands the cycle to the app's lane and waits for it.
+                withContext(os) {
+                    runBlocking(app) {
+                        parked.complete(Unit)
+                        release.await()
+                    }
+                }
+            }
+        }
+        parked.await()
+        // Handed over and parked: the app takes an act, though the relay is still outside work and the loop not quiet.
+        withTimeout(5.seconds) { loop.awaitActable() }
+        assertTrue(violations.isEmpty(), "$violations")
+        release.complete(Unit)
+        relay.join()
+        os.close()
+        withTimeout(5.seconds) { loop.awaitQuiet() }
+        assertTrue(violations.isEmpty(), "the relay's own tail is still counted outside work: $violations")
     }
 
     @Test
