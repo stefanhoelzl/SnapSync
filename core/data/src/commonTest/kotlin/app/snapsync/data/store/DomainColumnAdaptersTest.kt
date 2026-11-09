@@ -26,11 +26,11 @@ class DomainColumnAdaptersTest {
     }
 
     @Test
-    fun `a stored value that is no id is read as what it held and written back as it was`() {
-        assertEquals(Stored.Invalid("E1"), EventIdColumnAdapter.decode("E1"))
-        assertEquals(Stored.Invalid("D1"), DeviceIdColumnAdapter.decode("D1"))
-        assertEquals(Stored.Invalid("a/b"), AssetIdColumnAdapter.decode("a/b"))
-        assertEquals("a/b", AssetIdColumnAdapter.encode(Stored.Invalid("a/b")))
+    fun `the empty text a migration left is no id, and is written back as it was`() {
+        assertEquals(Stored.Empty, EventIdColumnAdapter.decode(""))
+        assertEquals(Stored.Empty, DeviceIdColumnAdapter.decode(""))
+        assertEquals(Stored.Empty, AssetIdColumnAdapter.decode(""))
+        assertEquals("", EventIdColumnAdapter.encode(Stored.Empty))
     }
 
     private companion object {

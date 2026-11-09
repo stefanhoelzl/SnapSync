@@ -72,7 +72,7 @@ class ManifestRecordTest {
     fun `a row whose event column spells no id says nothing of any event`() {
         recorded(1)
         shared.execute {
-            it.uploadedManifestQueries.recordUploaded(Stored.Invalid(""), 2, "{}", PublishedDeclaration.SHARING, 0)
+            it.uploadedManifestQueries.recordUploaded(Stored.Empty, 2, "{}", PublishedDeclaration.SHARING, 0)
         }
         assertEquals(RecordRead.None, record.read(event))
     }

@@ -5,6 +5,7 @@ import app.snapsync.data.identity.DeviceIdentity.Companion.spelled
 import app.snapsync.data.identity.DeviceIdentity.Companion.stored
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
@@ -45,8 +46,8 @@ interface DeviceIdentity {
 
         /**
          * [text] as the device id it spells — or, when it spells none, an identity no backend call could be made under,
-         * so it
-         * is reported as unusable ([otherwise]) rather than handed out.
+         * so it is reported as unusable ([otherwise]) rather than handed out. The Keychain keeps what any earlier build
+         * wrote, even across a reinstall, so a slot that spells none is a state the device can be in.
          */
         internal fun spelled(text: String, via: DeviceIdRead.Via, otherwise: String): DeviceIdRead =
             DeviceId.parse(text)?.let { DeviceIdRead.Ok(it, via) } ?: DeviceIdRead.Unavailable(otherwise)
@@ -132,7 +133,10 @@ class MintingDeviceIdentity @AppProcessOnly constructor(
     private fun minted(): DeviceIdRead {
         val id = platformDeviceId.stableId() ?: Uuid.random().toString().uppercase()
         return when (val written = store.write(TrustSlots.DEVICE_ID, id)) {
-            WriteOutcome.Ok -> spelled(id, DeviceIdRead.Via.MINTED, "the minted device id is not a device id")
+            WriteOutcome.Ok -> DeviceIdRead.Ok(
+                DeviceId.parse(id) ?: throw InvalidProgramState("a minted id is a UUID or a contract-shaped one"),
+                DeviceIdRead.Via.MINTED,
+            )
             is WriteOutcome.Failed -> DeviceIdRead.Unavailable("write refused: ${written.detail}")
         }
     }

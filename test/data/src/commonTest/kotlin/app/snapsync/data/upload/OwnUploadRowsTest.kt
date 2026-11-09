@@ -247,7 +247,7 @@ class OwnUploadRowsTest {
         walk.discover(event, listOf(found("A")))
         shared.use {
             it.ledgerQueries.insert(
-                event.value, "not-a-key", Stored.Invalid("x"), LedgerState.DISCOVERED, "", "", "", "", null,
+                event.value, "not-a-key", Stored.Empty, LedgerState.DISCOVERED, "", "", "", "", null,
             )
             it.ledgerQueries.insert(
                 event.value, "B-still.heic", Stored.Valid(key("B").asset), LedgerState.REQUESTED, "", "", "", "", null,

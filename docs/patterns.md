@@ -326,9 +326,10 @@ the format, the ports, the generated wire and the inbound log — never `applica
 - **Nothing throws** (§15). A store answers what it read (`TokenRead`, `KeyIdRead`, `DeviceIdRead`, `MembershipRead`:
   the value, none, or `Unavailable` — never mistaken for absence) and what it wrote (`WriteOutcome`, `StoreWrite`). A
   statement runs through the `Databases` port's `OpenDatabase.execute`, whose adapter catches its platform's SQL
-  exception and answers `DbResult.Failed`. An id column reads as a `Stored` — the id it spells, or the text when it
-  spells none — since a device's rows were also written by earlier builds and copied in by migrations; each reader says
-  what a row that holds none means (the membership is unreadable, a leave fails), as an exhaustive `when`.
+  exception and answers `DbResult.Failed`. An id column reads as a `Stored` — the id it spells, or `Empty` — since a device's rows were also
+  written by earlier builds and copied in by migrations, and two migrations left the empty event; each reader says what
+  a row that holds none means (the membership is unreadable, a leave fails), as an exhaustive `when`. Any other text is
+  an `InvalidProgramState`: no build wrote one.
 - **A write is decided for one membership.** Every change after an entry names the membership it was decided for and
   changes the row only while it is still that one (compare-and-set); a change of several records — a leave, a share
   change — is ONE transaction, so it lands whole or not at all.

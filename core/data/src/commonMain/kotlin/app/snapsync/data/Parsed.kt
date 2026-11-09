@@ -27,7 +27,7 @@ internal sealed interface Parsed<out T> {
         /** The id [stored] holds, or that its [column] spells none. */
         internal fun <T : Any> parsed(stored: Stored<T>, column: String): Parsed<T> = when (stored) {
             is Stored.Valid -> Parsed.Ok(stored.value)
-            is Stored.Invalid -> Parsed.Refused("its $column is no id")
+            Stored.Empty -> Parsed.Refused("its $column is empty")
         }
 
         /** The ids [stored] hold, or that one of its [column]s spells none. */

@@ -167,7 +167,7 @@ class LegacyFailuresTest {
         val first = SharedDatabase(databases.port(), legacy = null)
         first.execute { db ->
             db.membershipQueries.saveMembership(
-                eventId = Stored.Invalid("garbled"),
+                eventId = Stored.Empty,
                 name = "n",
                 minPhotoDate = CaptureCutoff(AT),
                 startsAt = EventStart(AT),

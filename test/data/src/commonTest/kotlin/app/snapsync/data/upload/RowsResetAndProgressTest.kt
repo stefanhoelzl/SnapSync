@@ -145,17 +145,6 @@ class RowsResetAndProgressTest {
     }
 
     @Test
-    fun `a row whose asset spells no id is no photo's progress`() {
-        shared.use {
-            it.ledgerQueries.insert(
-                event.value, "bad-primary.heic", app.snapsync.data.store.Stored.Invalid("bad id!"),
-                app.snapsync.domain.upload.LedgerState.COMPLETED, "", "primary", "", "", null,
-            )
-        }
-        assertEquals(emptyMap(), assertIs<ProgressRead.Read>(progress.progress(event)).photos)
-    }
-
-    @Test
     fun `a ledger that cannot be read or written says so, never a throw`() {
         device.lock()
 

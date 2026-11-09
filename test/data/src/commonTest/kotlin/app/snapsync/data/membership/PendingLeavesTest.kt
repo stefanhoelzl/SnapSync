@@ -31,7 +31,7 @@ class PendingLeavesTest {
 
     @Test
     fun `a leave owed whose stored event id spells none makes the leaves unreadable, never a throw`() {
-        shared.use { it.pendingLeaveQueries.recordPendingLeave(Stored.Invalid("E1")) }
+        shared.use { it.pendingLeaveQueries.recordPendingLeave(Stored.Empty) }
         assertIs<PendingLeavesRead.Unavailable>(leaves.outstanding())
     }
 

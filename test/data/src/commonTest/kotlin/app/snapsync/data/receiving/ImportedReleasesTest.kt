@@ -61,10 +61,10 @@ class ImportedReleasesTest {
     @Test
     fun `a row whose ids are no ids is no imported photo and no unconfirmed one`() = runTest {
         device.sql(
-            "INSERT INTO downloadAsset VALUES ('not-a-device', 'X', 'IMPORTED', '$DURING', 'LOCAL-X')",
-            "INSERT INTO downloadResource VALUES ('not-a-device', 'X', 'k', 'u', 'primary', 'image/heic', 'n', " +
+            "INSERT INTO downloadAsset VALUES ('', 'X', 'IMPORTED', '$DURING', 'LOCAL-X')",
+            "INSERT INTO downloadResource VALUES ('', 'X', 'k', 'u', 'primary', 'image/heic', 'n', " +
                 "'download-staging/x', 1, '${EVENT.value}')",
-            "INSERT INTO downloadAsset VALUES ('${ANNA.value}', 'Y', 'PENDING', '$DURING', 'no..id')",
+            "INSERT INTO downloadAsset VALUES ('${ANNA.value}', 'Y', 'PENDING', '$DURING', '')",
         )
         assertEquals(emptyList(), device.releases.holdingBytes().ok())
         assertEquals(emptyList(), device.releases.unconfirmed().ok())

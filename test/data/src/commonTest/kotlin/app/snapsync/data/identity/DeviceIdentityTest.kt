@@ -182,18 +182,6 @@ class DeviceIdentityTest {
         assertEquals(listOf(id), store.writesTo(SHARED))
     }
 
-    @Test
-    fun `a platform id that is no device id is unusable - never handed out`() {
-        assertEquals(
-            DeviceIdRead.Unavailable("the minted device id is not a device id"),
-            minting(
-                platform = object : PlatformDeviceId {
-                    override fun stableId(): String? = run { "not-a-uuid" }
-                },
-            ).id(),
-        )
-    }
-
     // ---- a refused persisting write ---------------------------------------------------------------
 
     /** An id used and not stored would be a different id on the next launch — so it is never handed out. */
