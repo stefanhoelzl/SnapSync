@@ -15,6 +15,7 @@ import app.snapsync.domain.sharing.Discovery
 import app.snapsync.domain.sharing.ReadPlan
 import app.snapsync.domain.sharing.SelectionInputs
 import app.snapsync.domain.sharing.SelectionPolicy
+import app.snapsync.domain.sharing.WalkBounds
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
@@ -78,10 +79,10 @@ class OwnPhotos(
      * The read [contribution] is applied to, made: its candidates before admission, and the way to their resources. A
      * policy that shares nothing reads nothing, whatever the grant — its read is the whole of what it shares from.
      */
-    suspend fun read(contribution: Contribution): Candidates = when (contribution.policy.contributes) {
-        false -> Candidates(CandidateSet.NothingShared(clock.now()), GalleryResources(gallery))
-        true -> when (val plan = contribution.plan) {
-            ReadPlan.Walk -> walked(walk.read(contribution.policy.walkBounds))
+    suspend fun read(contribution: Contribution): Candidates = when (val bounds = contribution.policy.walkBounds) {
+        WalkBounds.None -> Candidates(CandidateSet.NothingShared(clock.now()), GalleryResources(gallery))
+        is WalkBounds.Within -> when (val plan = contribution.plan) {
+            ReadPlan.Walk -> walked(walk.read(bounds))
             is ReadPlan.Snapshot -> selected(plan.selection)
             ReadPlan.NotReadable -> unreadable
         }

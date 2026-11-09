@@ -26,17 +26,6 @@ class LibraryWalkTest {
     // ---- GalleryWalk ------------------------------------------------------------------------------------------------
 
     @Test
-    fun `no bounds read nothing and are a walked empty read`() = runTest {
-        val library = Library(LibraryAssets.photo("A", DURING))
-        val read = assertIs<WalkRead.Walked>(GalleryWalk(library.reader, library.wallClock).read(WalkBounds.None))
-
-        assertEquals(emptyList(), read.assets)
-        assertEquals(at(NOW), read.takenAt)
-        assertEquals(emptyList(), library.calls, "a policy that admits nothing asks the gallery nothing")
-        assertEquals(listOf("A"), read.resources.of(ids("A").toSet()).resolvedIds(), "its resources are the gallery's")
-    }
-
-    @Test
     fun `a walk asks for the bounds' capture dates and defers the resources to one request by id`() = runTest {
         val library =
             Library(LibraryAssets.photo("A", DURING), LibraryAssets.photo("B", DURING), LibraryAssets.photo("U", "?"))
@@ -79,7 +68,7 @@ class LibraryWalkTest {
         var walks = 0
         var during: (() -> Unit)? = null
 
-        override suspend fun read(bounds: WalkBounds): WalkRead {
+        override suspend fun read(bounds: WalkBounds.Within): WalkRead {
             walks++
             during?.also { during = null }?.invoke()
             return answer
@@ -133,16 +122,12 @@ class LibraryWalkTest {
     }
 
     @Test
-    fun `other bounds walk again, and no bounds are an entry of their own`() = runTest {
+    fun `other bounds walk again`() = runTest {
         val walk = Scripted(walked("A"))
         val memo = memo(walk)
         memo.read(within())
         memo.read(within(from = "2026-07-15T00:00:00Z"))
         assertEquals(2, walk.walks, "a walk made under other bounds is never reused")
-
-        memo.read(WalkBounds.None)
-        memo.read(WalkBounds.None)
-        assertEquals(3, walk.walks)
     }
 
     @Test
@@ -168,7 +153,7 @@ class LibraryWalkTest {
         assertEquals(2, walk.walks, "an unreadable read is no answer to reuse")
 
         walk.answer = WalkRead.NotReadable
-        assertEquals(WalkRead.NotReadable, memo.read(WalkBounds.None))
+        assertEquals(WalkRead.NotReadable, memo.read(within(from = "2026-07-15T00:00:00Z")))
         val served = assertIs<WalkRead.Walked>(memo.read(within()))
 
         assertEquals(3, walk.walks, "the unreadable walk under other bounds left the entry in place")
