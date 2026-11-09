@@ -90,5 +90,7 @@ coverage {
     // reported, a membership that cannot be read are their unit suites' (`UploadSealingTest`,
     // `DownloadOpeningTest`).
     // → 86/64 in phase 38 (missing levers and world events). Measured 86.51 / 64.88 %, two runs.
-    integration(instructions = 86, branches = 64)
+    // → 92/76 in phase 43 (coverage to the goal): the file and Keychain faults, an Android phone's proof, and the id
+    // columns' one empty text. Measured 92.23 / 76.31 %, three runs.
+    integration(instructions = 92, branches = 76)
 }
