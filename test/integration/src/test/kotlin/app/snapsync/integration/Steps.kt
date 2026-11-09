@@ -167,3 +167,16 @@ suspend fun Given.namedPhotoOnItsWay(filename: String, device: String = DEV_F, a
         settled { true }
     },
 )
+
+/**
+ * The phone runs iOS 26.1 or later, which carries iOS's own background uploader: a fact the app reads at launch, so the
+ * process is started again over it, in front, as a member opening the app finds it.
+ */
+suspend fun Given.iosUploaderCarried() = step(
+    "iOS's own uploader carried",
+    act = {
+        extensionRegistry.carried(true)
+        host.relaunch(scene = true)
+    },
+    until = { settled { true } },
+)

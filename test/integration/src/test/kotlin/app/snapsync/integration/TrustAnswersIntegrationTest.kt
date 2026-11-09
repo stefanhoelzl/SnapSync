@@ -43,6 +43,26 @@ class TrustAnswersIntegrationTest {
 
     @Test
     @Verifies(
+        spec = "privacy-security",
+        requirement = "A refused phone is told why",
+        scenario = "No answer is not a refusal",
+    )
+    fun a_create_whose_proof_challenge_goes_stale_twice_fails_without_a_refusal() = behaviour {
+        given {
+            step("every mint's challenge stale", act = { backend.fail(MINT, BackendFault.CLOSED, ALWAYS) }, until = {})
+            inFront()
+        }
+
+        whenever { createTheEvent() }
+        then {
+            screen<Layer.CreateEvent> { it.error != null }
+            neverScreen<Layer.CreateEvent> { it.error in REFUSALS }
+            never<WorldEvent.EventCreated>()
+        }
+    }
+
+    @Test
+    @Verifies(
         spec = "sync-status",
         requirement = "A device that cannot be verified is shown, and never blamed on the member",
         scenario = "A refused phone's line names the cause",
