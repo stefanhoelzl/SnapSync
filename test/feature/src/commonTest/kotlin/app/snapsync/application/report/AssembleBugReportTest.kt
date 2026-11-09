@@ -680,3 +680,7 @@ class AssembleBugReportTest {
         val VIENNA: TimeZone = TimeZone.of("Europe/Vienna")
     }
 }
+
+/** Bytes of log [this] carries — what `LOG_BUDGET_BYTES` bounds; the note is not log. */
+private val DiagnosticDump.logBytes: Int
+    get() = appLog.encodeToByteArray().size + extensionLog.encodeToByteArray().size

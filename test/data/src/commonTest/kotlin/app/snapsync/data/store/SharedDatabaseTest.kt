@@ -70,11 +70,9 @@ class SharedDatabaseTest {
     fun `the records are ready once every legacy source is in the database`() {
         val shared = SharedDatabase(device.port(), legacy = null)
         assertEquals(SharedRecordsReadiness.LegacyPending, shared.readiness())
-        assertEquals(DbResult.Ok(false), shared.imported(LegacySource.MEMBERSHIP))
 
         shared.use { db -> LegacySource.entries.forEach { db.legacyImportQueries.markImported(it.key) } }
         assertEquals(SharedRecordsReadiness.Ready, shared.readiness())
-        assertEquals(DbResult.Ok(true), shared.imported(LegacySource.MEMBERSHIP))
     }
 
     @Test

@@ -58,5 +58,5 @@ class BackendGraph(ports: AppPorts, process: ProcessGraph, services: ServicesGra
     val rename: EventRename = EventRename(gateway, services.metaCipher)
     val join: EventJoin = EventJoin(gateway)
     val leave: LeaveNotifier = LeaveNotifier(gateway, services.deviceIdentity)
-    val push: PushEndpointPublisher = PushEndpointPublisher(gateway, services.deviceIdentity)
+    val push: PushEndpointPublisher = PushEndpointPublisher(gateway)
 }

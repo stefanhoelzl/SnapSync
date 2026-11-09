@@ -75,10 +75,6 @@ class SharedDatabase(databases: Databases, legacy: LegacyCopy?) {
     /** That the shared database changed, in this process or the other. */
     val changes: StoreChanges get() = owned.changes
 
-    /** Whether [source] lives in this database now, rather than in its legacy file or key. */
-    fun imported(source: LegacySource): DbResult<Boolean> =
-        execute { source.key in it.legacyImportQueries.selectImported().executeAsList() }
-
     /**
      * Whether the records can be read here: [SharedRecordsReadiness.LegacyPending]
      * until the app has copied every legacy source — the extension then pauses rather than read a table that is not

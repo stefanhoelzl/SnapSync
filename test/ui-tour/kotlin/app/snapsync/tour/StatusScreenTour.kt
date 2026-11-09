@@ -420,7 +420,7 @@ abstract class StatusScreenTour {
             facts = BuildFacts(
                 store = Store("App Store", STORE_URL),
                 reportDestination = ReportDestination.DEVELOPER,
-                label = BuildLabel.UNKNOWN,
+                label = BuildLabel("unknown", "unknown"),
                 albumContents = AlbumContents.SharedAndReceived,
             ),
             reduction = Dispatchers.Default,

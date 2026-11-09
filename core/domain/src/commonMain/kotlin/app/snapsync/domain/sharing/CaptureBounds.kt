@@ -10,9 +10,7 @@ import kotlin.jvm.JvmInline
  * lowered.
  */
 @JvmInline
-value class CaptureCutoff(val at: Timestamp) : Comparable<CaptureCutoff> {
-    override fun compareTo(other: CaptureCutoff): Int = at.compareTo(other.at)
-}
+value class CaptureCutoff(val at: Timestamp)
 
 /**
  * A membership's capture-date **upper** bound (the ceiling): the latest capture date this device contributes, as the
@@ -20,6 +18,4 @@ value class CaptureCutoff(val at: Timestamp) : Comparable<CaptureCutoff> {
  * of four consumers; it reaches every consumer now because they all read the one admitted set.
  */
 @JvmInline
-value class CaptureCeiling(val at: Timestamp) : Comparable<CaptureCeiling> {
-    override fun compareTo(other: CaptureCeiling): Int = at.compareTo(other.at)
-}
+value class CaptureCeiling(val at: Timestamp)

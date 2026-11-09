@@ -67,11 +67,11 @@ sealed interface GateRead {
  * nothing, where [NotJoined] is definite.
  */
 sealed interface UploadGate {
-    /** What the pass answers when it stops here. */
-    val pass: UploadPass
-
     /** The pass stops at the gate: it reads, settles, walks, creates and publishes nothing — and answers [pass]. */
-    sealed interface Stop : UploadGate
+    sealed interface Stop : UploadGate {
+        /** What the pass answers when it stops here. */
+        val pass: UploadPass
+    }
 
     /** A required input could not be read: nothing is touched, and the next pass retries. */
     data class Unreadable(val detail: String) : Stop {
@@ -97,9 +97,7 @@ sealed interface UploadGate {
     }
 
     /** The pass may run for [membership], publishing as [device] with the [version] its entry read first. */
-    class Run(val membership: Membership.Active, val version: ManifestVersion, val device: DeviceId) : UploadGate {
-        override val pass get() = UploadPass.CAUGHT_UP
-    }
+    class Run(val membership: Membership.Active, val version: ManifestVersion, val device: DeviceId) : UploadGate
 
     companion object {
         /** The entry, from what it [read], whether the build has a [host], the key's [presence] and the [admission]. */

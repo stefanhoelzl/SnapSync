@@ -1,6 +1,5 @@
 package app.snapsync.domain.upload
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.AdmittedRow
 
 /**
@@ -13,9 +12,6 @@ import app.snapsync.domain.sharing.AdmittedRow
  * admitted rows sorting behind excluded ones.
  */
 class TopUpPlan private constructor(val rows: List<UploadRow.Discovered>) {
-    /** The photos this top-up may create jobs for — placed in the event album before any of their jobs exists. */
-    val assets: Set<AssetId> get() = rows.mapTo(mutableSetOf()) { it.key.asset }
-
     companion object {
         /** The [needing] rows whose asset is among [admitted]. */
         fun of(needing: List<UploadRow.Discovered>, admitted: List<AdmittedRow>): TopUpPlan {

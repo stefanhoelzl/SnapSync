@@ -14,27 +14,21 @@ import kotlin.jvm.JvmInline
  * membership's bound.
  */
 @JvmInline
-value class EventStart(val at: Timestamp) : Comparable<EventStart> {
-    override fun compareTo(other: EventStart): Int = at.compareTo(other.at)
-}
+value class EventStart(val at: Timestamp)
 
 /**
  * The event's end — host-chosen at creation, immutable: the capture-date ceiling every member's own ceiling starts at.
  * It closes nothing: an event stays open until its [OpenUntil].
  */
 @JvmInline
-value class EventEnd(val at: Timestamp) : Comparable<EventEnd> {
-    override fun compareTo(other: EventEnd): Int = at.compareTo(other.at)
-}
+value class EventEnd(val at: Timestamp)
 
 /**
  * Until when the event stays open — its [EventEnd], or, for an event created after its end, the day its host chose
  * (`changes/back-dated-events`, D1). The date its lifecycle counts from; it closes nothing either.
  */
 @JvmInline
-value class OpenUntil(val at: Timestamp) : Comparable<OpenUntil> {
-    override fun compareTo(other: OpenUntil): Int = at.compareTo(other.at)
-}
+value class OpenUntil(val at: Timestamp)
 
 /**
  * When the backend deletes the event's shared data — derived **server-side** and served with the event's details. The
@@ -42,6 +36,4 @@ value class OpenUntil(val at: Timestamp) : Comparable<OpenUntil> {
  * is shown as deleted: the most expensive role to confuse with any other.
  */
 @JvmInline
-value class DeletesAt(val at: Timestamp) : Comparable<DeletesAt> {
-    override fun compareTo(other: DeletesAt): Int = at.compareTo(other.at)
-}
+value class DeletesAt(val at: Timestamp)

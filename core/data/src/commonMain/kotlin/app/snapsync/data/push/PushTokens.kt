@@ -47,7 +47,7 @@ class PushTokens(
     }
 
     private fun identified(endpoint: PushEndpoint): RegistrationRead = when (val id = identity.id()) {
-        is DeviceIdRead.Ok -> RegistrationRead.Held(endpoint, endpoint.keyFor(id.value))
+        is DeviceIdRead.Ok -> RegistrationRead.Held(endpoint, id.value, endpoint.keyFor(id.value))
         DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> RegistrationRead.NoIdentity
     }
 
@@ -61,7 +61,8 @@ class PushTokens(
 
 /** The registration this device would make now: what to publish and what it records as, or why there is none. */
 sealed interface RegistrationRead {
-    data class Held(val endpoint: PushEndpoint, val key: PushRegistrationKey) : RegistrationRead
+    /** A token to publish for [device], recorded as [key]. */
+    data class Held(val endpoint: PushEndpoint, val device: DeviceId, val key: PushRegistrationKey) : RegistrationRead
 
     /** The OS has delivered no token yet in this process. */
     data object NoToken : RegistrationRead

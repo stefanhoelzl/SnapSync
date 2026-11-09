@@ -24,14 +24,9 @@ data class ReportContext(
 enum class ReportOutcome { SENT, SAVED, NOT_SENT }
 
 /**
- * The build's version and build number as the app menu shows them. Off-device
- * compositions know neither and say so ([UNKNOWN]) rather than showing a number nobody built.
+ * The build's version and build number as the app menu shows them.
  */
-data class BuildLabel(val version: String, val buildNumber: String) {
-    companion object {
-        val UNKNOWN: BuildLabel = BuildLabel(version = "unknown", buildNumber = "unknown")
-    }
-}
+data class BuildLabel(val version: String, val buildNumber: String)
 
 /**
  * Where a bug report goes — a constant of the build: a distributed build sends it to

@@ -10,7 +10,6 @@ import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.SelectionSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.firstOrNull
@@ -27,8 +26,6 @@ import kotlinx.coroutines.flow.map
  */
 class SelectionSnapshots {
     private val latest = MutableStateFlow<SelectionState>(SelectionState.Unread)
-
-    val state: StateFlow<SelectionState> get() = latest
 
     /** The selection as last read, or `null` while none has been. */
     val read: SelectionState.Read? get() = latest.value as? SelectionState.Read

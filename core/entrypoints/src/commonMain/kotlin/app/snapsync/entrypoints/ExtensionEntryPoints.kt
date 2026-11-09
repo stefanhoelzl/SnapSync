@@ -83,7 +83,7 @@ class ExtensionPass(
             is UploadGate.Run -> required { contributing(gate, on) }
             is UploadGate.Withheld -> required { withheld(gate.event) }
             is UploadGate.Unreadable -> ExtensionAnswer.COULD_NOT_LOOK
-            UploadGate.NotJoined, is UploadGate.Paused -> gate.pass.extensionAnswer(inFlight = 0)
+            is UploadGate.Stop -> gate.pass.extensionAnswer(inFlight = 0)
         }
     }
 
