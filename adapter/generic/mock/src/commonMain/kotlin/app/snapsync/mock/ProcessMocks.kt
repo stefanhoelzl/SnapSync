@@ -3,6 +3,7 @@ package app.snapsync.mock
 import app.snapsync.domain.crash.CrashEvent
 import app.snapsync.domain.crash.CrashSections
 import app.snapsync.domain.process.MemoryFootprint
+import app.snapsync.domain.report.Platform
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.ClockLevers
 import app.snapsync.levers.CrashReporterLevers
@@ -204,12 +205,19 @@ class ClockOperator internal constructor(private val mock: ClockMock) : ClockLev
     override suspend fun now(): String = mock.now.toString()
 }
 
-/** The device's Secure Enclave: its keys outlive a process. Nothing to pull, so no operator face. */
-class DeviceIntegrityMock {
+/**
+ * The device's Secure Enclave (or Keystore): its keys outlive a process. Nothing to pull, so no operator face — and no
+ * lever of its own for the kind of proof it makes: that follows from the phone the build is for, [platform], the cell
+ * the build mock reads (the LEVER RULE).
+ */
+class DeviceIntegrityMock(private val platform: BuildPlatform = BuildPlatform(Platform.IOS)) {
     internal val keys = EnclaveKeys()
 
-    /** A process's face; a simulator has no App Attest: `available = false`. */
-    fun port(available: Boolean = true): DeviceIntegrity = InMemoryDeviceIntegrity(available, keys)
+    /**
+     * A process's face, proving as the platform its build is for as it launches; a simulator has no App Attest:
+     * `available = false`.
+     */
+    fun port(available: Boolean = true): DeviceIntegrity = InMemoryDeviceIntegrity(available, keys, platform.value)
 }
 
 /**

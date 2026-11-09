@@ -8,9 +8,11 @@ import kotlin.concurrent.Volatile
 /**
  * What the running build IS, as a mock (`docs/testing.md`, "Mocks"): the constants a device's bundle carries. Its
  * levers are [declaredVersion] — a cell the caller holds, so an operator plays a member updating the app in place —
- * read per use, as the backend mock reads the same cell per request; and [store], the build's store page, read per use
- * too (the app takes it once, at launch), so an operator plays a build listed in another store, or in none. Everything
- * else is fixed at construction: an off-device build knows no device, so its facts read `unknown` unless given them.
+ * read per use, as the backend mock reads the same cell per request; [store], the build's store page, read per use
+ * too (the app takes it once, at launch), so an operator plays a build listed in another store, or in none; and
+ * [platform], the phone the build is for, read per use as well (the app takes it at launch), so an operator plays an
+ * Android build — the same cell the device's integrity mock proves by ([DeviceIntegrityMock]). Everything else is fixed
+ * at construction: an off-device build knows no device, so its facts read `unknown` unless given them.
  */
 class BuildInfoMock(
     /** The backend's device-facing base, carrying exactly one version prefix. */
@@ -26,8 +28,11 @@ class BuildInfoMock(
     val osVersion: String = UNKNOWN,
     val deviceModel: String = UNKNOWN,
     val reporterEnvironment: String = UNKNOWN,
-    /** The platform the build is for. There is no JVM value: the JVM world plays a phone. */
-    val platform: Platform = Platform.IOS,
+    /**
+     * The platform the build is for — a cell the caller holds: the device's own ([MockDevice.platform]), which its
+     * integrity mock reads too. There is no JVM value: the JVM world plays a phone.
+     */
+    val platform: BuildPlatform = BuildPlatform(Platform.IOS),
     /** The process's own identifier, or `null` for none. */
     val processId: String? = null,
 ) {
@@ -44,7 +49,7 @@ class BuildInfoMock(
         override val deviceModel: String = this@BuildInfoMock.deviceModel
         override val reporterEnvironment: String = this@BuildInfoMock.reporterEnvironment
         override val dsn: String? = this@BuildInfoMock.dsn
-        override val platform: Platform = this@BuildInfoMock.platform
+        override val platform: Platform get() = this@BuildInfoMock.platform.value
         override val processId: String? = this@BuildInfoMock.processId
     }
 }
@@ -52,6 +57,15 @@ class BuildInfoMock(
 /** A build's store page as a cell its holder changes — `null` for a build that carries none. */
 class StorePage(value: Store?) {
     @Volatile var value: Store? = value
+}
+
+/**
+ * The phone a build is for, as a cell its holder changes: a build's constant, which a process reads as it launches. One
+ * per device, read by the build mock and by the device's integrity mock alike — the proof a phone presents is its
+ * platform's.
+ */
+class BuildPlatform(value: Platform) {
+    @Volatile var value: Platform = value
 }
 
 /** What an off-device build reads for a device fact it does not have. */

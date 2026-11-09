@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.domain.report.Platform
 import app.snapsync.domain.version.Store
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
@@ -32,6 +33,7 @@ import app.snapsync.levers.OlderInstallLevers
 import app.snapsync.levers.OsLevers
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.PlayedOsLevers
+import app.snapsync.levers.PlayedPlatform
 import app.snapsync.levers.PreferencesLevers
 import app.snapsync.levers.ProcessInfoLevers
 import app.snapsync.levers.ProcessMetricsLevers
@@ -45,6 +47,7 @@ import app.snapsync.levers.UploadSessionLevers
 import app.snapsync.levers.WakeLevers
 import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WorldLevers
+import app.snapsync.mock.BuildPlatform
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.StorePage
@@ -256,7 +259,7 @@ private fun MockWorld.implementationOf(
         CrashReporterLevers -> device.crashReporter.operator
         SystemUiLevers -> device.systemUi.operator
         DevControlsLevers -> ReconcilingControls(controls, reconcileUploads)
-        BuildLevers -> PlayedBuild(checkNotNull(version), store)
+        BuildLevers -> PlayedBuild(checkNotNull(version), store, platform)
         DatabasesLevers -> device.databases.operator
         FilesLevers -> DeviceFiles(device.disk)
         KeychainLevers -> Keychain(this)
@@ -345,11 +348,12 @@ private class ReconcilingControls(
 }
 
 /**
- * Why this world refuses some methods of a service it serves: the store page, where the build is the device's own, and
- * a force-quit, where no host owns the app's process.
+ * Why this world refuses some methods of a service it serves: the store page and the platform, where the build is the
+ * device's own, and a force-quit, where no host owns the app's process.
  */
 private fun MockWorld.methodRefusalsOf(service: LeverService<*>): Map<String, String> = when (service) {
-    BuildLevers -> mapOf(BuildLevers::store.name to STORE_IS_BAKED).takeIf { store == null }.orEmpty()
+    BuildLevers -> mapOf(BuildLevers::store.name to STORE_IS_BAKED).takeIf { store == null }.orEmpty() +
+        mapOf(BuildLevers::platform.name to PLATFORM_IS_BAKED).takeIf { platform == null }.orEmpty()
     // A force-quit, or a revoke that stops the app, ends the app's process, which only a host that owns it can do.
     PlayedOsLevers -> if (os.process == null) {
         PlayedOsLevers.refusing("forceQuit", why = FORCE_QUIT_NEEDS_THE_PROCESS) +
@@ -363,8 +367,15 @@ private fun MockWorld.methodRefusalsOf(service: LeverService<*>): Map<String, St
 /** Why a device's build store page is no lever. */
 private const val STORE_IS_BAKED = "this build's store page is its bundle's, not a cell the channel may change"
 
-/** The build's declared version and its store page, as cells the channel changes. */
-private class PlayedBuild(private val version: DeclaredVersion, private val store: StorePage?) : BuildLevers {
+/** Why a device's build platform is no lever. */
+private const val PLATFORM_IS_BAKED = "this build's platform is the phone it runs on, not a cell the channel may change"
+
+/** The build's declared version, its store page and its platform, as cells the channel changes. */
+private class PlayedBuild(
+    private val version: DeclaredVersion,
+    private val store: StorePage?,
+    private val platform: BuildPlatform?,
+) : BuildLevers {
     override suspend fun declare(version: String) {
         this.version.value = version
     }
@@ -374,6 +385,13 @@ private class PlayedBuild(private val version: DeclaredVersion, private val stor
     override suspend fun store(name: String?, url: String?) {
         require((name == null) == (url == null)) { "a store page is a name AND a url, or neither" }
         checkNotNull(store).value = name?.let { Store(it, checkNotNull(url)) }
+    }
+
+    override suspend fun platform(platform: PlayedPlatform) {
+        checkNotNull(this.platform).value = when (platform) {
+            PlayedPlatform.IOS -> Platform.IOS
+            PlayedPlatform.ANDROID -> Platform.ANDROID
+        }
     }
 }
 

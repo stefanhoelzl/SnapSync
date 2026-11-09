@@ -58,7 +58,7 @@ class ProcessMockContractBindingsTest {
                     deviceModel = "iPhone",
                     reporterEnvironment = "development",
                 )
-                BuildInfoState.ON_ANDROID -> BuildInfoMock(platform = Platform.ANDROID)
+                BuildInfoState.ON_ANDROID -> BuildInfoMock(platform = BuildPlatform(Platform.ANDROID))
                 else -> BuildInfoMock()
             }
             return Entered.Ready(mock.port().recorded(log))

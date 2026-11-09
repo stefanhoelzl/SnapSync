@@ -1,6 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.domain.crash.CrashEvent
+import app.snapsync.domain.report.Platform
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.NetworkAccess
@@ -26,7 +27,14 @@ fun inMemoryDeviceIntegrity(
     available: Boolean = true,
     unusable: Set<String> = emptySet(),
     vendorReachable: Boolean = true,
-): DeviceIntegrity = InMemoryDeviceIntegrity(available, unusable = unusable, vendorReachable = vendorReachable)
+    /** The phone whose proofs it makes: App Attest's on an iPhone, Keystore key attestation's on Android. */
+    platform: Platform = Platform.IOS,
+): DeviceIntegrity = InMemoryDeviceIntegrity(
+    available,
+    unusable = unusable,
+    vendorReachable = vendorReachable,
+    platform = platform,
+)
 
 fun inMemoryCrashReporter(
     started: MutableStateFlow<Boolean>,

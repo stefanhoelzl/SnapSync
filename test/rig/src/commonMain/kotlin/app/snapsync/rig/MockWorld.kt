@@ -10,6 +10,7 @@ import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.UploadKeyText
 import app.snapsync.levers.DevControlsLevers
+import app.snapsync.mock.BuildPlatform
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockManifest
@@ -71,6 +72,11 @@ class MockWorld(
     val version: DeclaredVersion?,
     /** The build's store page — a cell an operator may change — or `null` where the build is the device's own. */
     val store: StorePage?,
+    /**
+     * The phone the build is for — a cell an operator may change, which the device's integrity mock proves by too — or
+     * `null` where the build is the device's own.
+     */
+    val platform: BuildPlatform?,
     /** The operating system's side of the handlers the channel hands the app, where it plays the OS. */
     val os: PlayedOs,
     /** This device's id, as the app's Keychain holds it. */

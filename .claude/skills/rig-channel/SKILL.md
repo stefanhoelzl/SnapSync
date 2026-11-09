@@ -852,7 +852,11 @@ What the operating system tells the app about the device, and what the app hands
   encrypted event: create a plain one to see downloads land on a device; the JVM host seals them itself),
   read `controls()`.
 - `build` (`BuildLevers`) — `declare(version)` (the marketing version the build declares on every request — play an
-  old build, or an update), read `declared()`; only where the backend is the mock, which reads it.
+  old build, or an update), read `declared()`; only where the backend is the mock, which reads it. Where the build
+  itself is the mock (the JVM host only; a device host refuses these two, its build is its bundle's): `store(name?,
+  url?)` (another store page, or none) and `platform(IOS|ANDROID)` (the phone the build is for — and so its proofs: an
+  iPhone's App Attest carries no certificates, an Android phone's Keystore attestation a certificate chain the mocked
+  backend verifies). Both are build constants: `host.relaunch()` after, so the app reads them.
 
 Gone with the move: `device/clock/advance`, `device/network`, `device/conditions`, `device/diagnostics/sent`,
 `device/app-version`, `device/invite-link-hints`, `device/encrypt-new-events`, and `os-record`'s `systemUi`.

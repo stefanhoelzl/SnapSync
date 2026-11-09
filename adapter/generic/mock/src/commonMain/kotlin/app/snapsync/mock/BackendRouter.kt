@@ -17,6 +17,7 @@ import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Limits
 import app.snapsync.wire.api.Routes
+import app.snapsync.wire.models.AndroidKeyProof
 import app.snapsync.wire.models.AppTooOldError
 import app.snapsync.wire.models.AppTooOldErrorError
 import app.snapsync.wire.models.AppleAppAttestProof
@@ -31,6 +32,7 @@ import app.snapsync.wire.models.EventDetails
 import app.snapsync.wire.models.Manifest
 import app.snapsync.wire.models.MemberCounts
 import app.snapsync.wire.models.MintRequest
+import app.snapsync.wire.models.Proof
 import app.snapsync.wire.models.Received
 import app.snapsync.wire.models.RenewRequest
 import app.snapsync.wire.models.Role
@@ -68,7 +70,8 @@ import kotlin.uuid.Uuid
  *   [Limits.EVENT_NAME_MAX_LENGTH] trimmed, is refused; an end before the start or more than 30 days after it is
  *   refused, an absent end is `start + 30 days`, an open-until date is the end or at most 30 days after the later
  *   of the end and now, and an event lives 30 days from `max(createdAt, openUntil)`. Nothing closes.
- * - **Attestation** mints only for a proof the in-memory integrity produced (`attestation:<keyId>:<challenge>`), over
+ * - **Attestation** mints only for a proof the in-memory integrity produced (`attestation:<keyId>:<challenge>` — an App
+ *   Attest proof's bytes, or an Android key attestation's leaf certificate, [MockKeyAttestation]), over
  *   a challenge this backend issued — one it did not issue is stale, as the real issuers answer it — and never
  *   renews.
  * - **Bytes** land through the byte routes — as an OS transfer reaches them ([BackendState.receive], which the
@@ -146,7 +149,6 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         else -> text(NOT_FOUND, "not found")
     }
 
-    @OptIn(ExperimentalEncodingApi::class)
     private fun mint(call: Call): HttpResult {
         val req = call.decode(MintRequest.serializer()) ?: return text(BAD_REQUEST, "invalid body")
         state.refuseAttestation?.let { refusal ->
@@ -154,13 +156,24 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
             return text(UNAUTHORIZED, "attestation rejected: ${refusal.wireName}$detail")
         }
         if (req.challenge !in state.challenges) return text(CONFLICT, "stale challenge")
-        val proof = req.proof as? AppleAppAttestProof
-        val genuine = proof != null &&
-            base64OrNull(proof.attestation)
-                ?.contentEquals("attestation:${proof.keyId}:${req.challenge}".encodeToByteArray()) == true
-        if (!genuine) return text(UNAUTHORIZED, "attestation rejected: ${DeviceRefusal.DEVICE_UNVERIFIABLE.wireName}")
-        state.attestedKeys[req.deviceId] = proof.keyId
+        val key = attestedKey(req.proof, req.challenge)
+            ?: return text(UNAUTHORIZED, "attestation rejected: ${DeviceRefusal.DEVICE_UNVERIFIABLE.wireName}")
+        state.attestedKeys[req.deviceId] = key
         return json(CREATED, Token.serializer(), Token(state.mint(req.deviceId, req.challenge)))
+    }
+
+    /**
+     * The key [proof] attests over [challenge], where the in-memory integrity produced it: App Attest's names its key and
+     * IS the payload; an Android key attestation's leaf certificate carries the payload, which names the key.
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun attestedKey(proof: Proof, challenge: String): String? = when (proof) {
+        is AppleAppAttestProof -> proof.keyId.takeIf {
+            base64OrNull(proof.attestation)
+                ?.contentEquals(MockKeyAttestation.payload(proof.keyId, challenge).encodeToByteArray()) == true
+        }
+        is AndroidKeyProof -> proof.chain.firstOrNull()?.let(::base64OrNull)?.let(MockKeyAttestation::textOf)
+            ?.let { payload -> MockKeyAttestation.keyOf(payload, challenge) }
     }
 
     // A renewal is an assertion by the key the device attested with, over a challenge this backend issued.
