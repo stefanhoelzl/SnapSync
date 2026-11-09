@@ -117,7 +117,6 @@ class CycleVerdictsTest {
         val plan = TopUpPlan.of(rows, listOf(AdmittedRow(key("B").asset)))
 
         assertEquals(listOf(key("B")), plan.rows.map { it.key })
-        assertEquals(setOf(key("B").asset), plan.assets)
     }
 
     @Test
@@ -196,6 +195,5 @@ class CycleVerdictsTest {
         assertEquals(SKIPPED, UploadGate.NotJoined.pass)
         assertEquals(SKIPPED, UploadGate.Withheld(active().event.id).pass)
         assertEquals(PAUSED, UploadGate.Paused(UploadPause.LEGACY_RECORDS).pass)
-        assertEquals(CAUGHT_UP, UploadGate.Run(active(), ManifestVersion(1), DEVICE).pass)
     }
 }

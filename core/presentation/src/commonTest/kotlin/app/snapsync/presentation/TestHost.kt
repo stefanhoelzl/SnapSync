@@ -99,7 +99,7 @@ private object NoInvite : InviteRead {
 internal fun testFacts(
     store: Store? = null,
     reportDestination: ReportDestination = ReportDestination.DEVELOPER,
-    build: BuildLabel = BuildLabel.UNKNOWN,
+    build: BuildLabel = BuildLabel("unknown", "unknown"),
     albumContents: AlbumContents = AlbumContents.SharedAndReceived,
 ): BuildFacts = BuildFacts(store, reportDestination, build, albumContents)
 

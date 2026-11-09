@@ -30,13 +30,6 @@ class DiagnosticDump(
     /** The extension process's log tail, line-aligned. Empty when the extension has never run. */
     val extensionLog: String,
 ) {
-    /**
-     * Bytes of **log** carried — what [LOG_BUDGET_BYTES] bounds. The [note] is deliberately excluded: it is bounded to
-     * a couple of hundred bytes and counted in the whole-event sum's 4 KB row.
-     */
-    val logBytes: Int
-        get() = appLog.encodeToByteArray().size + extensionLog.encodeToByteArray().size
-
     /** The sections by name, as the report carries them: sent as an event's contexts, or kept as one file. */
     fun sections(): Map<String, Map<String, String>> = mapOf(
         "note" to mapOf("text" to note),

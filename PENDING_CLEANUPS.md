@@ -250,7 +250,7 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
     `LegacyTextCopy`, `LegacyAlbumCopy`, `LegacyChecksCopy`, `LegacyHomes`) — `eventconfig.json`,
     `device-manifest/last-uploaded.json`, `membership/pending-leaves.txt`, the Preferences keys
     `app.snapsync.album.map` / `.filled` and `app.snapsync.check.*`.
-  - `SharedDatabase.imported` / `readiness`, the `legacyImport` table (`13.sqm`, `LegacyImport.sq`), and the
+  - `SharedDatabase.readiness`, the `legacyImport` table (`13.sqm`, `LegacyImport.sq`), and the
     membership read's "still in its legacy file" answer (`MembershipRepository.read`, `core/data/.../membership/`).
   - `UploadPause.LEGACY_RECORDS` and its check at the head of `UploadGateRead.read` (`core/data/.../upload/`).
   - `PushRegistrationRecord.legacy` / `moved` (`core/data/.../push/`: `push-registration/last-registered.txt` into the
@@ -265,7 +265,7 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
   (0.4's formats, each citing its source) and `forgetLegacyRecords` (what 0.6's copy left).
 - **Remove:** `data/legacy/` and its tests (`LegacyRecordsTest`, `LegacyFailuresTest`, `LegacyFiles`);
   `SharedDatabase`'s `legacy` parameter (and the `LegacyCopy`
-  interface beside it, `core/data/.../store/SharedDatabase.kt`), `imported` and `readiness`; the pause reason and its gate branch; the membership read's legacy answer; the push record's legacy
+  interface beside it, `core/data/.../store/SharedDatabase.kt`), `readiness`; the pause reason and its gate branch; the membership read's legacy answer; the push record's legacy
   copy and its two tests; `LegacyMembershipText` and its test; `writeLegacyRecords`, `forgetLegacyRecords` and the `RECORDS_MOVED` layer
   in `OlderInstalls.kt`. Squash the ledger chain to a v14 baseline, or the update test's v12–v13 cases lose their
   membership. Add a migration that drops `legacyImport`. Then the `Files` adapter's

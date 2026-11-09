@@ -39,7 +39,7 @@ class RegisterPush(
 
     private suspend fun held(trigger: PushTrigger, held: RegistrationRead.Held): PushRegistrationOutcome =
         when (PushRegistrationVerdict.of(trigger, held.key, record.lastAccepted())) {
-            PushRegistrationVerdict.PUBLISH -> published(held.key, publisher.publish(held.endpoint))
+            PushRegistrationVerdict.PUBLISH -> published(held.key, publisher.publish(held.endpoint, held.device))
             PushRegistrationVerdict.UNCHANGED -> PushRegistrationOutcome.Unchanged.also {
                 log.i("push token unchanged since the last accepted registration — not re-published")
             }
@@ -51,7 +51,6 @@ class RegisterPush(
             is PushPublishReply.Refused -> PushRegistrationOutcome.NotRegistered.also {
                 log.w("push registration failed (re-sent at the next entry or credential)", "reply" of reply.detail)
             }
-            PushPublishReply.NoIdentity -> deferred()
         }
 
     private suspend fun recorded(saved: StoreWrite): PushRegistrationOutcome = PushRegistrationOutcome.Registered.also {

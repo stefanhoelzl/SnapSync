@@ -47,13 +47,12 @@ class RegisterPushTest {
     private val transport = ScriptedTransport { ok(201) }
     private val values = mutableMapOf<String, String>()
     private val identity = FixedIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ))
-    private val publisherIdentity = FixedIdentity(identity.read)
     private val tokens = PushTokens(Service, BuildInfoMock().port(), identity)
 
     private fun register(preferences: Preferences = inMemoryPreferences(values)) = RegisterPush(
         tokens,
         PushRegistrationRecord(preferences, inMemoryFiles()),
-        PushEndpointPublisher(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")), publisherIdentity),
+        PushEndpointPublisher(BackendGateway(exchangeOver(transport), ScriptedCredential("T1"))),
     )
 
     private val puts get() = transport.calls.count { it.startsWith("PUT /devices/") }
@@ -112,12 +111,6 @@ class RegisterPushTest {
         tokens.store(PushToken("A"))
         identity.read = DeviceIdRead.Unavailable("locked")
         assertEquals(PushRegistrationOutcome.Deferred, register()(PushTrigger.DELIVERED))
-        assertEquals(0, puts)
-
-        // Readable when the registration is decided, unreadable by the time it is sent: deferred all the same.
-        identity.read = publisherIdentity.read
-        publisherIdentity.read = DeviceIdRead.Unavailable("locked")
-        assertEquals(PushRegistrationOutcome.Deferred, register()(PushTrigger.JOINED))
         assertEquals(0, puts)
     }
 

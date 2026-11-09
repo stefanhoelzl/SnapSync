@@ -16,9 +16,8 @@ import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -36,7 +35,6 @@ class SelectionSnapshotsTest {
     @Test
     fun `a selection is unread until one is published`() {
         val selection = SelectionSnapshots()
-        assertSame(SelectionState.Unread, selection.state.value)
         assertNull(selection.read)
     }
 
@@ -51,10 +49,10 @@ class SelectionSnapshotsTest {
             beforePublish = object : BeforePublish {
                 override suspend fun before(selection: SelectionState.Read) {
                     yield() // the withholding step may suspend
-                    before += selection.ids() to snapshots.state.value.ids()
+                    before += selection.ids() to snapshots.read?.ids()
                 }
             },
-        ).collect { published += snapshots.state.value.ids() }
+        ).collect { published += snapshots.read?.ids() }
 
         assertEquals<List<Pair<List<AssetId>?, List<AssetId>?>>>(
             listOf(ids("A", "B") to null, ids("C") to ids("A", "B")),
@@ -83,7 +81,7 @@ class SelectionSnapshotsTest {
         selection.published(flowOf(SelectionSnapshot(emptyList())), beforePublish = NothingWithheld).collect()
         runCurrent()
         assertTrue(read)
-        assertEquals(emptyList(), assertIs<SelectionState.Read>(selection.state.value).facts())
+        assertEquals(emptyList(), assertNotNull(selection.read).facts())
     }
 
     @Test
