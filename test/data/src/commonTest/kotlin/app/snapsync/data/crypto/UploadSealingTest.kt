@@ -1,6 +1,7 @@
 package app.snapsync.data.crypto
 
 import app.snapsync.application.membership.Device
+import app.snapsync.application.membership.FixedIdentity
 import app.snapsync.data.RecordingSecureStore
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.membership.EVENT
@@ -33,12 +34,15 @@ import kotlin.test.assertTrue
 class UploadSealingTest {
 
     private val device = Device()
+
+    /** Either process's identity: the upload extension's may hold no id. */
+    private val identity = FixedIdentity(device.identity.read)
     private val crypto = fakeCrypto()
     private val ids = EventKeyIds(crypto)
     private val keys = EventKeyStore(RecordingSecureStore(), ids)
     private val shared = mutableMapOf<String, ByteArray>()
     private val sealing =
-        UploadSealing(device.membership, keys, device.identity, FileCipher(crypto, inMemoryFiles(shared = shared)))
+        UploadSealing(device.membership, keys, identity, FileCipher(crypto, inMemoryFiles(shared = shared)))
     private val event: EventId = testEventId(EVENT)
     private val asset = testAssetId("ASSET1")
 
@@ -55,7 +59,7 @@ class UploadSealingTest {
         val order = assertIs<UploadSeal.Sealed>(sealing.sealFor(event, asset, ResourceRole.LIVE)).order
         assertEquals(key.id, order.key.id)
         assertEquals(event, order.binding.event)
-        assertEquals((device.identity.read as DeviceIdRead.Ok).value, order.binding.device)
+        assertEquals((identity.read as DeviceIdRead.Ok).value, order.binding.device)
         assertEquals(asset, order.binding.asset)
         assertEquals(ResourceRole.LIVE, order.binding.role)
         assertEquals("SealOrder(ASSET1)", order.toString(), "a seal order renders its asset, never its key")
@@ -86,7 +90,7 @@ class UploadSealingTest {
             assertIs<UploadSeal.Withheld>(sealing.sealFor(event, asset, ResourceRole.PRIMARY)).because,
         )
         keys.keep(KeyToKeep.Key(key), event)
-        device.identity.read = DeviceIdRead.Absent
+        identity.read = DeviceIdRead.Absent
         assertEquals(
             SealVerdict.Withheld.Because.DEVICE_UNKNOWN,
             assertIs<UploadSeal.Withheld>(sealing.sealFor(event, asset, ResourceRole.PRIMARY)).because,
@@ -98,13 +102,13 @@ class UploadSealingTest {
                 UploadSealing(
                     unreadable,
                     keys,
-                    device.identity,
+                    identity,
                     FileCipher(crypto, inMemoryFiles()),
                 ).sealFor(event, asset, ResourceRole.PRIMARY),
             ).because,
             "a membership that cannot be read is none to seal for",
         )
-        device.identity.read = DeviceIdRead.Unavailable("locked")
+        identity.read = DeviceIdRead.Unavailable("locked")
         assertIs<UploadSeal.Withheld>(sealing.sealFor(event, asset, ResourceRole.PRIMARY))
     }
 }

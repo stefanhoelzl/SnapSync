@@ -115,7 +115,7 @@ class JoinAndLeaveTest {
         assertEquals(EnrollOutcome.Failed(), enroll(choice(OTHER)))
         device.databases.lock(on = false)
         leave()
-        for (read in listOf(DeviceIdRead.Absent, DeviceIdRead.Unavailable("locked"))) {
+        for (read in listOf(DeviceIdRead.Unavailable("locked"))) {
             device.identity.read = read
             assertEquals(EnrollOutcome.Failed(), enroll(choice()))
         }

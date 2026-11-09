@@ -1,6 +1,6 @@
 package app.snapsync.data.receiving
 
-import app.snapsync.application.membership.FixedIdentity
+import app.snapsync.application.membership.FixedAppIdentity
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.ScriptedCredential
 import app.snapsync.data.backend.ScriptedTransport
@@ -25,7 +25,7 @@ import kotlin.test.assertSame
 class ReceivedReportingTest {
     private var answer: HttpResult = ok()
     private val transport = ScriptedTransport { answer }
-    private val identity = FixedIdentity(DeviceIdRead.Ok(ME, DeviceIdRead.Via.READ))
+    private val identity = FixedAppIdentity(DeviceIdRead.Ok(ME, DeviceIdRead.Via.READ))
     private val reporting = ReceivedReporting(
         BackendGateway(exchangeOver(transport), ScriptedCredential("T1")),
         identity,
@@ -55,7 +55,7 @@ class ReceivedReportingTest {
             assertIs<ReceivedReply.NotRecorded>(reporting.report(EVENT, ReceivedReport.Position(12)), "$refusal")
         }
         transport.requests.clear()
-        for (read in listOf(DeviceIdRead.Absent, DeviceIdRead.Unavailable("locked"))) {
+        for (read in listOf(DeviceIdRead.Unavailable("locked"))) {
             identity.read = read
             assertIs<ReceivedReply.NotRecorded>(reporting.report(EVENT, ReceivedReport.Position(12)))
         }

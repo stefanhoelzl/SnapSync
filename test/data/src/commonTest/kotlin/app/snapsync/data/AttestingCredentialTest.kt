@@ -2,7 +2,6 @@
 
 package app.snapsync.data
 
-import app.snapsync.data.identity.StoredDeviceIdentity
 import app.snapsync.data.trust.PresentedChain
 import app.snapsync.data.trust.RefreshRead
 import app.snapsync.data.trust.RefusalFacts
@@ -11,7 +10,6 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.trust.TokenIssuance
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.ports.AttestationChain
 import app.snapsync.ports.CertificateFacts
 import app.snapsync.ports.HttpResult
@@ -541,13 +539,6 @@ class AttestingCredentialTest {
         assertIs<RefreshRead.NotObtained>(c.credential.refresh())
         assertEquals(0, c.client.challengeCalls, "a locked Keychain is not a failed assertion")
         assertEquals(token(1), c.held.token())
-    }
-
-    @Test
-    fun `a device with no identity yet obtains nothing and attests nothing`() = runTest {
-        val c = Subject(identity = StoredDeviceIdentity(inMemorySecureStore()))
-        assertIs<RefreshRead.NotObtained>(c.credential.refresh())
-        assertEquals(0, c.client.challengeCalls)
     }
 
     @Test

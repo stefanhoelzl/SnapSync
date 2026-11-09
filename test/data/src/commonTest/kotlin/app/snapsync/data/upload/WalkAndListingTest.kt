@@ -108,7 +108,7 @@ class WalkAndListingTest {
                     app.snapsync.data.backend.exchangeOver(world.transport),
                     app.snapsync.data.backend.ScriptedCredential("T1"),
                 ),
-                world.identity,
+                world.appIdentity,
             )
 
         val stored = assertIs<ListingRead.Listed>(listing.stored(world.event)).stored
@@ -132,7 +132,7 @@ class WalkAndListingTest {
                     app.snapsync.data.backend.exchangeOver(world.transport),
                     app.snapsync.data.backend.ScriptedCredential("T1"),
                 ),
-                world.identity,
+                world.appIdentity,
             )
         listOf(
             text(400, "bad"),
@@ -155,9 +155,7 @@ class WalkAndListingTest {
         }
         assertIs<ListingRead.Unreadable>(listing.stored(world.event))
 
-        world.identity.read = DeviceIdRead.Absent
-        assertIs<ListingRead.Unavailable>(listing.stored(world.event))
-        world.identity.read = DeviceIdRead.Unavailable("locked")
+        world.appIdentity.read = DeviceIdRead.Unavailable("locked")
         assertEquals(ListingRead.Unavailable("locked"), listing.stored(world.event))
     }
 }

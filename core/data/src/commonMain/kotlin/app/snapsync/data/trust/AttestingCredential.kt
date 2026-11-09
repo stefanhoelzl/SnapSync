@@ -2,8 +2,8 @@ package app.snapsync.data.trust
 
 import app.snapsync.data.backend.Credential
 import app.snapsync.data.backend.TokenRead
+import app.snapsync.data.identity.AppDeviceIdentity
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.time.Timestamp
@@ -40,7 +40,7 @@ import kotlinx.coroutines.sync.withLock
 class AttestingCredential @AppProcessOnly constructor(
     private val store: CachedCredentialStore,
     private val issuer: AttestationIssuer,
-    private val identity: DeviceIdentity,
+    private val identity: AppDeviceIdentity,
     private val clock: Clock,
     private val status: AttestationStatus,
 ) : Credential {
@@ -115,7 +115,7 @@ class AttestingCredential @AppProcessOnly constructor(
 internal class TokenObtainer(
     private val store: CredentialStore,
     private val issuer: AttestationIssuer,
-    private val identity: DeviceIdentity,
+    private val identity: AppDeviceIdentity,
     private val status: AttestationStatus,
 ) {
     private val log = Log("AttestingCredential")
@@ -123,7 +123,7 @@ internal class TokenObtainer(
     /** The identity resolved on its own first: a store that cannot be read is no reason to attest afresh. */
     suspend fun obtained(): RefreshRead = when (val id = identity.id()) {
         is DeviceIdRead.Ok -> renewedOrMinted(id.value)
-        DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> nothing(
+        is DeviceIdRead.Unavailable -> nothing(
             "the device identity is unreadable — keeping the token",
         )
     }

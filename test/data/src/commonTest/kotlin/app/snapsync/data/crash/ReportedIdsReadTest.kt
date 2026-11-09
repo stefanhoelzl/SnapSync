@@ -3,6 +3,7 @@ package app.snapsync.data.crash
 import app.snapsync.application.membership.Device
 import app.snapsync.application.membership.FixedIdentity
 import app.snapsync.data.identity.DeviceIdRead
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.EVENT
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.enrolled
@@ -17,7 +18,7 @@ class ReportedIdsReadTest {
 
     private val device = Device()
 
-    private fun read(identity: FixedIdentity = device.identity, processId: String? = "app.snapsync") =
+    private fun read(identity: DeviceIdentity = device.identity, processId: String? = "app.snapsync") =
         ReportedIdsRead(device.membership, identity, BuildInfoMock(processId = processId).port()).now().section()
 
     @Test

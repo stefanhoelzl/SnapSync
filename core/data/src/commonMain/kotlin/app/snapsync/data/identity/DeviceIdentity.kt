@@ -67,7 +67,7 @@ interface DeviceIdentity {
 
 /** What resolving the device id found. */
 sealed interface DeviceIdRead {
-    data class Ok(val value: DeviceId, val via: Via) : DeviceIdRead
+    data class Ok(val value: DeviceId, val via: Via) : AppIdRead
 
     /** The slot holds no id, and this process may not mint one — or a reader asked never to mint. */
     data object Absent : DeviceIdRead
@@ -75,9 +75,20 @@ sealed interface DeviceIdRead {
     /**
      * The store could not be read or written, or holds something that is not a device id. Never mistaken for absence.
      */
-    data class Unavailable(val detail: String) : DeviceIdRead
+    data class Unavailable(val detail: String) : AppIdRead
 
     enum class Via { READ, MINTED }
+}
+
+/** What the app's identity resolves: an id, read or minted, or why there is none — never absence, as it mints. */
+sealed interface AppIdRead : DeviceIdRead
+
+/**
+ * The identity of a process that mints ([MintingDeviceIdentity]): its [id] is never [DeviceIdRead.Absent]. What only
+ * the app process does takes this one, so it has no absence to answer; what both processes do takes [DeviceIdentity].
+ */
+interface AppDeviceIdentity : DeviceIdentity {
+    override fun id(): AppIdRead
 }
 
 /**
@@ -86,10 +97,10 @@ sealed interface DeviceIdRead {
  * replaced by a fresh attempt for the next call.
  */
 @OptIn(ExperimentalAtomicApi::class)
-abstract class ResolvedOnce internal constructor() : DeviceIdentity {
+abstract class ResolvedOnce<R : DeviceIdRead> internal constructor() : DeviceIdentity {
     private val attempt = AtomicReference(lazy(::resolveOnce))
 
-    override fun id(): DeviceIdRead {
+    override fun id(): R {
         val current = attempt.load()
         return current.value.also { retryAfter(current, it) }
     }
@@ -97,16 +108,16 @@ abstract class ResolvedOnce internal constructor() : DeviceIdentity {
     /** The resolution this process holds, if it has one — never resolving to get one. */
     protected fun kept(): DeviceIdRead? = attempt.load().takeIf { it.isInitialized() }?.value as? DeviceIdRead.Ok
 
-    protected abstract fun resolveOnce(): DeviceIdRead
+    protected abstract fun resolveOnce(): R
 
-    private fun retryAfter(current: Lazy<DeviceIdRead>, read: DeviceIdRead) = when (read) {
+    private fun retryAfter(current: Lazy<R>, read: DeviceIdRead) = when (read) {
         is DeviceIdRead.Ok -> true
         DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> attempt.compareAndSet(current, lazy(::resolveOnce))
     }
 }
 
 /** The upload extension's identity: the shared slot, read; absence is [DeviceIdRead.Absent], never minted over. */
-class StoredDeviceIdentity(private val store: SecureStore) : ResolvedOnce() {
+class StoredDeviceIdentity(private val store: SecureStore) : ResolvedOnce<DeviceIdRead>() {
     override fun current(): DeviceIdRead = kept() ?: stored(store, DeviceIdRead.Via.READ)
 
     override fun resolveOnce(): DeviceIdRead = stored(store, DeviceIdRead.Via.READ).also(::logged)
@@ -120,16 +131,16 @@ class StoredDeviceIdentity(private val store: SecureStore) : ResolvedOnce() {
 class MintingDeviceIdentity @AppProcessOnly constructor(
     private val store: SecureStore,
     private val platformDeviceId: PlatformDeviceId,
-) : ResolvedOnce() {
+) : ResolvedOnce<AppIdRead>(), AppDeviceIdentity {
 
     override fun current(): DeviceIdRead = kept() ?: stored(store, DeviceIdRead.Via.READ)
 
-    override fun resolveOnce(): DeviceIdRead = when (val read = stored(store, DeviceIdRead.Via.READ)) {
-        is DeviceIdRead.Ok, is DeviceIdRead.Unavailable -> read
+    override fun resolveOnce(): AppIdRead = when (val read = stored(store, DeviceIdRead.Via.READ)) {
+        is AppIdRead -> read
         DeviceIdRead.Absent -> minted()
     }.also(::logged)
 
-    private fun minted(): DeviceIdRead {
+    private fun minted(): AppIdRead {
         val id = mintedId()
         return when (val written = store.write(TrustSlots.DEVICE_ID, id.value)) {
             WriteOutcome.Ok -> DeviceIdRead.Ok(id, DeviceIdRead.Via.MINTED)

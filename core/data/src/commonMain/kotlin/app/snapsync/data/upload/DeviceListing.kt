@@ -1,8 +1,8 @@
 package app.snapsync.data.upload
 
 import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.identity.AppDeviceIdentity
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
@@ -28,12 +28,11 @@ import app.snapsync.wire.models.StoredResource
  * the OS acknowledged their job. Each listed resource is the evidence its in-flight row may be settled
  * ([StoredBytes]); an item whose asset id is not canonical is not this device's resource, and is left out.
  */
-class DeviceListing(private val gateway: BackendGateway, private val identity: DeviceIdentity) {
+class DeviceListing(private val gateway: BackendGateway, private val identity: AppDeviceIdentity) {
 
     /** The resources the backend stores for this device in [event]. */
     suspend fun stored(event: EventId): ListingRead = when (val id = identity.id()) {
         is DeviceIdRead.Ok -> listed(event, id.value)
-        DeviceIdRead.Absent -> ListingRead.Unavailable("no device id is held here")
         is DeviceIdRead.Unavailable -> ListingRead.Unavailable(id.detail)
     }
 

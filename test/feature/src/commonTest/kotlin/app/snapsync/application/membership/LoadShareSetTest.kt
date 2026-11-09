@@ -1,7 +1,7 @@
 package app.snapsync.application.membership
 
 import app.snapsync.application.EntryPointCall
-import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.identity.AppDeviceIdentity
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.upload.DeviceListing
 import app.snapsync.domain.asset.CaptureDate
@@ -72,7 +72,7 @@ class LoadShareSetTest {
     private fun load(
         backend: ScriptedBackend,
         ledger: TestLedger,
-        identity: DeviceIdentity = testIdentity(deviceId),
+        identity: AppDeviceIdentity = testIdentity(deviceId),
         recorder: Recorder = Recorder(),
     ) = Loading(LoadShareSet(DeviceListing(backend.gateway, identity), ledger.reset), recorder)
 

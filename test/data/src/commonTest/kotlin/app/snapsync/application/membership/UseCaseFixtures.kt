@@ -8,6 +8,8 @@ import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.MetaCipher
+import app.snapsync.data.identity.AppDeviceIdentity
+import app.snapsync.data.identity.AppIdRead
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
@@ -32,7 +34,7 @@ internal class Device {
     val gateway = BackendGateway(exchangeOver(transport), ScriptedCredential("T1"))
     val clock = ClockMock(Instant.parse("2026-07-22T12:00:00Z"))
     val wallClock = WallClock(clock.port())
-    val identity = FixedIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE_ID), DeviceIdRead.Via.READ))
+    val identity = FixedAppIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE_ID), DeviceIdRead.Via.READ))
 
     /** The joined event's key, as the device keeps it — empty until a test keeps one. */
     val secure = RecordingSecureStore()
@@ -42,8 +44,16 @@ internal class Device {
     val cipher = MetaCipher(fakeCrypto())
 }
 
+/** Either process's identity, as a test fixes it — absence included, which only the extension's answers. */
 internal class FixedIdentity(var read: DeviceIdRead) : DeviceIdentity {
     override fun id(): DeviceIdRead = read
+
+    override fun current(): DeviceIdRead = read
+}
+
+/** The app's identity, as a test fixes it: never absent, since the app mints over absence. */
+internal class FixedAppIdentity(var read: AppIdRead) : AppDeviceIdentity {
+    override fun id(): AppIdRead = read
 
     override fun current(): DeviceIdRead = read
 }

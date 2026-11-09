@@ -1,8 +1,8 @@
 package app.snapsync.data.membership
 
 import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.identity.AppDeviceIdentity
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRows.membership
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
@@ -18,12 +18,12 @@ import app.snapsync.wire.api.ServerIssue
  * it shared. This device, always — no device crosses it, so it can never make another device leave. The identity is
  * read at each call: before the first unlock it cannot be, and the leave then waits for a later wake.
  */
-class LeaveNotifier(private val gateway: BackendGateway, private val identity: DeviceIdentity) {
+class LeaveNotifier(private val gateway: BackendGateway, private val identity: AppDeviceIdentity) {
 
     /** Tell [event] that this device left it. */
     suspend fun leave(event: EventId): LeaveFact = when (val id = identity.id()) {
         is DeviceIdRead.Ok -> sent(event, id.value)
-        DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> LeaveFact.Unanswered
+        is DeviceIdRead.Unavailable -> LeaveFact.Unanswered
     }
 
     private suspend fun sent(event: EventId, device: DeviceId): LeaveFact =

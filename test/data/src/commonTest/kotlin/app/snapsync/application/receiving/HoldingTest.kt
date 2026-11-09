@@ -75,7 +75,7 @@ class HoldingTest {
         assertSame(HeldPosition.Lacks, holds(membership, receives, UnionTrigger.LEAVE_CHECK), "no union")
         r.unionAnswer = null
 
-        for (unread in listOf(DeviceIdRead.Absent, DeviceIdRead.Unavailable("keychain locked"))) {
+        for (unread in listOf(DeviceIdRead.Unavailable("keychain locked"))) {
             r.device.identity.read = unread
             assertSame(HeldPosition.Lacks, holds(membership, receives, UnionTrigger.LEAVE_CHECK), "$unread")
         }

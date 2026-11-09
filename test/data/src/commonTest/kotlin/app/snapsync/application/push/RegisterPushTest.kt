@@ -1,7 +1,7 @@
 package app.snapsync.application.push
 
 import app.snapsync.application.EntryPointCall
-import app.snapsync.application.membership.FixedIdentity
+import app.snapsync.application.membership.FixedAppIdentity
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.ScriptedCredential
 import app.snapsync.data.backend.ScriptedTransport
@@ -46,7 +46,7 @@ class RegisterPushTest {
 
     private val transport = ScriptedTransport { ok(201) }
     private val values = mutableMapOf<String, String>()
-    private val identity = FixedIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ))
+    private val identity = FixedAppIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ))
     private val tokens = PushTokens(Service, BuildInfoMock().port(), identity)
 
     private fun register(preferences: Preferences = inMemoryPreferences(values)) = RegisterPush(

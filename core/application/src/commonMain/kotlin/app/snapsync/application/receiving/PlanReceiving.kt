@@ -1,8 +1,8 @@
 package app.snapsync.application.receiving
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.data.identity.AppDeviceIdentity
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.EventCheck
 import app.snapsync.data.membership.EventCheckRecord
 import app.snapsync.data.receiving.DownloadRead
@@ -34,7 +34,7 @@ import app.snapsync.inbound.Log
 class PlanReceiving(
     private val plans: ReceivingPlans,
     private val union: EventUnion,
-    private val identity: DeviceIdentity,
+    private val identity: AppDeviceIdentity,
     private val checks: EventCheckRecord,
     private val clock: WallClock,
 ) {
@@ -93,7 +93,7 @@ class PlanReceiving(
         private suspend fun identified(page: UnionPage, plan: UnionReadPlan, stored: StoredPosition) =
             when (val me = identity.id()) {
                 is DeviceIdRead.Ok -> recorded(page, plan, me.value, stored)
-                DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> PlanOutcome.Unavailable("this device's id: $me")
+                is DeviceIdRead.Unavailable -> PlanOutcome.Unavailable("this device's id: $me")
             }
 
         private suspend fun recorded(page: UnionPage, plan: UnionReadPlan, me: DeviceId, stored: StoredPosition) =

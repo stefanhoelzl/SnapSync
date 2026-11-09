@@ -1,7 +1,7 @@
 package app.snapsync.data.push
 
+import app.snapsync.data.identity.AppDeviceIdentity
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.push.PushRegistrationKey
 import app.snapsync.ports.BuildInfo
@@ -19,7 +19,7 @@ import kotlin.concurrent.Volatile
 class PushTokens(
     private val push: PushNotifications,
     private val build: BuildInfo,
-    private val identity: DeviceIdentity,
+    private val identity: AppDeviceIdentity,
 ) {
 
     @Volatile
@@ -48,7 +48,7 @@ class PushTokens(
 
     private fun identified(endpoint: PushEndpoint): RegistrationRead = when (val id = identity.id()) {
         is DeviceIdRead.Ok -> RegistrationRead.Held(endpoint, id.value, endpoint.keyFor(id.value))
-        DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> RegistrationRead.NoIdentity
+        is DeviceIdRead.Unavailable -> RegistrationRead.NoIdentity
     }
 
     /** What the OS has delivered in this process. */
