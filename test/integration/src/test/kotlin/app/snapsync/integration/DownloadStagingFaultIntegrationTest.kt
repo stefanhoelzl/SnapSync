@@ -48,6 +48,7 @@ class DownloadStagingFaultIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "privacy-security", requirement = "Automatic failure reports are minimal and anonymous")
     fun a_received_photo_that_fails_to_open_again_and_again_is_reported_once() = behaviour {
         given {
             joinedEvent()

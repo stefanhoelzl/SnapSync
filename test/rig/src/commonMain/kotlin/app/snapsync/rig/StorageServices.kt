@@ -59,7 +59,11 @@ internal class DeviceFiles(private val disk: FileSystemMock) : FilesLevers {
         FilePlace.UPLOAD_STAGING -> listOf(UPLOAD_STAGING_DIR)
         FilePlace.DOWNLOAD_STAGING -> listOf(StagedPath.ROOT)
         // Where 0.4 kept them, as the older-install layer writes them.
-        FilePlace.LEGACY_RECORDS -> listOf(OlderInstalls.CONFIG_FILE, OlderInstalls.MANIFEST_FILE, OlderInstalls.PENDING_LEAVES_FILE)
+        FilePlace.LEGACY_RECORDS -> listOf(
+            OlderInstalls.CONFIG_FILE,
+            OlderInstalls.MANIFEST_FILE,
+            OlderInstalls.PENDING_LEAVES_FILE,
+        )
             .map { it.substringBefore('/') }
     }
 }
