@@ -45,6 +45,36 @@ class UnwrittenMembershipIntegrationTest {
 
     @Test
     @Verifies(
+        spec = "join-event",
+        requirement = "Joining happens only on confirmation and needs a connection",
+        scenario = "A failed join is retryable and leaves nothing behind",
+    )
+    fun a_join_the_phone_cannot_tell_it_is_free_for_fails_and_enrols_nothing() = behaviour {
+        given {
+            gateOpenOn(registeredEvent(name = "Anna's Wedding"))
+            step(
+                "the membership's store unreadable",
+                act = { databases.unreadable("ledger.db", on = true) },
+                until = {},
+            )
+        }
+
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.JoiningEvent> { (it.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.CommitFailed }
+            never<WorldEvent.BackendReceived> { it.operation == "joinEvent" }
+            neverScreen<Layer.Joined>()
+        }
+
+        whenever {
+            databases.unreadable("ledger.db", on = false)
+            tap(UiIntent.RetryJoin)
+        }
+        then { screen<Layer.Joined>() }
+    }
+
+    @Test
+    @Verifies(
         spec = "manage-membership",
         requirement = "A membership survives updates, restarts, and a locked phone",
         scenario = "A locked phone never looks like a leave",

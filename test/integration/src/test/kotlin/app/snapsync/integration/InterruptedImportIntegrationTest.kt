@@ -155,26 +155,6 @@ class InterruptedImportIntegrationTest {
     }
 
     @Test
-    @Verifies(spec = "delivery", requirement = "Download problems delay photos, never corrupt or lose them")
-    fun an_import_the_phone_cannot_claim_waits_for_the_next_pass_and_arrives() = behaviour {
-        given {
-            joinedEvent()
-            downloadStarted(foreignDevice, foreignAsset)
-            downloadRowsUnwritable()
-        }
-
-        whenever { downloadSession.finish() }
-        then {
-            event<WorldEvent.DatabaseFaulted> { it.table == "downloadAsset" && it.kind == WriteKind.UPDATE }
-            never<WorldEvent.LibraryAssetCreated>()
-            settled { true }
-        }
-
-        whenever { heartbeat() }
-        then { times(1) { event<WorldEvent.LibraryAssetCreated> { it.asset == imported(foreignAsset, foreignDevice) } } }
-    }
-
-    @Test
     @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice")
     fun an_import_the_phone_cannot_record_is_settled_without_a_second_copy() = behaviour {
         val before = given {
@@ -205,6 +185,33 @@ class InterruptedImportIntegrationTest {
             settled { it.photos() == before.photos() + 1 }
         }
     }
+
+    @Test
+    @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice", scenario = "Killed while saving")
+    fun an_interrupted_import_whose_settling_cannot_be_recorded_is_settled_by_a_later_launch_without_a_copy() =
+        behaviour {
+            val abandoned = given {
+                joinedEvent()
+                abandonedImport().also { downloadRowsUnwritable() }
+            }
+
+            whenever { relaunched() }
+            then {
+                event<WorldEvent.DatabaseFaulted> { it.table == "downloadAsset" && it.kind == WriteKind.UPDATE }
+                never<WorldEvent.LibraryAssetCreated>()
+                settled { true }
+            }
+
+            whenever {
+                relaunched()
+                advance(SCREEN_REREAD)
+            }
+            then {
+                screen<Layer.Joined> { it.received() == SETTLED }
+                never<WorldEvent.LibraryAssetCreated>()
+                settled { it.photos() == abandoned.photos + 1 }
+            }
+        }
 
     /** The full leave/switch shape: the row survives, adjudicates correctly afterwards, and never echoes. */
     @Test

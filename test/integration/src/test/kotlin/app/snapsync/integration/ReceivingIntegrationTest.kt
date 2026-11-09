@@ -1,8 +1,10 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.WorldEvent
+import app.snapsync.levers.WriteKind
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -48,6 +50,90 @@ class ReceivingIntegrationTest {
             settled { imported("FQ") in it.state.libraryPhotos.orEmpty() }
         }
     }
+
+    @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Other members' photos arrive in the photo library automatically",
+    )
+    fun a_photo_the_phone_cannot_plan_to_receive_is_planned_at_the_next_opening_and_arrives() = behaviour {
+        given {
+            joinedEvent()
+            downloadStoreRefuses("downloadAsset", WriteKind.INSERT)
+        }
+
+        whenever {
+            publicBackend.foreignDevice(DEV_F, listOf("FQ"))
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "downloadAsset" && it.kind == WriteKind.INSERT }
+            never<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
+
+        whenever { os.foreground() }
+        then { event<WorldEvent.DownloadStarted> { it.names("FQ") } }
+
+        whenever { downloadSession.finish() }
+        then { event<WorldEvent.LibraryAssetCreated> { it.asset == imported("FQ") } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Other members' photos arrive in the photo library automatically",
+        scenario = "Joining a live event brings its history",
+    )
+    fun a_join_that_cannot_forget_earlier_events_still_brings_the_event_s_photos() = behaviour {
+        given {
+            val event = createdEvent()
+            step("$DEV_F shares FA before this member joins", act = {
+                publicBackend.foreignDevice(DEV_F, listOf("FA"), event = event)
+            }, until = { settled { true } })
+            downloadStoreRefuses("eventRef", WriteKind.DELETE)
+        }
+
+        whenever { confirmJoin() }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "eventRef" && it.kind == WriteKind.DELETE }
+            screen<Layer.Joined>()
+            event<WorldEvent.DownloadStarted> { it.names("FA") }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Other members' photos arrive in the photo library automatically",
+        scenario = "Joining a live event brings its history",
+    )
+    fun a_join_whose_recognition_cannot_be_recorded_still_brings_the_event_s_photos() = behaviour {
+        given {
+            val event = createdEvent()
+            step("$DEV_F shares FA before this member joins", act = {
+                publicBackend.foreignDevice(DEV_F, listOf("FA"), event = event)
+            }, until = { settled { true } })
+            downloadStoreRefuses("recognised", WriteKind.INSERT)
+        }
+
+        whenever { confirmJoin() }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "recognised" && it.kind == WriteKind.INSERT }
+            event<WorldEvent.DownloadStarted> { it.names("FA") }
+            settled { true }
+        }
+
+        whenever { downloadSession.finish() }
+        then { event<WorldEvent.LibraryAssetCreated> { it.asset == imported("FA") } }
+    }
+
+    /** The download store's next [kind] of a row of [table] refused. */
+    private suspend fun Given.downloadStoreRefuses(table: String, kind: WriteKind) = step(
+        "the download store's next $kind on $table refused",
+        act = { databases.fail("downloads.db", table, kind) },
+        until = {},
+    )
 
     @Test
     @Verifies(

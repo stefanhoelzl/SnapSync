@@ -318,7 +318,11 @@ class ProtectedStoresIntegrationTest {
                     settled { true }
                 },
             )
-            step("the key's next write refused", act = { keychain.fail(KeychainItem.EVENT_KEY, StoreFault.WRITE) }, until = {})
+            step(
+                "the key's next write refused",
+                act = { keychain.fail(KeychainItem.EVENT_KEY, StoreFault.WRITE) },
+                until = {},
+            )
             invite
         }
 

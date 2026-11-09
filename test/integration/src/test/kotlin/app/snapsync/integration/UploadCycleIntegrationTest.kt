@@ -7,6 +7,7 @@ import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
+import app.snapsync.levers.WriteKind
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -215,6 +216,64 @@ class UploadCycleIntegrationTest {
         then {
             event<WorldEvent.ManifestPublished> { "A" in it.withdrawn }
             never<WorldEvent.ManifestPublished> { it.added.isNotEmpty() }
+        }
+    }
+
+    @Test
+    @Verifies(spec = "delivery", requirement = "A photo is never lost on the way")
+    fun a_walk_the_phone_cannot_record_is_walked_again_and_the_photo_uploaded() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+            step(
+                "the upload ledger's next new row refused",
+                act = { databases.fail("ledger.db", "ledgerRow", WriteKind.INSERT) },
+                until = {},
+            )
+        }
+
+        whenever { cycle() }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "ledgerRow" && it.kind == WriteKind.INSERT }
+            never<WorldEvent.UploadJobCreated>()
+            settled { true }
+        }
+
+        whenever { cycle() }
+        then { event<WorldEvent.UploadJobCreated> { it.job == primaryJob("A") } }
+    }
+
+    @Test
+    @Verifies(spec = "delivery", requirement = "A photo is never lost on the way")
+    fun a_pass_whose_ledger_turns_unreadable_mid_walk_declares_nothing_and_the_next_one_shares_the_photo() = behaviour {
+        given {
+            appUploadsOnly()
+            joinedEvent()
+            step("A taken while the library's walks wait", act = {
+                library.holdEnumeration(true)
+                takePhoto("A")
+                os.foreground()
+            }, until = { event<WorldEvent.LibraryEnumerationHeld>() })
+        }
+
+        whenever {
+            databases.unreadable("ledger.db", on = true)
+            library.holdEnumeration(false)
+        }
+        then {
+            never<WorldEvent.ManifestPublished>()
+            never<WorldEvent.SessionTransferCreated>()
+            settled { true }
+        }
+
+        whenever {
+            databases.unreadable("ledger.db", on = false)
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.ManifestPublished> { "A" in it.added }
+            event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("A") }
         }
     }
 
