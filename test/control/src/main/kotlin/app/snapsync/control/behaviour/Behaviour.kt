@@ -37,8 +37,11 @@ import app.snapsync.rig.HostReporting
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.time.LoopTime
 import app.snapsync.ui.state.UiState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -111,7 +114,7 @@ class Behaviour internal constructor(
     private val world: WorldLevers,
     private val seen: MutableStateFlow<List<WorldEvent>>,
 ) {
-    private val acts = Acts(client) { what, shown -> awaitShown(what, shown) }
+    private val acts: Acts = Acts(client, { what, shown -> awaitShown(what, shown) }, ::beside)
     private var acted = 0
     private var current: String = "the start"
     private var from: Int = 0
@@ -169,6 +172,16 @@ class Behaviour internal constructor(
         }
     }
 
+    /** [Acts.beside]: [act] started apart, returned once the host has announced its first act. */
+    private suspend fun beside(act: suspend Acts.() -> Unit): Job {
+        val announced = seen.value.count { it is WorldEvent.Acted }
+        val job = CoroutineScope(currentCoroutineContext() + Job()).launch(start = CoroutineStart.UNDISPATCHED) {
+            acts.act()
+        }
+        seen.first { list -> list.count { it is WorldEvent.Acted } > announced }
+        return job
+    }
+
     /** What a hung behaviour reports: where it was, the events since, and why the app is not settled. */
     internal suspend fun hung(): String {
         val events = seen.value
@@ -195,11 +208,20 @@ class Given internal constructor(private val behaviour: Behaviour) {
 class Acts internal constructor(
     private val client: RigClient,
     private val awaitShown: suspend (String, (UiState) -> Boolean) -> Unit,
+    private val besides: suspend (suspend Acts.() -> Unit) -> Job,
 ) : Person {
     /** The screen a person taps. */
     override val screen: ScreenLevers = client.levers(ScreenLevers)
 
     override suspend fun awaitScreen(what: String, shown: (UiState) -> Boolean) = awaitShown(what, shown)
+
+    /**
+     * Starts [act] beside the behaviour — an operating-system call that does not return while the app is held, as an
+     * extension's invocation whose walk is held — and returns once the host has announced it. Every act lands only when
+     * the app may take it (`docs/testing.md`, "An act lands when the app is quiet"), so the behaviour's next act lands
+     * after this one, at the next such point: where the call left the app parked. Join the answer to wait for its end.
+     */
+    suspend fun beside(act: suspend Acts.() -> Unit): Job = besides(act)
 
     /** The backend operator's levers — the backend mock's. */
     val backend: BackendLevers = client.levers(BackendLevers)

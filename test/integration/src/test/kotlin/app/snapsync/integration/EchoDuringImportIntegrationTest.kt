@@ -7,11 +7,7 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.launch
 import kotlin.test.Test
 
 /**
@@ -134,12 +130,15 @@ class EchoDuringImportIntegrationTest {
         lateinit var invocation: Job
         whenever {
             // The operating system's invocation does not return while its walk is held, so it runs beside the test.
-            invocation = CoroutineScope(currentCoroutineContext() + Job()).launch(start = CoroutineStart.UNDISPATCHED) { cycle() }
-            takePhoto(OWN)
+            invocation = beside { cycle() }
         }
         then { event<WorldEvent.LibraryEnumerationHeld>() }
 
-        whenever { downloadSession.finish() }
+        // The walk held, the app is parked on it: the member's photo is taken, and the import commits, inside its window.
+        whenever {
+            takePhoto(OWN)
+            downloadSession.finish()
+        }
         then { event<WorldEvent.LibraryAssetCreated> { it.asset == imported(ASSET) } }
 
         whenever {

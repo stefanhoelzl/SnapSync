@@ -96,14 +96,13 @@ class AppExperienceIntegrationTest {
             neverScreen<Layer.CreateEvent>()
         }
 
-        // Still unreadable, a double tap tries once: the second tap finds the first still running. (That the button
-        // shows it is working is the presentation's, held open there: here the try answers within one frame.)
-        whenever {
-            tap(UiIntent.RetryMembershipRead)
-            tap(UiIntent.RetryMembershipRead)
-        }
+        // Still unreadable, a tap tries once and offers to try again. (That a second tap while one runs fires nothing is
+        // the presentation's, which holds the read open — `MembershipUnreadableTest`: an act here lands only once the
+        // app is quiet, so the try it would race has always ended.)
+        whenever { tap(UiIntent.RetryMembershipRead) }
         then {
             times(1) { event<WorldEvent.Delivered> { it.entry == "OnMembershipReadRetried" } }
+            screen<Layer.MembershipUnreadable> { !it.retrying }
             neverScreen<Layer.CreateEvent>()
         }
 

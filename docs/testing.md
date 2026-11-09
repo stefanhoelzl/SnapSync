@@ -1337,6 +1337,18 @@ exactly that settle, so `settled { … }` judges it and hands it on (`given` han
 every settle, and some test asserts it at a settle. Every request a caller makes runs as a task of the loop — an act announced first, a read
 not — so everything after an act's announcement is the act's or later.
 
+**An act lands when the app is quiet.** The host queues an act only once no task is running or runnable at the loop's
+now and no work outside the app is in flight (`LaneLoop.awaitActable`) — never wherever the test thread's timing
+puts its request among the app's tasks. So under mocked time and `turns` a behaviour runs the same order of tasks on
+every run, and what the suite measures (`docs/architecture.md`, "Coverage") is the same number every time. A test
+that means to act while the app is mid-way says where, by holding it there: a held call is parked, and a parked app
+takes the act — an import parked, a walk held (`library.holdEnumeration`), a backend call held. The operating system's
+`process()` is the one outside work that does not keep an act out once it has handed the extension's cycle to its lane
+(`LaneLoop.relayed`): all it waits for then is the app, so an invocation whose walk is held lets the test act beside
+it — started with `beside { cycle() }`, which returns once the host has announced it. An act a test makes without a
+hold therefore lands after what the last one started, never inside it: a claim about a moment inside a run (a second
+tap while the first still runs) belongs to the layer that can hold that moment open, the presentation's tests.
+
 **An act's own work ends at its `done`.** A delivery made while a tagged act runs carries the act's tag, and so do its
 `Answered` and its `Done` — the entry points a tap's commands are (`OnCreateTapped`, the join's, the leave's), the `os` service's deliveries, and a mock's own (a landed transfer's
 `OnUploadFinished`). `Done` comes once the delivery's run and everything it started have ended, so `event<Done> { it.tag

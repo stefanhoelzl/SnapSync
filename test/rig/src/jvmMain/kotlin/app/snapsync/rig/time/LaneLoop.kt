@@ -48,7 +48,14 @@ class LaneLoop(
     private val lanes = mutableListOf<Lane>()
     private val random = (interleaving as? Interleaving.Shuffled)?.let { Random(it.seed) }
     private val outsideWork = mutableMapOf<Long, String>()
+
+    /** The [relayed] work not yet handed over, oldest first. */
+    private val relaying = ArrayDeque<Long>()
+
+    /** The [relayed] work that has handed the app its work: still outside work, but all it waits for is the lanes. */
+    private val handedOver = mutableSetOf<Long>()
     private val quietWaiters = mutableListOf<CompletableDeferred<Unit>>()
+    private val actWaiters = mutableListOf<CompletableDeferred<Unit>>()
     private val realStart = TimeSource.Monotonic.markNow()
     private val realAnchor = clock.now.toEpochMilliseconds()
     private var virtualNow = clock.now.toEpochMilliseconds()
@@ -83,6 +90,53 @@ class LaneLoop(
         } finally {
             exit(token)
         }
+    }
+
+    /**
+     * [outside], for work that only RELAYS to the app — the operating system's thread under mocked time, blocked in
+     * `process()` while the extension's cycle runs on its lane. It is outside work for as long as it runs, as any is; but
+     * once it has handed the app its work — its first dispatch onto an app lane from a thread the loop does not own —
+     * all it waits for is the app's own lanes, so it no longer keeps an act out ([awaitActable]). An app parked on an
+     * operator's hold while that thread waits takes the test's next act, as any held app does.
+     */
+    suspend fun <T> relayed(what: String, block: suspend () -> T): T {
+        val token = enter(what)
+        lock.withLock { relaying += token }
+        try {
+            return block()
+        } finally {
+            lock.withLock {
+                relaying.remove(token)
+                handedOver.remove(token)
+            }
+            exit(token)
+        }
+    }
+
+    /**
+     * Returns once an act may land: no task running or runnable at the loop's now, and no outside work but [relayed]
+     * work that has handed the app its work (`docs/testing.md`, "An act lands when the app is quiet"). Quiet ([awaitQuiet])
+     * is this with no outside work at all.
+     */
+    suspend fun awaitActable() {
+        val waiter = lock.withLock {
+            if (actable()) return
+            CompletableDeferred<Unit>().also {
+                actWaiters += it
+                changed.signalAll()
+            }
+        }
+        waiter.await()
+    }
+
+    /** A dispatch onto an app lane from a foreign thread: the oldest [relayed] work has handed the app its work. */
+    private fun handOver() {
+        lock.withLock {
+            val token = relaying.removeFirstOrNull() ?: return
+            handedOver += token
+            changed.signalAll()
+        }
+        reportIfQuiet()
     }
 
     /** [outside], for a caller that is not a coroutine. */
@@ -274,6 +328,10 @@ class LaneLoop(
 
     /** A settled report, once per quiet spell: no task running or runnable, no outside work, no advance under way. */
     private fun settledNow(): Settled? {
+        if (actable()) {
+            actWaiters.forEach { it.complete(Unit) }
+            actWaiters.clear()
+        }
         if (!quiet()) return null
         quietWaiters.forEach { it.complete(Unit) }
         quietWaiters.clear()
@@ -282,8 +340,13 @@ class LaneLoop(
         return Settled(nowInstant(), earliest()?.let(::instantOf))
     }
 
-    private fun quiet(): Boolean {
-        if (running > 0 || outsideWork.isNotEmpty()) return false
+    private fun quiet(): Boolean = outsideWork.isEmpty() && still()
+
+    private fun actable(): Boolean = outsideWork.keys.all { it in handedOver } && still()
+
+    /** No task running, and none runnable at the loop's now. */
+    private fun still(): Boolean {
+        if (running > 0) return false
         val now = nowMs()
         return lanes.none { lane -> lane.queue.peek()?.let { it.at <= now } == true }
     }
@@ -349,6 +412,8 @@ class LaneLoop(
         override fun dispatch(context: CoroutineContext, block: Runnable) {
             if (checked) checkReach("work dispatched onto lane $name")
             enqueue(this, 0, block)
+            // Queued first, so the loop is never without both the relay and the task it handed over.
+            if (checked && !onLoop()) handOver()
         }
 
         override fun scheduleResumeAfterDelay(timeMillis: Long, continuation: CancellableContinuation<Unit>) {

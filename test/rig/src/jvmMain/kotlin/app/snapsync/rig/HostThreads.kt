@@ -81,8 +81,8 @@ internal class HostThreads private constructor(
         threadLabel = { CheckedThreadLabel(loop) },
     )
 
-    /** Every act a caller makes: a task of the [operator] lane, announced first. */
-    val acts: RigActs = LoopActs(operator, events)
+    /** Every act a caller makes: a task of the [operator] lane, once the app is quiet, announced first. */
+    val acts: RigActs = LoopActs(loop, operator, events)
 
     /**
      * [transport], its requests counted as work outside the app while the backend answers them — unless the backend is
@@ -154,11 +154,23 @@ internal class HostThreads private constructor(
     }
 }
 
-/** Every act: a task of [lane], announced to [events] before it does anything. */
-private class LoopActs(private val lane: CoroutineDispatcher, private val events: WorldEvents) : RigActs {
-    override suspend fun <T> act(name: String, block: suspend () -> T): T = withContext(lane) {
-        events.acted(name)
-        block()
+/**
+ * Every act: a task of [lane], announced to [events] before it does anything — queued only once the [loop] may take it
+ * (`docs/testing.md`, "An act lands when the app is quiet"). So an act never lands between two of the app's tasks at a
+ * point the test thread's timing picks, and the same behaviour runs the same order of tasks on every run. A test that
+ * means to act while the app is mid-way holds it there: a held call is parked, and a parked app is quiet.
+ */
+private class LoopActs(
+    private val loop: LaneLoop,
+    private val lane: CoroutineDispatcher,
+    private val events: WorldEvents,
+) : RigActs {
+    override suspend fun <T> act(name: String, block: suspend () -> T): T {
+        loop.awaitActable()
+        return withContext(lane) {
+            events.acted(name)
+            block()
+        }
     }
 
     override suspend fun <T> read(block: suspend () -> T): T = withContext(lane) { block() }

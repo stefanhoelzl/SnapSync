@@ -305,14 +305,16 @@ internal class JvmRig(
 
 /**
  * The `extension-host` service on the JVM host: the operating system invokes the extension's `process()` on a thread of
- * its own ([HostThreads.osThread]), which the answer blocks — work the loop waits on, while the cycle itself runs on the
- * extension's lane.
+ * its own ([HostThreads.osThread]), which the answer blocks — work the loop waits on. Under mocked time the cycle itself
+ * runs on the extension's lane and that thread only relays to it (`LaneLoop.relayed`); on real time the cycle runs on
+ * the thread, and all of it is outside work.
  */
 internal class JvmExtensionHost(private val rig: JvmRig) : ExtensionHostLevers {
     override suspend fun process(): ExtensionAnswer {
-        val answer = rig.threads.loop.outside("the extension's process()") {
-            rig.mocks.extensionHost.process(rig.threads.osThread)
-        }
+        val what = "the extension's process()"
+        val invoke: suspend () -> ProcessingAnswer = { rig.mocks.extensionHost.process(rig.threads.osThread) }
+        val loop = rig.threads.loop
+        val answer = if (rig.threads.time == LoopTime.MOCKED) loop.relayed(what, invoke) else loop.outside(what, invoke)
         return when (answer) {
             ProcessingAnswer.COMPLETED -> ExtensionAnswer.COMPLETED
             ProcessingAnswer.PROCESSING -> ExtensionAnswer.PROCESSING
