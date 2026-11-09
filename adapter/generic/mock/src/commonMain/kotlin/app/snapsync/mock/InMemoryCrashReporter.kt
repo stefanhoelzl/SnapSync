@@ -4,6 +4,7 @@ import app.snapsync.domain.crash.CrashEvent
 import app.snapsync.domain.crash.CrashOptions
 import app.snapsync.domain.crash.CrashShaping
 import app.snapsync.domain.crash.Crumb
+import app.snapsync.domain.crash.EventBounds
 import app.snapsync.domain.report.DumpHandOff
 import app.snapsync.domain.report.DumpResult
 import app.snapsync.levers.WorldEvent
@@ -21,9 +22,9 @@ import kotlin.concurrent.Volatile
  * only the port (the honesty gate). Repeated starts are the contract's no-op — the cell just stays `true`.
  *
  * Licensed by `CrashReporterContract` (`:test:contracts`) up to its `RECEIVED` state — one capture is one event, its
- * tags and the latest context ride it, a dump arrives as shaped. What only the SDK and
- * the adapter do on the way out (`ON_THE_WIRE`) — breadcrumbs riding the next event, the SDK's install id, the build
- * facts, the size caps — this fake does not model: [breadcrumb] transmits nothing.
+ * tags, the latest context and the breadcrumbs handed over before it ride it, a dump arrives as shaped. What only the
+ * SDK and the adapter do on the way out (`ON_THE_WIRE`) — the SDK's install id, the build facts, the size caps — this
+ * fake does not model.
  */
 internal class InMemoryCrashReporter(
     private val started: MutableStateFlow<Boolean>,
@@ -38,6 +39,9 @@ internal class InMemoryCrashReporter(
 
     @Volatile private var shaping: CrashShaping? = null
 
+    /** The breadcrumbs the SDK keeps on its scope — the latest [EventBounds.MAX_BREADCRUMBS] — riding every event. */
+    private val crumbs = MutableStateFlow<List<Crumb>>(emptyList())
+
     override fun start(options: CrashOptions, shaping: CrashShaping) {
         this.shaping = shaping
         started.value = true
@@ -45,10 +49,12 @@ internal class InMemoryCrashReporter(
 
     override fun capture(event: CrashEvent) {
         if (!started.value) return
-        shaping?.event(carrying(event))?.let(events::receive)
+        shaping?.event(carrying(event).copy(breadcrumbs = crumbs.value + event.breadcrumbs))?.let(events::receive)
     }
 
-    override fun breadcrumb(crumb: Crumb) = Unit
+    override fun breadcrumb(crumb: Crumb) {
+        if (started.value) crumbs.update { (it + crumb).takeLast(EventBounds.MAX_BREADCRUMBS) }
+    }
 
     override fun setContext(name: String, fields: Map<String, String>) {
         if (started.value) standing.update { it + (name to fields) }

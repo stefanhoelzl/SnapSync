@@ -30,19 +30,19 @@ enum class CrashReporterState {
 
     /**
      * The same system as [STARTED]; clauses read what the reporter's backend **received** of the port's calls — one
-     * event per capture, its message, tags and exception, the latest context of each name riding it, the shaping's
-     * filing and grouping of an event, a dump as it was sent. A binding reaches it by reproducing those observables, so
-     * a double that records what the port was handed, in order, is licensed here by the same clauses the real channel
-     * passes; what only the SDK and the adapter do on the way out is [ON_THE_WIRE]'s.
+     * event per capture, its message, tags and exception, the latest context of each name riding it, the breadcrumbs
+     * handed over since riding the next event, the shaping's filing and grouping of an event, a dump as it was sent. A
+     * binding reaches it by reproducing those observables, so a double that records what the port was handed, in order,
+     * is licensed here by the same clauses the real channel passes; what only the SDK and the adapter do on the way out
+     * is [ON_THE_WIRE]'s.
      */
     RECEIVED,
 
     /**
      * The same system as [STARTED]; clauses read what actually **left the process** that only the reporting SDK and the
-     * adapter decide. Only a binding that drives the real channel reaches it: breadcrumbs riding the next event, the
-     * shaping applied on the way out — to the SDK's own breadcrumbs too — the build facts, the SDK's own install id and
-     * the size an event arrives at are the SDK's and the adapter's, and a double that imitated them would be licensed
-     * only by imitating.
+     * adapter decide. Only a binding that drives the real channel reaches it: the shaping applied on the way out — to
+     * the SDK's own breadcrumbs too — the build facts, the SDK's own install id and the size an event arrives at are
+     * the SDK's and the adapter's, and a double that imitated them would be licensed only by imitating.
      */
     ON_THE_WIRE,
 
@@ -386,16 +386,16 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         }
 
         clause(
-            "WIRE_BREADCRUMB_IS_NOT_AN_EVENT",
-            CrashReporterState.ON_THE_WIRE,
+            "RECEIVED_BREADCRUMB_IS_NOT_AN_EVENT",
+            CrashReporterState.RECEIVED,
             covers = cells {
                 on<CrashReporter>().answers(CrashReporter::breadcrumb).returns()
             },
         ) { s ->
-            val line = "WIRE_BREADCRUMB_IS_NOT_AN_EVENT retrying"
+            val line = "RECEIVED_BREADCRUMB_IS_NOT_AN_EVENT retrying"
             s.start()
             s.reporter.breadcrumb(Crumb(CrashLevel.WARNING, line, "engine"))
-            val sentinel = sentinel("WIRE_BREADCRUMB_IS_NOT_AN_EVENT")
+            val sentinel = sentinel("RECEIVED_BREADCRUMB_IS_NOT_AN_EVENT")
             assertTrue(s.deliveredBefore(sentinel).isEmpty(), "a breadcrumb alone transmits nothing")
             assertTrue(
                 s.observe.delivered { e -> e.any { it.message == sentinel } }.first { it.message == sentinel }
