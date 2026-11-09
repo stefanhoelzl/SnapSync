@@ -2,9 +2,11 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.levers.BackendCall
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WriteKind
@@ -54,6 +56,60 @@ class LeaveIntegrationTest {
             never<WorldEvent.DownloadStarted>()
         }
     }
+
+    @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Leaving asks first, then is instant and works offline",
+    )
+    fun a_deletion_the_service_answers_after_the_leave_brings_the_event_back_to_no_screen() = behaviour {
+        val event = given {
+            val event = joinedEvent()
+            eventCheckedWhileLeaving()
+            event
+        }
+
+        whenever {
+            tap(UiIntent.LeaveEvent)
+            backend.complete(event)
+            backend.release(BackendCall.EVENT)
+        }
+        then {
+            screen<Layer.CreateEvent>()
+            neverScreen<Layer.Joined>()
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Leaving asks first, then is instant and works offline",
+    )
+    fun a_rename_the_service_answers_after_the_leave_brings_the_event_back_to_no_screen() = behaviour {
+        given {
+            joinedEvent()
+            fellowMember(DEV_F, "FQ")
+            eventCheckedWhileLeaving()
+        }
+
+        whenever {
+            tap(UiIntent.LeaveEvent)
+            publicBackend.foreignDeviceRename(DEV_F, "Ana's 30th")
+            backend.release(BackendCall.EVENT)
+        }
+        then {
+            screen<Layer.CreateEvent>()
+            neverScreen<Layer.Joined>()
+            settled { true }
+        }
+    }
+
+    /** The app opened, and its check of the joined event's details held unanswered at the service. */
+    private suspend fun Given.eventCheckedWhileLeaving() = step("the event's details asked for, held", act = {
+        backend.hold(BackendCall.EVENT)
+        os.foreground()
+    }, until = { event<WorldEvent.BackendHeld> { it.call == BackendCall.EVENT } })
 
     @Test
     @Verifies(

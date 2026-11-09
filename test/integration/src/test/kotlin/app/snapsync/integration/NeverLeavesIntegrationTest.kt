@@ -4,6 +4,7 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Expectations
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.WorldEvent
+import app.snapsync.levers.WriteKind
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SharingNote
 import app.snapsync.ui.state.SyncHealth
@@ -78,6 +79,36 @@ class NeverLeavesIntegrationTest {
         }
         then {
             screen<Layer.Joined> { it.membership.eventId == event && it.deleted }
+            noLeave()
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "event-lifetime",
+        requirement = "The app never leaves an event on its own",
+        scenario = "A deleted event is not left silently",
+    )
+    fun a_deletion_the_phone_cannot_record_keeps_the_member_and_is_shown_at_the_next_opening() = behaviour {
+        given {
+            val event = joinedEvent()
+            step("its photos deleted, and the membership's next change refused", act = {
+                backend.complete(event)
+                databases.fail("ledger.db", "membership", WriteKind.UPDATE)
+            }, until = {})
+        }
+
+        whenever { os.foreground() }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "membership" && it.kind == WriteKind.UPDATE }
+            neverScreen<Layer.Joined> { it.deleted }
+            noLeave()
+            settled { true }
+        }
+
+        whenever { os.foreground() }
+        then {
+            screen<Layer.Joined> { it.deleted }
             noLeave()
         }
     }

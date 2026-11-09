@@ -60,6 +60,32 @@ class ProcessMetricReportIntegrationTest {
     @Verifies(
         spec = "privacy-security",
         requirement = "Automatic failure reports are minimal and anonymous",
+        scenario = "An iPhone says an earlier run ended abnormally or froze",
+    )
+    fun a_run_the_system_ended_still_reaches_the_operator_when_the_platform_gave_no_memory_reading() = behaviour {
+        given {
+            joinedEvent()
+            step("no footprint reading, and sent to the background", act = {
+                processInfo.footprint(null)
+                os.background()
+            }, until = { settled { true } })
+        }
+
+        lateinit var received: Seen<WorldEvent.EventReceived>
+        whenever { processMetrics.deliver(MetricReportKind.ENDED_ABNORMALLY) }
+        then {
+            received = event<WorldEvent.EventReceived> { it.event.message.endsWith(MEMORY_LIMIT_EXIT) }
+        }
+
+        val account = received.value.event.contexts["process_metrics"].orEmpty()
+        val readings = account.filterKeys { it.startsWith("ownFootprint") }.values
+        assertTrue(readings.none { "entering background" in it }, "no reading recorded on leaving: $readings")
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "Automatic failure reports are minimal and anonymous",
         scenario = "An iPhone's account with nothing to report",
     )
     fun a_report_with_nothing_that_counts_reaches_no_one() = behaviour {

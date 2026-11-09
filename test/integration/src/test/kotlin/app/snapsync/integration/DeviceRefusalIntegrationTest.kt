@@ -226,6 +226,28 @@ class DeviceRefusalIntegrationTest {
 
     @Test
     @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "A refused phone's offered report shows which root its proof ends at",
+    )
+    fun an_offered_report_names_a_refusal_the_service_gave_no_detail_for_as_it_was_named() = behaviour {
+        given {
+            refused(DeviceRefusal.DEVICE_MODIFIED)
+            tokenless(DeviceRefusal.DEVICE_MODIFIED.message)
+        }
+
+        lateinit var offered: Seen<WorldEvent.DumpReceived>
+        whenever {
+            tap(UiIntent.ReportRefusal(DeviceRefusal.DEVICE_MODIFIED.message))
+            tap(UiIntent.SendDiagnostics("offered", "rig"))
+        }
+        then { offered = event<WorldEvent.DumpReceived> { it.dump.note == "offered" } }
+
+        assertEquals("device-modified", offered.value.dump.state["attest_failure"])
+    }
+
+    @Test
+    @Verifies(
         spec = "create-event",
         requirement = "The front screen tells a refused phone before it tries",
         scenario = "Offline outranks a refusal",

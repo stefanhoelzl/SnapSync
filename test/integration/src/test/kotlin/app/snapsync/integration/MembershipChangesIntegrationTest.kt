@@ -8,6 +8,7 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.WorldEvent
+import app.snapsync.levers.WriteKind
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RenameState
@@ -232,6 +233,37 @@ class MembershipChangesIntegrationTest {
 
         whenever { publicBackend.foreignDeviceRename(DEV_F, ANAS_30TH) }
         then { event<WorldEvent.EventRenamed> { it.name == ANAS_30TH } }
+
+        whenever { os.foreground() }
+        then { screen<Layer.Joined> { it.membership.name == ANAS_30TH } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Any member renames the event for everyone until its photos are deleted",
+        scenario = "A guest fixes a typo in the name",
+    )
+    fun another_members_rename_the_phone_cannot_record_shows_at_the_opening_after() = behaviour {
+        given {
+            joinedEvent(Choices(direction = Direction.UploadOnly), name = TYPO)
+            fellowMember(DEV_F, "FQ")
+            step("renamed by another member", act = { publicBackend.foreignDeviceRename(DEV_F, ANAS_30TH) }, until = {
+                event<WorldEvent.EventRenamed> { it.name == ANAS_30TH }
+            })
+            step(
+                "the membership's next change refused",
+                act = { databases.fail("ledger.db", "membership", WriteKind.UPDATE) },
+                until = {},
+            )
+        }
+
+        whenever { os.foreground() }
+        then {
+            event<WorldEvent.DatabaseFaulted> { it.table == "membership" && it.kind == WriteKind.UPDATE }
+            neverScreen<Layer.Joined> { it.membership.name == ANAS_30TH }
+            settled { true }
+        }
 
         whenever { os.foreground() }
         then { screen<Layer.Joined> { it.membership.name == ANAS_30TH } }
