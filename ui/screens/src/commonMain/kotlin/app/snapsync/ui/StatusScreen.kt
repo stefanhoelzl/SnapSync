@@ -244,7 +244,9 @@ private fun statusChrome(state: UiState): StatusChrome {
     val showsJoinedChrome = joinedLayer != null
     return StatusChrome(
         showsJoinedChrome = showsJoinedChrome,
-        canRename = joinedLayer != null && !joinedLayer.deleted,
+        // An encrypted event is renamed only sealed under its key, so rename goes with the whole invite: neither is
+        // offered while the key cannot be read (decision record `changes/seal-event-name`).
+        canRename = joinedLayer != null && !joinedLayer.deleted && joinedLayer.inviteUrl != null,
         deleted = joinedLayer?.deleted == true,
         invitable = joinedLayer?.inviteUrl != null,
         // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the create form

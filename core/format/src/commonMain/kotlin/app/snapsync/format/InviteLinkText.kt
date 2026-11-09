@@ -20,7 +20,8 @@ import kotlin.io.encoding.Base64
  *
  * - the **fragment form** `<origin>/join#v=3&d=<base64url(json)>`, the JSON holding the event id — what a plain event's
  *   invite is written as, since every installed build reads it;
- * - the **path form** `<origin>/join/<eventId>`, an encrypted event's key in its fragment as `#k=<key>` — what a
+ * - the **path form** `<origin>/join/<eventId>`, an encrypted event's key in its fragment as `#k=<key>` — and, as
+ *   shared, its name for link previews in a query as `?n=<name>`, which nothing reads back ([shared]) — what a
  *   browser sends the server, so the event page can name the event (`changes/server-rendered-event-page`).
  *
  * Links once carried development hints (`autoJoin`, `minPhotoDate`, `maxPhotoDate`, `direction`, `saveToAlbum`). A
@@ -38,6 +39,14 @@ object InviteLinkText {
     private const val PATH_PREFIX = "$LINK_ORIGIN/join/"
     private const val KEY = "k"
 
+    /** The query parameter an encrypted event's shared invite carries its name in, for link previews. */
+    private const val PREVIEW_NAME = "n"
+    private const val UNRESERVED_MARKS = "-._~"
+    private const val HEX = "0123456789ABCDEF"
+    private const val BYTE_MASK = 0xff
+    private const val HALF_BYTE = 4
+    private const val HALF_BYTE_MASK = 0x0f
+
     private const val EVENT_ID = "eventId"
 
     /** The keys a fragment form's JSON may hold: the event id, and the hints an older link may carry, ignored. */
@@ -47,8 +56,11 @@ object InviteLinkText {
     private val decoder = Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL)
 
     /** [link] as the app shares it: an encrypted event's in the path form with its key, a plain one's in the fragment form. */
+    fun format(link: InviteLink): InviteText = minted(text(link))
+
+    /** The one place an invite's text is made — the QR code's form and the shared one alike. */
     @OptIn(MintsInviteText::class)
-    fun format(link: InviteLink): InviteText = InviteText(text(link))
+    private fun minted(raw: String): InviteText = InviteText(raw)
 
     private fun text(link: InviteLink): String = when (val key = link.key) {
         null -> {
@@ -56,6 +68,32 @@ object InviteLinkText {
             "${FRAGMENT_PREFIX}v=$VERSION&d=${encoder.encode(payload.encodeToByteArray())}"
         }
         else -> "$PATH_PREFIX${link.event}#$KEY=${EventKeyText.encode(key)}"
+    }
+
+    /**
+     * [link] as the share sheet hands it on (decision record `changes/seal-event-name`, D5): an encrypted event's path
+     * form carrying [previewName] readable as `?n=…` before the fragment, so a messenger's link preview — which never
+     * receives the fragment — can name the event; a plain event's exactly as [format] writes it. The QR code is
+     * [format]'s: scanned, never previewed. Nothing reads the name back: [parse] discards it.
+     */
+    fun shared(link: InviteLink, previewName: String): InviteText = when (val key = link.key) {
+        null -> format(link)
+        else -> minted(
+            "$PATH_PREFIX${link.event}?$PREVIEW_NAME=${percentEncoded(previewName)}#$KEY=${EventKeyText.encode(key)}",
+        )
+    }
+
+    /** [text] percent-encoded as UTF-8, every byte but RFC 3986's unreserved characters escaped. */
+    private fun percentEncoded(text: String): String = buildString {
+        for (byte in text.encodeToByteArray()) {
+            val b = byte.toInt() and BYTE_MASK
+            val c = b.toChar()
+            if (c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c in UNRESERVED_MARKS) {
+                append(c)
+            } else {
+                append('%').append(HEX[b shr HALF_BYTE]).append(HEX[b and HALF_BYTE_MASK])
+            }
+        }
     }
 
     /** What [raw] is: an invite, an invite whose key cannot be read, or no invite. Never throws. */
@@ -93,7 +131,9 @@ object InviteLinkText {
      * whose key cannot be read, never "no invite".
      */
     private fun pathForm(rest: String): InviteLinkVerdict {
-        val path = rest.substringBefore('#')
+        // A query — an encrypted event's preview name, or anything else — is read past and discarded: nothing a member
+        // relies on rides in it, and a malformed one never turns an invite into no invite.
+        val path = rest.substringBefore('#').substringBefore('?')
         val event = EventId.parse(path.removeSuffix("/")) ?: return InviteLinkVerdict.NotAnInvite
         val fragment = rest.substringAfter('#', missingDelimiterValue = "")
         if (fragment.isEmpty()) return InviteLinkVerdict.Invite(InviteLink(event, null))

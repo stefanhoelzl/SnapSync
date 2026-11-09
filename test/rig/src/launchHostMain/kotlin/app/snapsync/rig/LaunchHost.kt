@@ -65,6 +65,7 @@ internal fun launchWorld(
             val own = (ports.secureStore.value.read(TrustSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value
             heldToken(ports.secureStore.value, id.takeIf { it == own })
         },
+        sealedName = device.eventKeys::sealedName,
     ).takeIf { MockedSystem.BACKEND in mocked },
     reachRefusal = realBackend,
     operatorRefusal = { realBackend },

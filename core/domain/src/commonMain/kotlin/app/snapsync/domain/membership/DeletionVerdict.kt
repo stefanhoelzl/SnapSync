@@ -31,7 +31,9 @@ sealed interface DeletionVerdict {
                 true -> Confirmed(ConfirmedDeletion(event.id))
                 false -> Inconclusive
             }
-            is EventLookupFact.Unanswered -> Inconclusive
+            // A name withheld is no answer to a membership: its own lookups always know the event's name, so none
+            // meets it.
+            is EventLookupFact.Withheld, is EventLookupFact.Unanswered -> Inconclusive
         }
 
         /**

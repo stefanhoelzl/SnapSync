@@ -5,6 +5,9 @@ import app.snapsync.data.crypto.NewEventKey
 import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.data.event.EventCreation
 import app.snapsync.domain.event.CreateResult
+import app.snapsync.domain.event.EventName
+import app.snapsync.domain.event.EventNameVerdict
+import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
@@ -19,12 +22,24 @@ private val log = Log("CreateEvent")
  */
 class CreateEvent(private val creation: EventCreation, private val keys: NewEventKeys) {
     @EntryPointCall
-    suspend operator fun invoke(request: CreateRequest): CreateResult {
-        val key = when (val new = keys.forNewEvent()) {
-            NewEventKey.Plain -> null
-            is NewEventKey.Encrypted -> new.key
-        }
+    suspend operator fun invoke(request: CreateRequest): CreateResult = when (EventName.of(request.name)) {
+        is EventNameVerdict.Ok -> created(request)
+        // The name rule is this device's to apply: an encrypted event's name goes sealed, which the service cannot
+        // check (decision record `changes/seal-event-name`, D3) — so a name that is none is refused before anything
+        // is minted or sent, for every event alike.
+        EventNameVerdict.Blank, EventNameVerdict.TooLong ->
+            CreateResult.InvalidName.also { log.i("refused", "result" of "InvalidName") }
+    }
+
+    private suspend fun created(request: CreateRequest): CreateResult {
+        val key = newKey()
         return creation.create(request, key)
             .also { log.i("created", "result" of it::class.simpleName, "encrypted" of (key != null)) }
+    }
+
+    /** The new event's key: minted unless this build creates plain events. */
+    private fun newKey(): IdentifiedKey? = when (val new = keys.forNewEvent()) {
+        NewEventKey.Plain -> null
+        is NewEventKey.Encrypted -> new.key
     }
 }

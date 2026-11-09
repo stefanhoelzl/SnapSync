@@ -53,14 +53,26 @@ CREATE INDEX event_assets_by_device_asset
 
 CREATE TABLE events (
   id               TEXT PRIMARY KEY NOT NULL,
-  name             TEXT NOT NULL,
+  name             TEXT,
   created_at       TEXT NOT NULL,
   starts_at        TEXT NOT NULL,
   ends_at          TEXT NOT NULL,
   capacity         INTEGER NOT NULL,
-  lifetime_seconds INTEGER NOT NULL
-, closed_at TEXT, completed_at TEXT, last_landed_at TEXT, zone TEXT, key_id TEXT
-  CHECK (key_id IS NULL OR (length(key_id) = 16 AND key_id NOT GLOB '*[^0-9a-f]*')), open_until TEXT) STRICT;
+  lifetime_seconds INTEGER NOT NULL,
+  closed_at        TEXT,
+  completed_at     TEXT,
+  last_landed_at   TEXT,
+  zone             TEXT,
+  key_id           TEXT
+    CHECK (key_id IS NULL OR (length(key_id) = 16 AND key_id NOT GLOB '*[^0-9a-f]*')),
+  open_until       TEXT,
+  sealed_meta      TEXT,
+  CHECK (
+    (key_id IS NULL AND name IS NOT NULL AND sealed_meta IS NULL)
+    OR (key_id IS NOT NULL AND name IS NULL AND sealed_meta IS NOT NULL)
+    OR (key_id IS NOT NULL AND name IS NOT NULL AND sealed_meta IS NULL)
+  )
+) STRICT;
 
 CREATE TABLE memberships (
   event_id         TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,

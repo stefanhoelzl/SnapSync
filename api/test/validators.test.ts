@@ -56,10 +56,12 @@ Deno.test("event name: trimmed, and the trimmed name is what is kept", async () 
 });
 
 Deno.test("event name: empty, whitespace-only and non-string are refused", async () => {
-  for (const name of ["", "   ", 42, null]) {
+  for (const name of ["", "   ", 42]) {
     assertEquals(await create(named({ name })), "400 invalid name", String(name));
   }
-  assertEquals(await create({ startsAt: START }), "400 invalid name");
+  // An absent name — and a `null` one, which the runtime reads as absent — is no longer the schema's to refuse: an
+  // encrypted event carries a sealed record instead, and which of the two a create needs is the route's pairing rule
+  // (`test/sealed-event-name.test.ts`).
 });
 
 Deno.test("event name: the length boundary, measured after trimming", async () => {

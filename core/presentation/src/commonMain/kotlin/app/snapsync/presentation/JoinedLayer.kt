@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.MemberCounts
 import app.snapsync.domain.invite.InviteText
+import app.snapsync.domain.invite.JoinedInvite
 import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.report.DiagnosticKeys
@@ -75,7 +76,7 @@ object JoinedLayer {
         transient: ScreenMessage?,
         choices: Choices,
         display: Display,
-        invite: InviteText?,
+        invite: JoinedInvite?,
     ): Reduced {
         val range = settingsRange(joined, reconfiguring, choices.form, display)
         val layer = Layer.Joined(
@@ -83,7 +84,9 @@ object JoinedLayer {
             // Derived once, in the query (`EventKeyQuery.invite`), and read HERE only (decision record
             // `event-invite-qr`, D3's
             // surviving half): one derivation feeds both the rendered QR and the share action, so they cannot drift.
-            inviteUrl = invite?.let(::shown),
+            // Its QR code: the invite as scanned, never previewed — it carries no preview name
+            // (`changes/seal-event-name`).
+            inviteUrl = invite?.scanned?.let(::shown),
             health = health,
             today = facts.today,
             pendingSwitch = pendingSwitch,
@@ -103,7 +106,8 @@ object JoinedLayer {
             notice = transient,
             surface = if (range != null) surfaceOf(range, permission, choices, reconfiguring) else JoinedSurface.Status,
         )
-        return Reduced(layer, range, invite?.let { ShareRequest(it, layer.membership.name) })
+        // The share sheet hands on the invite named for link previews (decision record `changes/seal-event-name`, D5).
+        return Reduced(layer, range, invite?.let { ShareRequest(it.shared, layer.membership.name) })
     }
 
     /** The invite as the screen shows it: the same text, the screen's own secret type. */

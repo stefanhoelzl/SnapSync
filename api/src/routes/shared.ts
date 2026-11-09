@@ -12,12 +12,14 @@ import {
   leaveStatements,
   logUnionFetch,
   memberCounts,
+  type NameChange,
   putDeviceRecord,
   renameEvent,
   unionPosition,
   unionRows,
 } from "../db.ts";
 import type { Handlers } from "../gen/wire.ts";
+import { envelopeShape } from "../sealed-meta.ts";
 import { APP_VERSION_HEADER, splitVersion } from "../version.ts";
 import { refuse } from "../refusal.ts";
 import { canonicalFromMs, canonicalPlusSeconds } from "../validators.ts";
@@ -124,8 +126,14 @@ export function sharedHandlers(
     // bound reads the clock, which the declared validation cannot, so it is checked here: at least `endsAt`, and
     // at most the window maximum after the later of `endsAt` and now — room for a host who creates an event that
     // is already over to keep it open for the guests still to scan its invite, and no more.
+    //
+    // An ENCRYPTED event's name arrives SEALED (`sealedMeta`, decision record `changes/seal-event-name`, D3/D4) and a
+    // plain event's readable (`name`) — never both, never the other way round, each mismatch `invalid name`. So no
+    // event is ever created in the legacy shape (a key id with a readable name), which only rows from before that
+    // change hold. The record's shape is all this can check of it: the key that opens it never reaches here.
     async createEvent(c, { body }) {
-      const { name, startsAt } = body;
+      const { startsAt } = body;
+      const named = createdName(body);
       const endsAt = body.endsAt ?? canonicalPlusSeconds(startsAt, config.eventWindowMaxSeconds);
       const openUntil = body.openUntil ?? endsAt;
       if (!openUntilAdmitted(endsAt, openUntil, now(), config.eventWindowMaxSeconds)) {
@@ -133,7 +141,8 @@ export function sharedHandlers(
       }
       const event: EventRow = {
         eventId: crypto.randomUUID(),
-        name,
+        name: "name" in named ? named.name : null,
+        sealedMeta: "sealedMeta" in named ? named.sealedMeta : null,
         createdAt: canonicalFromMs(now()),
         startsAt,
         endsAt,
@@ -201,27 +210,34 @@ export function sharedHandlers(
     // Concurrent renames are last-write-wins: bunny has no compare-and-set (the same constraint the
     // device-manifest capacity gate reads and writes under). No ordering guarantee is available or claimed.
     // The body arrives validated (`EventChange`): the same `EventName` the create takes — one rule for what an event
-    // may be called — and at least one field to change.
-    async changeEvent(c, { params: { eventId }, body: { name } }) {
+    // may be called — or a sealed record, and at least one field to change. Which of the two the row takes follows
+    // its shape (`renamedTo`): a plain event takes a name, a sealed one a record; a LEGACY encrypted event takes
+    // either — a build that predates sealed names still renames it, and a record moves it to the sealed shape.
+    async changeEvent(c, { params: { eventId }, body }) {
       // The same existence gate the metadata route serves from: absent → 404 (never a partial
       // rewrite of a row the sweep is about to delete); a transport failure → 502, so a
       // transient fault is never mistaken for absence.
       const current = await gateEvent(db, eventId, "rename");
       // A closed event does not change any more, its name included.
       if (current.closedAt) closedRefusal();
-      // `name` is the one field a change may carry today, so a valid change always carries it.
-      if (name === undefined) return c.json(publicEvent(current));
+      const change = renamedTo(current, body);
 
-      // ONE column. `renameEvent` is a `SET name = ?` and nothing else — see `db.ts`, where the statement
-      // is spelled out in one place precisely because widening it is now a one-word edit.
+      // ONE column. `renameEvent` writes the name and nothing else — see `db.ts`, where each statement
+      // is spelled out in one place precisely because widening it is a one-word edit.
       const written = await tryUpstream(
         `rename: update failed for ${eventId}`,
-        () => renameEvent(db, eventId, name),
+        () => renameEvent(db, eventId, change),
       );
       // Zero rows means the event was deleted between the gate and the write. Report the absence rather
       // than a success that renamed nothing.
       if (written.rowsAffected === 0) return c.text("event not found", 404);
-      return c.json(publicEvent({ ...current, name }));
+      return c.json(
+        publicEvent(
+          "sealedMeta" in change
+            ? { ...current, name: null, sealedMeta: change.sealedMeta }
+            : { ...current, name: change.name },
+        ),
+      );
     },
 
     // Leave an event. A STATE CHANGE, and non-destructive: the membership becomes
@@ -409,4 +425,38 @@ export function sharedHandlers(
       return c.body(null, 201);
     },
   };
+}
+
+/** A sealed record whose envelope is this format, or `invalid sealedMeta` — all the edge can check of one. */
+function shapedRecord(sealedMeta: string): string {
+  if (!envelopeShape(sealedMeta).ok) refuse(400, "invalid sealedMeta");
+  return sealedMeta;
+}
+
+/**
+ * The name a create carries, by the event's encryption (decision record `changes/seal-event-name`, D4): an encrypted
+ * event's sealed, a plain event's readable — each mismatch `invalid name`, so no new row takes the legacy shape.
+ */
+function createdName(body: { name?: string; sealedMeta?: string; keyId?: string }): NameChange {
+  if (body.keyId !== undefined) {
+    if (body.name !== undefined || body.sealedMeta === undefined) refuse(400, "invalid name");
+    return { sealedMeta: shapedRecord(body.sealedMeta) };
+  }
+  if (body.sealedMeta !== undefined || body.name === undefined) refuse(400, "invalid name");
+  return { name: body.name };
+}
+
+/**
+ * What a rename of [current] writes, by the row's shape: a plain event takes a name, a sealed one a record, and a
+ * LEGACY encrypted one either — a build from before sealed names still renames it, and a record seals it. A sealed
+ * event is never handed a readable name: its row may not hold one.
+ */
+function renamedTo(current: EventRow, body: { name?: string; sealedMeta?: string }): NameChange {
+  if (body.name !== undefined && body.sealedMeta !== undefined) refuse(400, "invalid name");
+  if (body.sealedMeta !== undefined) {
+    if (!current.keyId) refuse(400, "invalid name");
+    return { sealedMeta: shapedRecord(body.sealedMeta) };
+  }
+  if (body.name === undefined || current.sealedMeta) refuse(400, "invalid name");
+  return { name: body.name };
 }

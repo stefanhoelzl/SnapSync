@@ -21,7 +21,13 @@ import PlayOffer from "../components/PlayOffer.astro";
 ---
 
 <Layout title="%%TITLE%%" ogTitle="%%OG_TITLE%%" description="%%DESCRIPTION%%" ogUrl="%%URL%%">
-  <div class="join" id="join" data-view="%%VIEW%%" data-key-id="%%KEY_ID%%">
+  <div
+    class="join"
+    id="join"
+    data-view="%%VIEW%%"
+    data-key-id="%%KEY_ID%%"
+    data-sealed-meta="%%SEALED_META%%"
+  >
     <div id="app">
       <div class="pillrow">%%PILL%%</div>
       <h1 id="title">%%HEADING%%</h1>
@@ -198,6 +204,7 @@ import PlayOffer from "../components/PlayOffer.astro";
     keyFromFragment,
     keyTextFromFragment,
     opens,
+    sealedName,
   } from "../lib/event-key";
 
   (function () {
@@ -236,7 +243,7 @@ import PlayOffer from "../components/PlayOffer.astro";
 
       // The name, dates, members and whether the photos are encrypted are the server's; the island adds only the
       // photo list, read from the page's own route (decision record `changes/separate-event-page-from-device-api`).
-      const name = $("title").textContent?.trim() || undefined;
+      let name = $("title").textContent?.trim() || undefined;
       // An ENCRYPTED event's photos open only with the key its whole invite carries in `#k=` (the encrypted file
       // format, `docs/architecture.md`) — read here, never sent anywhere, checked against the key id the server
       // rendered into the page before a single photo is fetched. A value the server could not have written is
@@ -254,6 +261,20 @@ import PlayOffer from "../components/PlayOffer.astro";
             "This event's photos are encrypted. Open the whole invite link, or scan the event's QR code, to download them.",
           );
           return;
+        }
+        // A sealed name (decision record `changes/seal-event-name`, D5): the server rendered only the invite's preview
+        // name, which anyone may have edited and a rename leaves stale. The members' own name, opened here with the
+        // key, replaces it in the heading, the title and the zip. A record the key does not open is a load that failed.
+        const sealed = $("join").dataset.sealedMeta;
+        if (sealed) {
+          const opened = await sealedName(key, sealed);
+          if (opened === null) {
+            setStatus("Couldn't load this event. Check your connection and reload.");
+            return;
+          }
+          name = opened;
+          $("title").textContent = opened;
+          document.title = opened + " — SnapSync";
         }
         // The whole invite, key included, is what the app installed from the Google Play badge must open: only now,
         // with the key checked against the event, does the badge carry it (capabilities join-event, privacy-security).

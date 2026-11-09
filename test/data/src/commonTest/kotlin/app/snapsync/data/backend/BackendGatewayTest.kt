@@ -32,7 +32,7 @@ class BackendGatewayTest {
 
     private fun join() = Routes.JoinEvent.request("E", "D")
 
-    private fun create() = Routes.CreateEvent.request(EventCreate("n", "2030-01-01T00:00:00Z"))
+    private fun create() = Routes.CreateEvent.request(EventCreate(name = "n", startsAt = "2030-01-01T00:00:00Z"))
 
     private fun putDevice() = Routes.PutDevice.request("D", DeviceConfig())
 

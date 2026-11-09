@@ -5,7 +5,9 @@ import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.upload.UploadKey
+import app.snapsync.format.EnvelopeRead
 import app.snapsync.format.ResourceRoleText
+import app.snapsync.format.SealedMetaFormat
 import app.snapsync.format.UploadKeyText
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.BackendFault
@@ -178,22 +180,35 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
 
     private fun create(call: Call): HttpResult {
         val req = call.decode(EventCreate.serializer()) ?: return text(BAD_REQUEST, "invalid body")
-        val name = req.name.trim()
+        val name = req.name?.trim()
         val startsAt = instantOrNull(req.startsAt)
         val endsAt = req.endsAt?.let(::instantOrNull) ?: startsAt?.plus(WINDOW_DAYS.days)
         val openUntil = openUntilOf(req.openUntil, endsAt)
         return when {
-            name.isEmpty() || name.length > Limits.EVENT_NAME_MAX_LENGTH -> text(BAD_REQUEST, "invalid name")
+            name != null && !nameAdmitted(name) -> text(BAD_REQUEST, "invalid name")
+            req.sealedMeta?.let(::recordAdmitted) == false -> text(BAD_REQUEST, "invalid sealedMeta")
             startsAt == null -> text(BAD_REQUEST, "invalid startsAt")
             endsAt == null || endsAt < startsAt || endsAt > startsAt + WINDOW_DAYS.days ->
                 text(BAD_REQUEST, "invalid endsAt")
-            openUntil == null -> text(BAD_REQUEST, "invalid openUntil")
             req.keyId?.let { !KEY_ID.matches(it) } == true -> text(BAD_REQUEST, "invalid keyId")
+            openUntil == null -> text(BAD_REQUEST, "invalid openUntil")
+            // An encrypted event's name arrives sealed, a plain one's readable — never both, never the other way
+            // round, as the real route pairs them (decision record `changes/seal-event-name`, D4).
+            (req.keyId != null) != (req.sealedMeta != null) || (req.keyId != null) == (name != null) ->
+                text(BAD_REQUEST, "invalid name")
             else -> {
                 val eventId = state.nextEventId?.also { state.nextEventId = null } ?: Uuid.random().toString()
-                val event = BackendState.Event(name, state.createdAt, startsAt, endsAt, openUntil, keyId = req.keyId)
+                val event = BackendState.Event(
+                    name,
+                    state.createdAt,
+                    startsAt,
+                    endsAt,
+                    openUntil,
+                    keyId = req.keyId,
+                    sealedMeta = req.sealedMeta,
+                )
                 state.events[eventId] = event
-                state.watcher.told(WorldEvent.EventCreated(eventId, name))
+                state.watcher.told(WorldEvent.EventCreated(eventId, state.readableName(event).orEmpty()))
                 json(CREATED, Event.serializer(), event.onWire(eventId))
             }
         }
@@ -217,6 +232,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         val details = EventDetails(
             eventId = e.eventId,
             name = e.name,
+            sealedMeta = e.sealedMeta,
             createdAt = e.createdAt,
             startsAt = e.startsAt,
             endsAt = e.endsAt,
@@ -232,14 +248,30 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
     }
 
     private fun change(call: Call): HttpResult {
-        val name = call.decode(EventChange.serializer())?.name?.trim()
-        if (name.isNullOrEmpty() || name.length > Limits.EVENT_NAME_MAX_LENGTH) return text(BAD_REQUEST, "invalid name")
+        val change = call.decode(EventChange.serializer()) ?: return text(BAD_REQUEST, "invalid name")
+        val name = change.name?.trim()
+        val sealed = change.sealedMeta
+        when {
+            name != null && !nameAdmitted(name) -> return text(BAD_REQUEST, "invalid name")
+            sealed != null && !recordAdmitted(sealed) -> return text(BAD_REQUEST, "invalid sealedMeta")
+            (name == null) == (sealed == null) -> return text(BAD_REQUEST, "invalid name")
+        }
         val eventId = call.param("eventId")
         val event = state.events[eventId] ?: return eventNotFound()
         // A completed event — or one closed before events stopped closing — changes no more.
         if (event.closed || event.completed) return closed()
-        event.name = name
-        state.watcher.told(WorldEvent.EventRenamed(eventId, name))
+        // The row's shape decides what it takes, as the real route's: a plain event a name, a sealed one a record, a
+        // legacy encrypted one either — and a record moves it to the sealed shape.
+        when {
+            sealed != null && event.keyId == null -> return text(BAD_REQUEST, "invalid name")
+            name != null && event.sealedMeta != null -> return text(BAD_REQUEST, "invalid name")
+            sealed != null -> {
+                event.name = null
+                event.sealedMeta = sealed
+            }
+            else -> event.name = name
+        }
+        state.watcher.told(WorldEvent.EventRenamed(eventId, state.readableName(event).orEmpty()))
         return json(OK, Event.serializer(), event.onWire(eventId))
     }
 
@@ -373,6 +405,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
     private fun BackendState.Event.onWire(eventId: String): Event = Event(
         eventId = eventId,
         name = name,
+        sealedMeta = sealedMeta,
         createdAt = createdAt.toString(),
         startsAt = startsAt.toString(),
         endsAt = endsAt.toString(),
@@ -656,3 +689,13 @@ internal fun <T> decodedOrNull(strategy: DeserializationStrategy<T>, text: Strin
 internal fun storedKey(
     file: DeviceFile,
 ): String = UploadKeyText.of(UploadKey.of(file.assetId, file.role, file.filename))
+
+/** The shortest record text the real schema takes: an empty record's envelope (`api/openapi.yaml`, `SealedMeta`). */
+private const val SEALED_META_MIN_TEXT = 39
+
+/** A readable name the real route's schema takes: trimmed, not blank, at most the name rule's length. */
+private fun nameAdmitted(name: String): Boolean = name.isNotEmpty() && name.length <= Limits.EVENT_NAME_MAX_LENGTH
+
+/** A sealed record of the shape the real route takes — all a backend can check of a record it cannot open. */
+private fun recordAdmitted(sealedMeta: String): Boolean =
+    sealedMeta.length >= SEALED_META_MIN_TEXT && SealedMetaFormat.decode(sealedMeta) is EnvelopeRead.Read

@@ -16,6 +16,7 @@ import * as Sentry from "@sentry/deno";
 import type { Context } from "hono";
 import type { RequestLogOptions } from "./request-log.ts";
 import { APP_VERSION_HEADER } from "./version.ts";
+import { PREVIEW_NAME_PARAM, withoutPreviewName } from "./preview-name.ts";
 
 /** How long a 500 waits for its report to leave — the isolate may freeze once the response is out. */
 const FLUSH_MS = 2000;
@@ -52,14 +53,32 @@ export type ReporterOptions = {
   transport?: Sentry.DenoOptions["transport"];
 };
 
-/** Remove anything that could carry the requester's address from an outgoing event. */
+/**
+ * Remove anything that could carry the requester's address from an outgoing event — and the invite's preview name,
+ * an encrypted event's name the service keeps nowhere (`preview-name.ts`), from wherever the SDK copied the URL.
+ */
 export function withoutAddress<E extends Sentry.Event>(event: E): E {
   if (event.user) delete event.user.ip_address;
-  const headers = event.request?.headers;
+  const request = event.request;
+  const headers = request?.headers;
   if (headers) {
     for (const name of Object.keys(headers)) {
       if (ADDRESS_HEADERS.has(name.toLowerCase())) delete headers[name];
     }
+  }
+  if (request?.url) request.url = withoutPreviewName(request.url);
+  if (typeof request?.query_string === "string") {
+    const query = new URLSearchParams(request.query_string);
+    query.delete(PREVIEW_NAME_PARAM);
+    request.query_string = query.toString();
+  } else if (request?.query_string && typeof request.query_string === "object") {
+    const entries = Array.isArray(request.query_string)
+      ? request.query_string
+      : Object.entries(request.query_string);
+    request.query_string = entries.filter(([name]) => name !== PREVIEW_NAME_PARAM) as [
+      string,
+      string,
+    ][];
   }
   return event;
 }
@@ -94,7 +113,7 @@ export function startErrorReporting(options: ReporterOptions): ErrorReporter {
         // for a `Deno.serve` it instrumented itself.
         scope.setSDKProcessingMetadata({
           normalizedRequest: {
-            url: c.req.url,
+            url: withoutPreviewName(c.req.url),
             method: c.req.method,
             headers: Object.fromEntries(c.req.raw.headers),
           },

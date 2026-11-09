@@ -2,11 +2,13 @@ package app.snapsync.data.event
 
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.ServiceFaults
+import app.snapsync.data.crypto.MetaCipher
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.service.ServiceFault
+import app.snapsync.format.SealedMetaFormat
 import app.snapsync.format.TimestampText
 import app.snapsync.wire.api.ClientError
 import app.snapsync.wire.api.CreateEventReply
@@ -25,13 +27,15 @@ import app.snapsync.wire.models.EventCreate
  * other answer is no answer. Which field was refused is the description's to say (`api/openapi.yaml`, `createEvent`'s
  * `400`), read off the reply. The zone the host picked the range in is sent for the event page alone.
  */
-class EventCreation(private val gateway: BackendGateway) {
+class EventCreation(private val gateway: BackendGateway, private val cipher: MetaCipher) {
 
     /** Mint [request]'s event — encrypted under [key] when one is given. */
     suspend fun create(request: CreateRequest, key: IdentifiedKey?): CreateResult {
         val sent = Routes.CreateEvent.request(
             EventCreate(
-                name = request.name.trim(),
+                // An encrypted event's name goes sealed, never readable (`changes/seal-event-name`, D4).
+                name = request.name.trim().takeIf { key == null },
+                sealedMeta = key?.let { cipher.seal(it, SealedMetaFormat.recordNamed(request.name.trim())) },
                 startsAt = TimestampText.format(request.startsAt.at),
                 endsAt = TimestampText.format(request.endsAt.at),
                 openUntil = request.openUntil?.at?.let(TimestampText::format),

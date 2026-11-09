@@ -304,9 +304,21 @@ export function publicEvent(event: EventRow, closedAt: string | null = event.clo
   // `zone` stays off the wire too: only the event page reads it, and no app needs it.
   // `keyId` is on the wire only for an ENCRYPTED event, so a plain event's body is byte-identical to what
   // every installed build has always parsed.
-  const { lifetimeSeconds: _stamped, lastLandedAt: _landed, zone: _zone, keyId, ...wire } = event;
+  // `name` and `sealedMeta` are each on the wire only when the row holds one (migration 0017): a plain event's body
+  // carries its name exactly as before, and a sealed event's carries no readable name at all.
+  const {
+    lifetimeSeconds: _stamped,
+    lastLandedAt: _landed,
+    zone: _zone,
+    keyId,
+    name,
+    sealedMeta,
+    ...wire
+  } = event;
   return {
     ...wire,
+    ...(name != null ? { name } : {}),
+    ...(sealedMeta ? { sealedMeta } : {}),
     // A placeholder on every event, whatever its row was stamped with before the device limit was removed: released
     // apps require the field, and nothing reads it (decision record `changes/remove-event-device-cap`, D4).
     capacity: CAPACITY_PLACEHOLDER,

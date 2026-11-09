@@ -298,7 +298,7 @@ class BackendOperator internal constructor(private val state: BackendState) : Ba
     fun isRegistered(eventId: String): Boolean = state.locked { eventId in state.events }
 
     /** The name the backend serves for [eventId]. */
-    fun eventNameOf(eventId: String): String? = state.locked { state.events[eventId]?.name }
+    fun eventNameOf(eventId: String): String? = state.locked { state.events[eventId]?.let { state.readableName(it) } }
 
     /** Another member joining [eventId] and publishing [manifest] there — the routes' rules, without the requests. */
     fun seedMember(eventId: String, manifest: MockManifest) {
@@ -367,7 +367,11 @@ internal class BackendState(
     val partial = mutableMapOf<String, Pair<String, Long>>()
 
     class Event(
-        var name: String,
+        /**
+         * A plain event's name, or an encrypted one's created before names were sealed; `null` for a sealed event, whose
+         * name is [sealedMeta] — as the real row (migration 0017).
+         */
+        var name: String?,
         val createdAt: Instant,
         val startsAt: Instant,
         val endsAt: Instant,
@@ -385,6 +389,8 @@ internal class BackendState(
         var completed: Boolean = false,
         /** An ENCRYPTED event's key id (16 lowercase hex); `null` for a plain event. Write-once, like the real row. */
         val keyId: String? = null,
+        /** A sealed event's sealed metadata record — its name — which the backend never opens. Renamed in place. */
+        var sealedMeta: String? = null,
     )
 
     class Membership(
@@ -473,6 +479,12 @@ internal class BackendState(
 
     /** Who is told what this backend records, as it records it — the control channel's event stream, or no one. */
     @Volatile var watcher: BackendWatcher = BackendWatcher {}
+
+    /**
+     * TEST-WORLD ONLY: what opens a sealed name with a key a mocked device drew (`EventKeyLedger.openedName`) — what a
+     * real backend can never do, kept out of every route and used only for what the world observes ([readableName]).
+     */
+    @Volatile var nameOpeners: List<(keyId: String, sealedMeta: String) -> String?> = emptyList()
 
     fun issueChallenge(): String = "in-memory-challenge-${challenges.size + 1}".also { challenges += it }
 
@@ -867,3 +879,18 @@ internal data class OperationFault(val fault: BackendFault, val left: Int, val s
 
 /** An event's present members, how many of them settled, and how many are still sharing — as the mock counts them. */
 class MemberTally(val active: Int, val settled: Int, val waitingFor: Int)
+
+/**
+ * Lets the world read the names of the events [opener]'s device sealed (see [BackendState.nameOpeners]) — test-world
+ * only, and never consulted by a route.
+ */
+internal fun BackendMock.opensSealedNamesWith(opener: (keyId: String, sealedMeta: String) -> String?) {
+    state.nameOpeners = state.nameOpeners + opener
+}
+
+/** [event]'s name as the world reads it: the readable one, or its sealed record opened by a mocked device's key. */
+internal fun BackendState.readableName(event: BackendState.Event): String? = event.name ?: run {
+    val sealed = event.sealedMeta ?: return@run null
+    val keyId = event.keyId ?: return@run null
+    nameOpeners.firstNotNullOfOrNull { it(keyId, sealed) }
+}

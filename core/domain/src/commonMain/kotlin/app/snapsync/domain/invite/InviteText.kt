@@ -23,3 +23,12 @@ annotation class RendersInvite
 value class InviteText @MintsInviteText constructor(@property:RendersInvite val raw: String) {
     override fun toString(): String = "InviteText(‹invite›)"
 }
+
+/**
+ * The joined event's invite in the two forms the joined screen offers it (decision record `changes/seal-event-name`,
+ * D5): [scanned], what its QR code encodes — a QR code is scanned, never previewed, so it carries no preview name — and
+ * [shared], what the share sheet hands on: the same invite, an encrypted event's carrying the event's name readable for
+ * link previews. Both open the same event in every app; nothing relies on the preview name. Printed, each reads masked
+ * as an [InviteText] does.
+ */
+class JoinedInvite(val scanned: InviteText, val shared: InviteText)

@@ -1,11 +1,13 @@
 package app.snapsync.application.membership
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.event.EventDirectory
 import app.snapsync.data.membership.MarkResult
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.UpdateResult
 import app.snapsync.data.time.WallClock
+import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.membership.DeletionVerdict
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipUpdate
@@ -18,11 +20,14 @@ import app.snapsync.domain.membership.MembershipUpdate
 class RefreshMembership(
     private val membership: MembershipRepository,
     private val directory: EventDirectory,
+    private val keys: EventKeyStore,
     private val clock: WallClock,
 ) {
     @EntryPointCall
     suspend operator fun invoke(active: Membership.Active): RefreshOutcome {
-        val lookup = directory.lookup(active.event.id)
+        // An encrypted event's name opens with its kept key; without it, the name this device last knew stands.
+        val held = KeyPresence.of(active, keys.state.value) as? KeyPresence.Held
+        val lookup = directory.lookup(active.event.id, held?.key, lastKnown = active.event.name)
         return when (val verdict = DeletionVerdict.of(active.event, lookup, clock.now())) {
             is DeletionVerdict.Confirmed -> marked(membership.markDeleted(active, verdict.evidence))
             is DeletionVerdict.NotDeleted -> updated(active, MembershipUpdate.of(active.event, verdict.served))

@@ -182,6 +182,7 @@ paths:
         endsAt: invalid endsAt
         openUntil: invalid openUntil
         keyId: invalid keyId
+        sealedMeta: invalid sealedMeta
       tags: [events]
       summary: Mint an event.
       parameters:
@@ -207,12 +208,12 @@ paths:
               schema:
                 oneOf:
                   - const: invalid name
-                    title: The name is missing, blank or too long.
+                    title: The name is missing, blank or too long, or not in the form the event's encryption takes.
                     x-snapsync-outcome: InvalidName
                   - enum: [invalid startsAt, invalid endsAt, invalid openUntil]
                     title: The date range, or how long the event stays open, is not one an event may have.
                     x-snapsync-outcome: InvalidWindow
-                  - enum: [invalid body, invalid keyId]
+                  - enum: [invalid body, invalid keyId, invalid sealedMeta]
                     title: The request is malformed.
                     x-snapsync-outcome: Invalid
         "401":
@@ -267,6 +268,7 @@ paths:
         eventId: invalid event
         body: invalid name
         name: invalid name
+        sealedMeta: invalid sealedMeta
       tags: [events]
       summary: Change an event — today, its name.
       requestBody:
@@ -1120,6 +1122,15 @@ components:
       description: An encrypted event's key id — 16 lowercase hex characters. The key itself never reaches the backend.
       type: string
       pattern: "^[0-9a-f]{16}$"
+    SealedMeta:
+      description: |
+        An encrypted event's sealed metadata record — today its name — as unpadded base64url
+        (`docs/architecture.md`, "The encrypted file format"; decision record `changes/seal-event-name`). The service
+        checks its shape only: it never holds the key that opens it. 39 characters is the envelope of an empty record.
+      type: string
+      minLength: 39
+      maxLength: 1024
+      pattern: "^[A-Za-z0-9_-]+$"
     Zone:
       description: |
         An IANA time zone name — a NAME, never a bare offset, which is wrong across a daylight-saving change. One this
@@ -1220,11 +1231,16 @@ components:
           minLength: 1
 
     EventCreate:
+      description: |
+        A plain event carries `name`; an encrypted one (`keyId`) carries `sealedMeta` instead and never `name` — the
+        backend checks the pairing, refusing either mismatch as `invalid name`.
       type: object
-      required: [name, startsAt]
+      required: [startsAt]
       properties:
         name:
           $ref: "#/components/schemas/EventName"
+        sealedMeta:
+          $ref: "#/components/schemas/SealedMeta"
         startsAt:
           $ref: "#/components/schemas/Timestamp"
         endsAt:
@@ -1246,17 +1262,21 @@ components:
         keyId:
           $ref: "#/components/schemas/KeyId"
     EventChange:
-      description: What may change about an event once created.
+      description: |
+        What may change about an event once created: its name — `name` for a plain event, `sealedMeta` for an
+        encrypted one, whose record the renaming phone re-sealed. The backend refuses either mismatch as
+        `invalid name`.
       type: object
       minProperties: 1
       properties:
         name:
           $ref: "#/components/schemas/EventName"
+        sealedMeta:
+          $ref: "#/components/schemas/SealedMeta"
     Event:
       type: object
       required:
         - eventId
-        - name
         - createdAt
         - startsAt
         - endsAt
@@ -1268,7 +1288,13 @@ components:
         eventId:
           $ref: "#/components/schemas/Uuid"
         name:
+          description: |
+            A plain event's name, and an encrypted event's created before its name was sealed. Absent exactly when
+            `sealedMeta` is present.
           $ref: "#/components/schemas/EventName"
+        sealedMeta:
+          description: An encrypted event's sealed metadata record, which only the event's key opens.
+          $ref: "#/components/schemas/SealedMeta"
         createdAt:
           $ref: "#/components/schemas/Timestamp"
         startsAt:

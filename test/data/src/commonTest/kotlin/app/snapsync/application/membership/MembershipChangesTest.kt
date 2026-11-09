@@ -4,6 +4,7 @@ import app.snapsync.application.EntryPointCall
 import app.snapsync.data.backend.json
 import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
+import app.snapsync.data.crypto.EncryptionSlots
 import app.snapsync.data.event.EventDirectory
 import app.snapsync.data.event.EventRename
 import app.snapsync.data.membership.EVENT
@@ -16,6 +17,8 @@ import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
 import app.snapsync.data.membership.name
 import app.snapsync.domain.album.AlbumChoice
+import app.snapsync.domain.event.Encryption
+import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
@@ -24,10 +27,15 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.format.EventKeyText
+import app.snapsync.format.SealedMetaFormat
 import app.snapsync.format.TimestampText
 import app.snapsync.levers.WriteKind
 import app.snapsync.ports.HttpResult
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
 import app.snapsync.testids.testEventId
+import app.snapsync.wire.models.EventChange
 import app.snapsync.wire.models.EventDetails
 import app.snapsync.wire.runtime.WireJson
 import kotlinx.coroutines.test.runTest
@@ -43,7 +51,12 @@ import app.snapsync.wire.models.MemberCounts as WireCounts
 class MembershipChangesTest {
 
     private val device = Device().apply { EnterMembership(membership)(enrolled()) }
-    private val refresh = RefreshMembership(device.membership, EventDirectory(device.gateway), device.wallClock)
+    private val refresh = RefreshMembership(
+        device.membership,
+        EventDirectory(device.gateway, device.cipher),
+        device.keys,
+        device.wallClock,
+    )
 
     private fun found(name: String = "Lake weekend", completedAt: String? = null) = json(
         200,
@@ -148,7 +161,7 @@ class MembershipChangesTest {
 
     // ---- the rename ----
 
-    private val rename = RenameEvent(device.membership, EventRename(device.gateway))
+    private val rename = RenameEvent(device.membership, EventRename(device.gateway, device.cipher), device.keys)
 
     private fun changed(name: String) = json(
         200,
@@ -188,6 +201,15 @@ class MembershipChangesTest {
             assertIs<Membership.Deleted>(held(), "the app never leaves an event on its own")
             assertEquals("Lake weekend", held().event.name.text, "nothing was renamed")
         }
+
+    @Test
+    fun `an encrypted event whose key this phone cannot read is renamed with nothing sent`() = runTest {
+        // An encrypted membership, and an empty key slot: the key is lost (decision record `changes/seal-event-name`).
+        val encryption = Encryption.Encrypted(EventKeyId(testKeyId("k1")))
+        val encrypted = active().let { it.copy(event = it.event.copy(encryption = encryption)) }
+        assertEquals(RenameOutcome.Failed(fault = null), rename(encrypted, testEventId(EVENT), "Lake week"))
+        assertEquals(emptyList(), device.transport.calls, "no readable name, and no record it could not seal, is sent")
+    }
 
     @Test
     fun `a lone not found is no word of a deletion`() = runTest {
@@ -234,6 +256,76 @@ class MembershipChangesTest {
     fun `a rename of an event no longer joined changes nothing`() = runTest {
         answering(changed("Lake week"))
         assertEquals(RenameOutcome.NotCurrent, rename(active(), testEventId("other"), "Lake week"))
+        assertEquals(emptyList(), device.transport.calls)
+    }
+
+    // ---- an encrypted event's sealed name (decision record `changes/seal-event-name`) ----
+
+    private val sealedKey = testKeyIds.identify(testKey("k1"))
+    private val encryptedEvent = active().let {
+        it.copy(event = it.event.copy(encryption = Encryption.Encrypted(sealedKey.id)))
+    }
+
+    private fun keyKept(read: SecureStoreRead) {
+        device.secure.answers[EncryptionSlots.EVENT_KEY] = read
+        device.keys.reload()
+    }
+
+    private fun sealedFound(name: String) = json(
+        200,
+        WireJson.encodeToString(
+            EventDetails.serializer(),
+            EventDetails(
+                eventId = EVENT, name = null, createdAt = "2026-07-01T10:00:00Z", startsAt = "2026-07-14T18:00:00Z",
+                endsAt = "2026-07-21T18:00:00Z", openUntil = "2026-07-21T18:00:00Z", deletesAt = "2026-08-21T18:00:00Z",
+                closedAt = null, completedAt = null, members = WireCounts(3, 1, 2), keyId = sealedKey.id.value,
+                sealedMeta = device.cipher.seal(sealedKey, SealedMetaFormat.recordNamed(name)),
+            ),
+        ),
+    )
+
+    @Test
+    fun `an encrypted event is renamed sealed under its kept key, and refreshed by opening its name`() = runTest {
+        keyKept(SecureStoreRead.Found(EventKeyText.encode(sealedKey.key), StoredProtection.BACKGROUND_READABLE))
+        device.transport.answer = { request ->
+            when (request.method) {
+                "GET" -> sealedFound("Lake weekend")
+                else -> json(
+                    200,
+                    WireJson.encodeToString(
+                        WireEvent.serializer(),
+                        WireEvent(
+                            eventId = EVENT, name = null, createdAt = "2026-07-01T10:00:00Z",
+                            startsAt = "2026-07-14T18:00:00Z", endsAt = "2026-07-21T18:00:00Z",
+                            openUntil = "2026-07-21T18:00:00Z", deletesAt = "2026-08-21T18:00:00Z", closedAt = null,
+                            completedAt = null, keyId = sealedKey.id.value,
+                            sealedMeta = WireJson.decodeFromString(EventChange.serializer(), request.body!!).sealedMeta,
+                        ),
+                    ),
+                )
+            }
+        }
+        assertEquals(RenameOutcome.Renamed(name("Lake week")), rename(encryptedEvent, testEventId(EVENT), "Lake week"))
+
+        answering(sealedFound("Lake week 2"))
+        val other = Device().apply { EnterMembership(membership)(enrolled(encryptedEvent)) }
+        other.secure.answers[EncryptionSlots.EVENT_KEY] =
+            SecureStoreRead.Found(EventKeyText.encode(sealedKey.key), StoredProtection.BACKGROUND_READABLE)
+        other.keys.reload()
+        other.transport.answer = { sealedFound("Lake week 2") }
+        val refreshed = RefreshMembership(
+            other.membership,
+            EventDirectory(other.gateway, other.cipher),
+            other.keys,
+            other.wallClock,
+        )(encryptedEvent)
+        assertEquals("Lake week 2", assertIs<RefreshOutcome.Current>(refreshed).active.event.name.text)
+    }
+
+    @Test
+    fun `a phone locked since it started renames nothing`() = runTest {
+        keyKept(SecureStoreRead.Unavailable("locked"))
+        assertEquals(RenameOutcome.Failed(fault = null), rename(encryptedEvent, testEventId(EVENT), "Lake week"))
         assertEquals(emptyList(), device.transport.calls)
     }
 }

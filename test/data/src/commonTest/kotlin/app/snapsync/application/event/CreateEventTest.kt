@@ -7,6 +7,7 @@ import app.snapsync.data.backend.ScriptedTransport
 import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.backend.json
 import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.MetaCipher
 import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.data.event.EventCreation
 import app.snapsync.domain.event.CreateResult
@@ -46,13 +47,13 @@ class CreateEventTest {
     private val controls = DevControlsMock()
     private val ids = EventKeyIds(fakeCrypto())
     private val create = CreateEvent(
-        EventCreation(BackendGateway(exchangeOver(transport), ScriptedCredential("T1"))),
+        EventCreation(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")), MetaCipher(fakeCrypto())),
         NewEventKeys(ids, controls.port()),
     )
 
-    private fun request() = CreateRequest(
+    private fun request(name: String = "Party") = CreateRequest(
         RequestId(1),
-        "Party",
+        name,
         EventStart(TimestampText.parse("2026-07-14T18:00:00Z")),
         EventEnd(TimestampText.parse("2026-07-21T18:00:00Z")),
         openUntil = null,
@@ -80,5 +81,13 @@ class CreateEventTest {
         val created = assertIs<CreateResult.Created>(create(request()))
         assertNull(sent().keyId)
         assertNull(created.key)
+    }
+
+    @Test
+    fun `a name that is none is refused before a key is minted or anything sent`() = runTest {
+        for (name in listOf("   ", "x".repeat(101))) {
+            assertEquals(CreateResult.InvalidName, create(request(name)), "an encrypted event's name goes sealed")
+        }
+        assertEquals(emptyList(), transport.requests, "nothing reached the service")
     }
 }

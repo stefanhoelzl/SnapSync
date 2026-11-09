@@ -14,7 +14,7 @@ import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.MemberCounts
 import app.snapsync.domain.event.OpenUntil
-import app.snapsync.domain.invite.InviteText
+import app.snapsync.domain.invite.JoinedInvite
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.Share
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -83,7 +83,7 @@ internal fun StateFlow<TestMembership?>.held(): StateFlow<MembershipShown> =
 internal fun StateFlow<TestMembership?>.plainKeys(): EventKeyView =
     testKeys(
         invite = object : InviteRead {
-            override fun invite(): InviteText? = value?.let { inviteText(it.eventId) }
+            override fun invite(): JoinedInvite? = value?.let { inviteText(it.eventId) }?.let { JoinedInvite(it, it) }
         },
     )
 

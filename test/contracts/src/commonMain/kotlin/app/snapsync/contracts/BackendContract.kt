@@ -185,6 +185,7 @@ object BackendContract : Contract<BackendState, EdgeSubject<BackendClient>>("Bac
 
     override val clauses = clauses {
         eventClauses()
+        sealedNameClauses()
         changeClauses()
         membershipClauses()
         listingClauses()

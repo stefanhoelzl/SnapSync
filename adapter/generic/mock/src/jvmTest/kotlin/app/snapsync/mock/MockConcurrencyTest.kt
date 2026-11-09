@@ -48,7 +48,9 @@ class MockConcurrencyTest {
         val backend = device.backend
         val port = Wire(backend.port())
         val event = runBlocking {
-            val created = port.send(Routes.CreateEvent.request(EventCreate("E", "2026-06-01T00:00:00Z")))
+            val created = port.send(
+                Routes.CreateEvent.request(EventCreate(name = "E", startsAt = "2026-06-01T00:00:00Z")),
+            )
             (created as CreateEventReply.Created).event.eventId
         }
         assertWhole(

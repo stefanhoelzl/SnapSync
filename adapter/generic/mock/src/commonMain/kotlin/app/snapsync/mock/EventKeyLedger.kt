@@ -1,5 +1,8 @@
 package app.snapsync.mock
 
+import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.MetaCipher
+import app.snapsync.data.crypto.MetaOpening
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.device.DeviceId
@@ -10,6 +13,7 @@ import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.FileHead
 import app.snapsync.format.Hmac
 import app.snapsync.format.ResourceRoleText
+import app.snapsync.format.SealedMetaFormat
 import app.snapsync.ports.AesKey
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.GcmNonce
@@ -56,6 +60,33 @@ class EventKeyLedger {
     /** [eventId]'s key, as its invite carries it, or `null` for an event this device did not create encrypted. */
     @OptIn(MakesEventKey::class)
     fun eventKeyOf(eventId: String): EventKey? = keyOf(eventId)?.let(EventKey::of)
+
+    /**
+     * The name the sealed record [sealedMeta] of the event whose key id is [keyId] holds, opened with a key this device
+     * drew; `null` when it drew none of that id, or the record does not open (decision record
+     * `changes/seal-event-name`). What lets the world — never the backend it plays — tell which event was created or
+     * renamed to what.
+     */
+    @OptIn(MakesEventKey::class)
+    fun openedName(keyId: String, sealedMeta: String): String? {
+        val crypto = primitives ?: return null
+        val hmac = portHmac(crypto)
+        val bytes = lock.locked { drawn.firstOrNull { idOf(it, hmac) == keyId } } ?: return null
+        val key = EventKey.of(bytes)?.let(EventKeyIds(crypto)::identify) ?: return null
+        return (MetaCipher(crypto).open(key, sealedMeta) as? MetaOpening.Opened)?.record?.name
+    }
+
+    /**
+     * A sealed metadata record naming [eventId] [name], sealed under its key — what any member's build sends to rename an
+     * encrypted event (decision record `changes/seal-event-name`, D6) — or `null` for an event this device did not
+     * create encrypted, which is renamed readably.
+     */
+    @OptIn(MakesEventKey::class)
+    fun sealedName(eventId: String, name: String): String? {
+        val crypto = primitives ?: return null
+        val key = keyOf(eventId)?.let(EventKey::of)?.let(EventKeyIds(crypto)::identify) ?: return null
+        return MetaCipher(crypto).seal(key, SealedMetaFormat.recordNamed(name))
+    }
 
     /** [eventId]'s key, or `null` for an event this device did not create encrypted. */
     fun keyOf(eventId: String): ByteArray? {

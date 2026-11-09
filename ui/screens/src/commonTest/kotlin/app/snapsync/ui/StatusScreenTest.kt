@@ -453,11 +453,15 @@ class StatusScreenTest {
         onNode(countsText()).assertDoesNotExist()
     }
 
+    // @Verifies(spec = "manage-membership", requirement = "Any member renames the event for everyone until its photos are deleted", scenario = "A phone that lost the event's key cannot rename")
+    // The screen's half: no whole invite, no rename. The use case refuses to send one too (`RenameEvent`).
     @Test
-    fun `an event with no whole invite offers neither share nor QR`() = runComposeUiTest {
+    fun `an event with no whole invite offers neither share, QR nor rename`() = runComposeUiTest {
         setContent { TestStatusScreen(joined(SyncHealth.KeyLost, inviteUrl = null)) }
         onNodeWithText(str(Res.string.share_invite)).assertDoesNotExist()
         onNodeWithText(str(Res.string.show_qr)).assertDoesNotExist()
+        // An encrypted event is renamed only under its key: rename goes with the whole invite.
+        onNodeWithContentDescription(str(Res.string.rename_event)).assertDoesNotExist()
         // Settings and Leave stay.
         onNodeWithText(str(Res.string.leave_event)).assertExists()
     }

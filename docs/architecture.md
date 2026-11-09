@@ -889,10 +889,13 @@ a lost `resources` row is repaired only by a re-upload, which happens only if th
 believe the upload landed.
 
 ```
-events        id, name, created_at, starts_at, ends_at, capacity (a placeholder nothing reads), lifetime_seconds,
+events        id, name? (NULL exactly for a sealed event, migration 0017), created_at, starts_at, ends_at,
+              capacity (a placeholder nothing reads), lifetime_seconds,
               closed_at?, completed_at?, last_landed_at?, zone? (migration 0009),
               key_id? (migration 0011: an encrypted event's key id; NULL = plain),
-              open_until? (migration 0014: backfilled; NULL only for a row the previous bundle wrote)
+              open_until? (migration 0014: backfilled; NULL only for a row the previous bundle wrote),
+              sealed_meta? (migration 0017: an encrypted event's sealed metadata record; CHECK: plain = name only,
+              sealed = key_id + sealed_meta, legacy encrypted = key_id + name)
 memberships   (event_id -> events CASCADE, device_id), state in {sharing, settled, done, left} (CHECK),
               joined_at, manifest_version?, received_position? (migration 0014), receives_nothing (0016)
 event_assets  (event_id, device_id -> memberships CASCADE), asset_id, creation_date, roles (JSON array)
@@ -1369,9 +1372,9 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `GET` | `/attest/challenge` | stateless HMAC-signed, time-bounded nonce, writes nothing | `200 {challenge}` |
 | `POST` | `/attest/token` `{deviceId, challenge, proof}`, `proof` = `{format:"apple-appattest", keyId, attestation}` or `{format:"android-key", chain:[DER b64, leaf first]}` | the format only CHOOSES the verifier. App Attest: chain to Apple root, nonce, app-id hash, counter, aaguid. Android key attestation (`src/android-attest.ts`): chain to a pinned Google root (by key), its provisioning shape, one extension in the leaf, validity (expiry ignored on factory chains), revocation (Google's public status list, cached per `max-age`), the challenge's SHA-256, the package and signing digest, TEE/StrongBox and a locked, verified boot — the last three per `androidAttestationTrust`. **Persists the device row with the platform that proved it, then mints** | `201 {token}` · `400` body (the retired flat v1 body too) · `401` failed check, its body `attestation rejected: <reason>` with the reason one of `device-modified` (software key, unlocked or unverified boot) · `app-not-genuine` (package, signing digest, App Attest app-id hash) · `device-unverifiable` (every other check — the default, which never accuses the user), suffixed ` (certificate)` when a certificate check failed (the chain's root, shape, signatures or validity, or a revoked certificate — diagnostics only, never told to the user) · `409` stale challenge · `502` write failed, or Android's status list unreachable |
 | `POST` | `/attest/renew` `{deviceId, assertion, challenge}` | verifies by the STORED row's `attest_platform`: an App Attest assertion, or an Android ECDSA-P256 signature over the challenge's UTF-8 bytes, against the stored key (no vendor call); advances expiry, then mints | `201 {token}` · `401` no attestation / refused · `409` stale challenge · `502` read/write failure (never `401`: that would force a throttled re-attestation) |
-| `POST` | `/events` `{name, startsAt, endsAt?, openUntil?, zone?, keyId?}` | name trimmed, non-empty, ≤100 chars; window rules; `openUntil` (absent → `endsAt`) at least `endsAt` and at most the window maximum after the later of `endsAt` and now (plus an hour for a creating phone whose clock runs ahead), else `400 invalid openUntil`; `zone` stored when usable, else NULL (never a `400`); `keyId` (16 lowercase hex — the encrypted file format's key id) makes the event **encrypted**, and a present invalid one is a `400`, never a plain event; backend mints the id | `201 {eventId, name, createdAt, startsAt, endsAt, openUntil, capacity, deletesAt, closedAt, completedAt, keyId?}` (`keyId` only on an encrypted event, in every event body; `capacity` a placeholder released apps require) · `400` · `502` |
-| `GET`/`HEAD` | `/events/<eventId>` (ungated; an optional bearer token is verified, `changes/separate-event-page-from-device-api` D7) | metadata; `deletesAt` derived per response; `openUntil`; `closedAt` (the stored stamp, else derived for builds that predate open-until dates), `completedAt`, `members {active, final, waiting}` (`waiting`: present members not settled or with a declared role not landed), `keyId` | `200` (a completed event too, with `completedAt`) · `401` a sent token that does not verify · `404` sealed absence · `502` read failure |
-| `PATCH` | `/events/<eventId>` `{name}` (`changeEvent`) | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` an event closed before open-until dates, or completed · `502` |
+| `POST` | `/events` `{name?, sealedMeta?, startsAt, endsAt?, openUntil?, zone?, keyId?}` | a plain event carries `name` (trimmed, non-empty, ≤100 chars), an encrypted one (`keyId`) `sealedMeta` instead — the sealed metadata record, shape-checked only (unpadded base64url, a known version byte, ≤1 KiB, else `400 invalid sealedMeta`) — and never `name`; either mismatch is `400 invalid name` (`changes/seal-event-name` D4); window rules; `openUntil` (absent → `endsAt`) at least `endsAt` and at most the window maximum after the later of `endsAt` and now (plus an hour for a creating phone whose clock runs ahead), else `400 invalid openUntil`; `zone` stored when usable, else NULL (never a `400`); `keyId` (16 lowercase hex — the encrypted file format's key id) makes the event **encrypted**, and a present invalid one is a `400`, never a plain event; backend mints the id | `201 {eventId, name?, sealedMeta?, createdAt, startsAt, endsAt, openUntil, capacity, deletesAt, closedAt, completedAt, keyId?}` (`keyId` only on an encrypted event, in every event body; `name` exactly when the row holds one — a plain event, or an encrypted one created before names were sealed — and `sealedMeta` otherwise; `capacity` a placeholder released apps require) · `400` · `502` |
+| `GET`/`HEAD` | `/events/<eventId>` (ungated; an optional bearer token is verified, `changes/separate-event-page-from-device-api` D7) | metadata; `deletesAt` derived per response; `openUntil`; `closedAt` (the stored stamp, else derived for builds that predate open-until dates), `completedAt`, `members {active, final, waiting}` (`waiting`: present members not settled or with a declared role not landed), `keyId`, and `name` or `sealedMeta` as the create answers them | `200` (a completed event too, with `completedAt`) · `401` a sent token that does not verify · `404` sealed absence · `502` read failure |
+| `PATCH` | `/events/<eventId>` `{name}` or `{sealedMeta}` (`changeEvent`) | the only write to an existing event row, and it writes the name alone: a plain event takes `name`, a sealed one `sealedMeta`, a legacy encrypted one either — and `sealedMeta` moves it to the sealed shape, clearing `name`; any other pairing is `400 invalid name`; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` an event closed before open-until dates, or completed · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional insert, admitting any device; clears `manifest_version` and `final`; idempotent | `200` · `404` · `410` an event closed before open-until dates, or completed · `502` |
 | `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave** (`?received=true\|false`): a present membership becomes `done` or `left`; closes nothing and wakes nobody; idempotent, a repeated leave keeps the first state (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled` (both required: absent is `400`), stored whenever it arrives, only for a present membership, and a later non-final reverts it; closes nothing; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to an event closed before open-until dates) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to such an event · `410` completed · `502` |
@@ -1684,6 +1687,27 @@ segments  AES-256-GCM, 64 KiB ciphertext each (the first shorter by the     │ 
   every segment authenticated.
 - **Reference vectors**: `test/vectors/encrypted-file.json`, regenerated by `scripts/encrypted-file-vectors.py`
   (an implementation independent of both halves). Plain events' bytes are raw, with no prefix.
+
+**The sealed metadata record** (decision record `changes/seal-event-name`): what an encrypted event row holds of the
+event's own description — today its name — instead of the readable `name` column. It is an encrypted record, not
+AEAD associated data (which would be authenticated but readable).
+
+```
+envelope  version (1 byte, 0x01) ‖ nonce (12 bytes, random per seal) ‖ AES-256-GCM ciphertext ‖ tag (16 bytes),
+          unpadded base64url — the same text on the wire (`sealedMeta`) and in the column; at most 1 KiB of text
+key       HKDF-SHA256(event key, no salt, "snapsync/meta/v1"), 32 bytes; GCM carries no associated data
+plaintext a UTF-8 JSON object, today {"name": "…"}
+```
+
+- **The binding is the derivation's label**, as a file's is its HKDF info. The key id needs none of its own: it is
+  derived from the very key the record opens under.
+- **The JSON grows by adding keys only.** A reader ignores the keys it does not know, and a re-seal keeps them
+  (`MetaRecord.named`), so a newer build's field survives a rename by an older one. A change that is not additive is
+  a new version byte, never a version key inside the JSON.
+- **Halves**: `SealedMetaFormat` (`:domain:format`, the layout) and `MetaCipher` (`data/crypto`, over the `Crypto`
+  port); `api/src/sealed-meta.ts` (the edge only checks an envelope's shape, `envelopeShape`; the event page opens it).
+- **Reference vectors**: `test/vectors/sealed-meta.json`, regenerated by `scripts/sealed-meta-vectors.py`, held by
+  `SealedMetaFormatTest` (JVM, over the real JCA) and `api/test/sealed-meta.test.ts`.
 
 **Where each step runs in the app** (the core's layers, over the `Crypto`, `SecureStore` and `Files` ports):
 

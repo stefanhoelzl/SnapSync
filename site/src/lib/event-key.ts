@@ -3,6 +3,7 @@
 // format itself is `api/src/encrypted-file.ts` — the edge's own module, so the page opens exactly what the edge and
 // the apps seal.
 import { equalBytes, keyIdOf } from "../../../api/src/encrypted-file.ts";
+import { openRecord } from "../../../api/src/sealed-meta.ts";
 
 export { decryptFile, fileAssociatedData } from "../../../api/src/encrypted-file.ts";
 
@@ -26,4 +27,16 @@ export async function opens(key: Uint8Array, keyId: string): Promise<boolean> {
   const id = await keyIdOf(key);
   const hex = Array.from(id, (b) => b.toString(16).padStart(2, "0")).join("");
   return equalBytes(new TextEncoder().encode(hex), new TextEncoder().encode(keyId));
+}
+
+/**
+ * The name the members gave an encrypted event, opened from the sealed metadata record the page carries
+ * (`data-sealed-meta`; decision record `changes/seal-event-name`, D5) with the invite's key — trimmed, as the app's name
+ * rule keeps it — or `null` when the record does not open under that key or holds no name, which the page treats as a
+ * load that failed. The format is the edge's own (`api/src/sealed-meta.ts`).
+ */
+export async function sealedName(key: Uint8Array, envelope: string): Promise<string | null> {
+  const record = await openRecord(key, envelope);
+  const name = record?.name.trim() ?? "";
+  return name === "" ? null : name;
 }

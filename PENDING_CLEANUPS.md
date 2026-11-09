@@ -165,9 +165,14 @@ such membership is live.
 
 ## Re-enable encrypted creation
 
-**Unlock condition:** the `MIN_APP_VERSION` 0.5 bump above is merged and deployed.
+**Unlock condition:** `MIN_APP_VERSION` is merged and deployed at **the app version that ships
+`seal-event-name`** — not 0.5 (decision record `openspec/changes/seal-event-name`, D7). An encrypted event created
+from then on carries its name only sealed and its shared invite a `?n=` preview name: 0.5 and 0.6 read
+`/join/<id>?n=…#k=…` as a damaged invite, and cannot name a sealed event. That floor also covers 0.5, so the 0.5 bump
+above is subsumed by it.
 
-**Order:** floor merged → this re-enable merged → the privacy claim (next section) merged → promote that release.
+**Order:** floor (at that version) merged → this re-enable merged → the privacy claim (next section) merged → promote
+that release.
 
 ### Shipped builds create encrypted events again (app + site + spec)
 - **What:** 0.6 ships with encrypted creation switched off in production, so every invite it shares opens on 0.4
@@ -200,7 +205,13 @@ such membership is live.
     > cannot open the stored photos. The one exception is an iPhone that uploads photos in the background through the
     > system's own photo uploader: there, each photo reaches our service unencrypted together with a key that opens
     > only that photo, and our service encrypts it as it arrives and keeps neither the key nor the unencrypted photo.
-- **Record:** `openspec/changes/archive/2026-10-12-defer-encrypt-by-default` (design D1–D5), `openspec/changes/archive/2026-10-08-encrypt-events-by-default`.
+    > The event's name is stored encrypted the same way. So that a chat app can show it in a link preview, the invite
+    > link a member shares also carries the name readable; our service reads it there only to show that page or
+    > preview, and keeps it in no record or log. The event's QR code does not carry it.
+  - Staged here, not published, until this release: before it no shipped build seals a name
+    (`openspec/changes/seal-event-name`, task 7.3).
+- **Record:** `openspec/changes/archive/2026-10-12-defer-encrypt-by-default` (design D1–D5), `openspec/changes/archive/2026-10-08-encrypt-events-by-default`,
+  `openspec/changes/seal-event-name` (design D7).
 
 ## At the promote that re-enables encrypted creation
 
@@ -351,6 +362,31 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
 - **Keep forever:** the fragment-form decoder (a printed QR opens forever) — a plain invite then opens the
   incomplete-invite screen.
 - **Record:** `openspec/changes/archive/2026-10-08-encrypt-events-by-default` (proposal, design Non-Goals).
+
+## Once no encrypted event keeps a readable name
+
+**Unlock condition:** no event row is encrypted with a readable name — the shape only rows written before
+`seal-event-name` take (rig builds created them; a shipped build created none). Check with
+`SELECT count(*) FROM events WHERE key_id IS NOT NULL AND name IS NOT NULL` (expect `0`), and no earlier than 30 days
+plus the event lifetime after that change was deployed: the sweep drops every such row at its deadline, and a sealed
+rename moves one to the sealed shape before then.
+
+### Legacy readable names of encrypted events (api + app + mock)
+- **What:** an encrypted event created before names were sealed keeps its name readable, and every reader still takes
+  it.
+  - `api/migrations/0017_sealed_event_meta.sql`: the third arm of the `events` CHECK (`key_id` + `name`, no
+    `sealed_meta`); and `api/src/routes/shared.ts`, `renamedTo`: a legacy row taking a readable `name`.
+  - `domain/data/.../event/ServedName.kt`, `nameRead`: a served `name` read as the name whatever the event's
+    encryption; `domain/data/.../event/EventRename.kt`, `currentRecord`: a fresh record made from a readable name.
+  - `adapter/generic/mock/.../BackendRouter.kt`, `change`: the legacy branch, as the real route's.
+  - `api/src/routes/event-page.ts`, `shownName`: the row's own name winning for an encrypted event.
+- **Why:** those events' members must keep seeing and renaming them, and a build that predates sealed names (0.6)
+  still renames one readably until the floor passes it.
+- **Remove:** a new migration rebuilding `events` with the CHECK's two remaining arms (encrypted ⇔ `sealed_meta`, plain
+  ⇔ `name`); refuse a readable `name` for any encrypted row in `renamedTo` and the mock's `change`; in `nameRead`, read
+  a served `name` only for a plain event; drop `currentRecord`'s readable branch and `shownName`'s encrypted case; and
+  the `legacy` cases of `api/test/sealed-event-name.test.ts`, `sealed-meta-migration.test.ts` and `EventDirectoryTest`.
+- **Record:** `openspec/changes/seal-event-name` (design D4).
 
 ## Once every event closed before open-until dates is gone
 

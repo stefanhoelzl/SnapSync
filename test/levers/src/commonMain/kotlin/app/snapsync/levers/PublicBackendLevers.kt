@@ -54,6 +54,13 @@ interface PublicBackendLevers {
     suspend fun foreignDeviceRename(device: String, name: String, @JoinedEvent event: String? = null)
 
     /**
+     * A fellow member renaming [event] to the sealed record [sealedMeta] it sends, as any build's sealed rename reaches the
+     * backend — sealed by whatever key that member holds, so a record the event's own key does not open can be staged
+     * (decision record `changes/seal-event-name`).
+     */
+    suspend fun foreignDeviceSealedRename(device: String, sealedMeta: String, @JoinedEvent event: String? = null)
+
+    /**
      * A fellow member saying it holds every photo of the others up to where [event]'s union stands now — what a current
      * build reports once its downloads are in its library.
      */

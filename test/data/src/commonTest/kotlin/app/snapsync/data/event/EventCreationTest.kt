@@ -7,14 +7,20 @@ import app.snapsync.data.backend.UNAUTHORIZED
 import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.backend.json
 import app.snapsync.data.backend.text
+import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.MetaCipher
+import app.snapsync.data.crypto.MetaOpening
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.format.TimestampText
+import app.snapsync.mock.fakeCrypto
 import app.snapsync.ports.HttpResult
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.models.EventCreate
@@ -29,7 +35,8 @@ import kotlin.test.assertNull
 class EventCreationTest {
 
     private val transport = ScriptedTransport()
-    private val creation = EventCreation(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")))
+    private val cipher = MetaCipher(fakeCrypto())
+    private val creation = EventCreation(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")), cipher)
 
     private val start = EventStart(TimestampText.parse("2026-07-14T18:00:00Z"))
     private val end = EventEnd(TimestampText.parse("2026-07-21T18:00:00Z"))
@@ -66,6 +73,19 @@ class EventCreationTest {
         assertEquals("2026-07-28T18:00:00Z", sent.openUntil)
         assertEquals("Europe/Berlin", sent.zone)
         assertNull(sent.keyId, "a plain event names no key")
+    }
+
+    @Test
+    @OptIn(MakesEventKey::class)
+    fun `an encrypted event's name is sent sealed under its key, never readable`() = runTest {
+        val key = EventKeyIds(fakeCrypto()).identify(EventKey.of(ByteArray(32) { 3 })!!)
+        transport.answer = { json(201, event()) }
+        creation.create(CreateRequest(RequestId(1), "  Ana's 30th ", start, end, null, zone = "Europe/Berlin"), key)
+        val sent = sent()
+        assertNull(sent.name, "an encrypted event's name never leaves the phone readable")
+        assertEquals(key.id.value, sent.keyId)
+        val record = assertIs<MetaOpening.Opened>(cipher.open(key, sent.sealedMeta!!)).record
+        assertEquals("Ana's 30th", record.name, "sealed trimmed, as the name rule keeps it")
     }
 
     @Test

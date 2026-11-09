@@ -9,6 +9,7 @@ import app.snapsync.data.membership.EVENT
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
+import app.snapsync.data.membership.name
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.KeyPresence
@@ -67,7 +68,21 @@ class EventKeyQueryTest {
         keys.keep(KeyToKeep.Key(key), testEventId(EVENT))
         val query = EventKeyQuery(device.membership, keys)
         assertEquals(key.key, assertIs<KeyPresence.Held>(query.presence.value).key.key)
-        assertEquals(InviteLinkText.format(InviteLink(testEventId(EVENT), key.key)), query.invite(), "the whole invite")
+        val whole = InviteLink(testEventId(EVENT), key.key)
+        assertEquals(
+            InviteLinkText.format(whole),
+            query.invite()?.scanned,
+            "the whole invite, as its QR code encodes it",
+        )
+        val joined = (device.membership.state.value as MembershipRead.Joined).membership as Membership.Active
+        assertEquals(
+            InviteLinkText.shared(whole, joined.event.name.text),
+            query.invite()?.shared,
+            "and as shared: named for link previews",
+        )
+        device.membership.update(joined, joined.event.copy(name = name("Renamed")))
+        assertEquals(InviteLinkText.shared(whole, "Renamed"), query.invite()?.shared, "a rename renames the next one")
+        assertEquals(InviteLinkText.format(whole), query.invite()?.scanned, "and leaves the QR code as it was")
 
         secure.answers.remove(EncryptionSlots.EVENT_KEY)
         keys.reload()
@@ -91,7 +106,7 @@ class EventKeyQueryTest {
         assertEquals(KeyPresence.NotNeeded, query.presence.value)
         assertEquals(
             InviteLinkText.format(InviteLink(testEventId(EVENT), null)),
-            query.invite(),
+            query.invite()?.scanned,
             "even with a key read",
         )
     }

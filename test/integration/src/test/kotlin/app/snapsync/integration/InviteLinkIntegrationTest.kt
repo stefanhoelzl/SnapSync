@@ -19,6 +19,7 @@ import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import java.net.URLDecoder
 import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -102,10 +103,16 @@ class InviteLinkIntegrationTest {
         whenever { tap(UiIntent.ShareInvite) }
         then { shared = event<WorldEvent.Shared>() }
 
-        val prefix = "$LINK_ORIGIN/join/$event#k="
+        val prefix = "$LINK_ORIGIN/join/$event?n="
         val text = shared.value.text
-        assertEquals(prefix, text.take(prefix.length), "the path names the event, the fragment its key")
-        assertEquals(false, text.removePrefix(prefix).contains('&'), "the fragment holds the key alone")
+        assertEquals(prefix, text.take(prefix.length), "the path names the event, the query its name for previews")
+        assertEquals(
+            Defaults.EVENT_NAME,
+            URLDecoder.decode(text.substringAfter("?n=").substringBefore('#'), Charsets.UTF_8),
+        )
+        assertEquals(true, text.contains("#k="), "the fragment its key")
+        assertEquals(false, text.substringAfter('#').contains('&'), "the fragment holds the key alone")
+        assertEquals(false, text.substringBefore('#').contains('&'), "the query holds the name alone")
     }
 
     @Test
@@ -389,7 +396,7 @@ class InviteLinkIntegrationTest {
         }
 
         whenever { tap(UiIntent.ShareInvite) }
-        then { event<WorldEvent.Shared> { it.text == joined.value.inviteUrl?.raw } }
+        then { event<WorldEvent.Shared> { scannedForm(it.text) == joined.value.inviteUrl?.raw } }
     }
 
     @Test
@@ -457,7 +464,7 @@ class InviteLinkIntegrationTest {
         }
 
         whenever { tap(UiIntent.ShareInvite) }
-        then { event<WorldEvent.Shared> { it.title == "Anna's 40th" && it.text == joined.value.inviteUrl?.raw } }
+        then { event<WorldEvent.Shared> { it.title == "Anna's 40th" && scannedForm(it.text) == joined.value.inviteUrl?.raw } }
     }
 
     @Test
@@ -474,7 +481,7 @@ class InviteLinkIntegrationTest {
         then { joined = screen<Layer.Joined> { it.inviteUrl != null && !it.deleted } }
 
         whenever { tap(UiIntent.ShareInvite) }
-        then { event<WorldEvent.Shared> { it.text == joined.value.inviteUrl?.raw } }
+        then { event<WorldEvent.Shared> { scannedForm(it.text) == joined.value.inviteUrl?.raw } }
     }
 
     @Test
@@ -578,4 +585,13 @@ class InviteLinkIntegrationTest {
         const val LAST_WEEK_START = "2026-05-22T00:00:00"
         const val LAST_WEEK_END = "2026-05-25T00:00:00"
     }
+}
+
+/**
+ * A shared invite as its QR code encodes it: without the preview name an encrypted event's shared invite carries before
+ * its fragment (decision record `changes/seal-event-name`, D5) — a plain event's is the same text.
+ */
+private fun scannedForm(shared: String): String = when ('?' in shared.substringBefore('#')) {
+    true -> shared.substringBefore('?') + "#" + shared.substringAfter('#', "")
+    false -> shared
 }

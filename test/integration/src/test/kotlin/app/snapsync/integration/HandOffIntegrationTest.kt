@@ -13,6 +13,7 @@ import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ShowsInvite
 import app.snapsync.ui.state.UiIntent
+import java.net.URLDecoder
 import kotlin.test.Test
 
 /**
@@ -30,7 +31,12 @@ class HandOffIntegrationTest {
         spec = "invite-link",
         requirement = "The joined screen offers the invite until the event's photos are deleted",
     )
-    fun sharing_the_invite_hands_the_share_sheet_the_invite_the_screen_shows() = behaviour {
+    @Verifies(
+        spec = "invite-link",
+        requirement = "Every invite form opens in every future version",
+        scenario = "An encrypted event's invite carries its key",
+    )
+    fun sharing_the_invite_hands_the_share_sheet_the_invite_the_screen_shows_named_for_previews() = behaviour {
         lateinit var joined: Seen<Layer.Joined>
         given {
             createdEvent()
@@ -40,7 +46,16 @@ class HandOffIntegrationTest {
         }
 
         whenever { tap(UiIntent.ShareInvite) }
-        then { event<WorldEvent.Shared> { it.text == joined.value.inviteUrl?.raw } }
+        // The same invite as the QR code the screen shows, with the event's name before the fragment for link previews
+        // (decision record `changes/seal-event-name`, D5): a QR code is scanned and carries none.
+        then {
+            event<WorldEvent.Shared> { shared ->
+                val scanned = joined.value.inviteUrl!!.raw
+                val name = shared.text.substringAfter("?n=", "").substringBefore('#')
+                shared.text.substringBefore('?') + "#" + shared.text.substringAfter('#') == scanned &&
+                    URLDecoder.decode(name, Charsets.UTF_8) == Defaults.EVENT_NAME
+            }
+        }
     }
 
     @Test

@@ -6,7 +6,7 @@ import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.KeyFact
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.invite.InviteLink
-import app.snapsync.domain.invite.InviteText
+import app.snapsync.domain.invite.JoinedInvite
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.query.encryption.EventKeyQuery.Companion.presenceOf
@@ -32,15 +32,19 @@ class EventKeyQuery(
      */
     val presence: StateFlow<KeyPresence> = PresenceFlow(membership, keys)
 
-    override fun invite(): InviteText? = inviteOf(membership.state.value, keys.state.value)
+    override fun invite(): JoinedInvite? = inviteOf(membership.state.value, keys.state.value)
 
-    private fun inviteOf(read: MembershipRead, fact: KeyFact): InviteText? = read.held()?.let { joined ->
+    private fun inviteOf(read: MembershipRead, fact: KeyFact): JoinedInvite? = read.held()?.let { joined ->
         when (joined.event.encryption) {
-            Encryption.Plain -> InviteLinkText.format(InviteLink(joined.event.id, null))
+            Encryption.Plain -> forms(InviteLink(joined.event.id, null), joined.event.name.text)
             is Encryption.Encrypted -> (KeyPresence.of(joined, fact) as? KeyPresence.Held)
-                ?.let { InviteLinkText.format(InviteLink(joined.event.id, it.key.key)) }
+                ?.let { forms(InviteLink(joined.event.id, it.key.key), joined.event.name.text) }
         }
     }
+
+    /** [link] as its QR code encodes it, and as the share sheet hands it on — named for link previews. */
+    private fun forms(link: InviteLink, name: String) =
+        JoinedInvite(scanned = InviteLinkText.format(link), shared = InviteLinkText.shared(link, name))
 
     companion object {
         /** What the screen reads of the joined event's key, from the membership [read] and the store's [fact]. */
@@ -59,7 +63,7 @@ class EventKeyQuery(
  * at the moment it is asked, so it always belongs to the membership read beside it.
  */
 interface InviteRead {
-    fun invite(): InviteText?
+    fun invite(): JoinedInvite?
 }
 
 /**

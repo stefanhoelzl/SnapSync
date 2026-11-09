@@ -27,6 +27,7 @@ export const TOKENS = [
   "HEADING",
   "FACTS",
   "KEY_ID",
+  "SEALED_META",
 ] as const;
 export type Token = typeof TOKENS[number];
 export type Filling = Record<Token, string>;
@@ -83,6 +84,7 @@ export function pendingFilling(origin: string): Filling {
     HEADING: escapeHtml("Event photos"),
     FACTS: "",
     KEY_ID: "",
+    SEALED_META: "",
   };
 }
 
@@ -98,6 +100,7 @@ export function invalidFilling(origin: string): Filling {
     HEADING: "",
     FACTS: "",
     KEY_ID: "",
+    SEALED_META: "",
   };
 }
 
@@ -162,14 +165,38 @@ function settledLine(m: Members): string {
   return `${m.final} of ${plural(m.active, "member", "members")} done sharing`;
 }
 
-/** The page and preview of a live (not completed) event. */
+/** The longest preview name rendered — the app's own name rule, whatever an invite was edited to carry. */
+const PREVIEW_NAME_MAX_LENGTH = 100;
+
+/**
+ * The name the page and its preview show for [event] (decision record `changes/seal-event-name`, D5): the row's own
+ * when it holds one — a plain event, and an encrypted one created before names were sealed — whatever the invite
+ * says; otherwise, for a sealed event, the invite's preview name [previewName], trimmed and cut to the name rule's
+ * length; `null` when it carries none, and the page then names no event. The page's script replaces it with the name
+ * the members gave the event once the whole invite opens the record.
+ */
+export function shownName(
+  event: Pick<EventRow, "name">,
+  previewName: string | null,
+): string | null {
+  if (event.name !== null) return event.name;
+  const trimmed = (previewName ?? "").trim();
+  return trimmed === "" ? null : Array.from(trimmed).slice(0, PREVIEW_NAME_MAX_LENGTH).join("");
+}
+
+/**
+ * The page and preview of a live (not completed) event. [previewName] is the `n` its invite carried, if any — read
+ * for this one rendering, never stored or logged.
+ */
 export function eventFilling(
   origin: string,
   event: EventRow,
   members: Members,
   nowMs: number,
   deletesAt: string,
+  previewName: string | null = null,
 ): Filling {
+  const name = shownName(event, previewName);
   const phase = phaseOf(event, nowMs);
   const zone = zoneOf(event);
   const dates = dateRange(event);
@@ -211,17 +238,21 @@ export function eventFilling(
   }
 
   return {
-    TITLE: escapeHtml(`${event.name} — SnapSync`),
-    OG_TITLE: escapeHtml(event.name),
+    TITLE: escapeHtml(name === null ? GENERIC_TITLE : `${name} — SnapSync`),
+    OG_TITLE: escapeHtml(name ?? GENERIC_TITLE),
     DESCRIPTION: escapeHtml(description),
     URL: escapeHtml(`${origin}/join/${event.eventId}`),
     VIEW: "event",
     PILL: pill,
-    HEADING: escapeHtml(event.name),
+    HEADING: escapeHtml(name ?? "Event photos"),
     FACTS: facts.join(""),
     // The id of the key an ENCRYPTED event's photos open with, empty for a plain one: what the page checks the
     // invite's `#k=` against before fetching a photo (decision record `changes/separate-event-page-from-device-api`,
     // D5). Not secret — an HKDF tag of the key — and from the row this page already reads.
     KEY_ID: escapeHtml(event.keyId ?? ""),
+    // A sealed event's sealed metadata record, which the page's script opens with the invite's `#k=` to show the name the
+    // members gave the event in place of the preview name (decision record `changes/seal-event-name`, D5). Not secret
+    // without the key — and base64url, so escaping changes nothing; escaped regardless, as every value here is.
+    SEALED_META: escapeHtml(event.sealedMeta ?? ""),
   };
 }

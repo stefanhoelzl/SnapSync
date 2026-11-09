@@ -73,7 +73,7 @@ open class MockDevice(
     val uploadSession = UploadSessionMock(uploadNetwork, held = holdsUnrestrictedOnly, read = disk::located)
 
     /** The keys of the encrypted events this device created — what plays the other members' uploads. */
-    val eventKeys = EventKeyLedger()
+    val eventKeys = EventKeyLedger().also { backend.opensSealedNamesWith(it::openedName) }
 
     // Another member's photo of an encrypted event arrives sealed under its key, as every member uploads it.
     val downloads = DownloadSessionMock(
