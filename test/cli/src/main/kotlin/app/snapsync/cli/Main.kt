@@ -51,7 +51,7 @@ internal fun rig(args: List<String>, out: PrintStream, err: PrintStream, probe: 
 }
 
 /** The global flags, and the command they precede or follow. */
-private class Options(
+internal class Options(
     val url: String?,
     val json: Boolean,
     val help: Boolean,
@@ -76,12 +76,19 @@ private class Options(
             var i = 0
             while (i < args.size) {
                 when (val arg = args[i]) {
-                    "--url" -> url = args.getOrNull(++i) ?: usage("--url needs a value")
+                    // The first `--url` is the host's. Once a command has begun, a second one is its own parameter — the
+                    // link of `os continue-link --url <link>` — never a host given twice.
+                    "--url" -> args.getOrNull(++i)?.let { value ->
+                        if (url != null && command.isNotEmpty()) command += listOf(arg, value) else url = value
+                    } ?: usage("--url needs a value")
                     "--json" -> json = true
                     "--timeout" -> timeout = Bound.Given(seconds(args.getOrNull(++i) ?: usage("--timeout needs a value")))
                     "--help", "-h" -> help = true
                     "help" -> if (command.isEmpty()) help = true else command += arg
-                    else -> if (arg.startsWith("--url=")) url = arg.removePrefix("--url=") else command += arg
+                    else -> when {
+                        arg.startsWith("--url=") && (url == null || command.isEmpty()) -> url = arg.removePrefix("--url=")
+                        else -> command += arg
+                    }
                 }
                 i++
             }
@@ -98,7 +105,7 @@ private fun help(command: List<String>): String {
 }
 
 /** How long a command may take: as `--timeout` gave it (`null`: as long as it takes), or each kind's default. */
-private sealed interface Bound {
+internal sealed interface Bound {
     data object Default : Bound
 
     data class Given(val bound: Duration?) : Bound

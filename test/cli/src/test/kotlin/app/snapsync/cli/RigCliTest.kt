@@ -43,6 +43,31 @@ class RigCliTest {
         assertFailsWith<UsageError> { seconds("soon") }
     }
 
+    /**
+     * The host's `--url` comes first; a method's own `--url` — `os continue-link`'s link — is the command's, as the
+     * skills spell the call (`rig --url <base> os continue-link --url <link>`).
+     */
+    @Test
+    fun a_method_s_own_url_is_not_taken_for_the_host() {
+        val link = "https://snapsync.stho.net/join/E1?n=Ana#k=K"
+        val spaced = Options.parse(listOf("--url", "http://127.0.0.1:18101", "os", "continue-link", "--url", link))
+        assertEquals("http://127.0.0.1:18101", spaced.url)
+        assertEquals(listOf("os", "continue-link", "--url", link), spaced.command)
+        val joined = Options.parse(listOf("--url=http://127.0.0.1:18101", "os", "continue-link", "--url=$link"))
+        assertEquals("http://127.0.0.1:18101", joined.url)
+        assertEquals(listOf("os", "continue-link", "--url=$link"), joined.command)
+        assertEquals(
+            listOf("--url", link),
+            method("os", "continue-link").arguments(spaced.command.drop(2)).let {
+                listOf("--url", it.single())
+            },
+        )
+        // A host given after the command, with none before it, is still the host's.
+        val late = Options.parse(listOf("screen", "tap", "--url", "http://127.0.0.1:18101"))
+        assertEquals("http://127.0.0.1:18101", late.url)
+        assertEquals(listOf("screen", "tap"), late.command)
+    }
+
     @Test
     fun a_name_is_spelled_as_a_command() {
         assertEquals("fail-listing", commandSpelling("failListing"))
