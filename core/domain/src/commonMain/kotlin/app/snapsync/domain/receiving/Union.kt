@@ -64,11 +64,14 @@ class ForeignPhotos private constructor(val all: List<UnionPhoto>, val open: Lis
  * at all when a push announced a position this device has already read.
  */
 sealed interface UnionReadPlan {
+    /** A plan that reads the union — all that the data layer is ever handed. */
+    sealed interface Reading : UnionReadPlan
+
     /** Every photo the union serves. */
-    data object Whole : UnionReadPlan
+    data object Whole : Reading
 
     /** Only what the union gained after [from]. */
-    class Since(val from: Long) : UnionReadPlan
+    class Since(val from: Long) : Reading
 
     /** The announced position is already read: nothing new to read. */
     data object AlreadyRead : UnionReadPlan
