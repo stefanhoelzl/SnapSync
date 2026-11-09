@@ -31,11 +31,16 @@ import app.snapsync.format.TimestampText
  * platform's canonical id, so any other text is an [InvalidProgramState]: there is no reading of it to offer.
  */
 sealed interface Stored<out T : Any> {
+    /** The id the column spells, or `null` for [Empty]. */
+    val value: T?
+
     /** The column spells an id. */
-    data class Valid<out T : Any>(val value: T) : Stored<T>
+    data class Valid<out T : Any>(override val value: T) : Stored<T>
 
     /** The column holds the empty string a migration left: no id. Written back as it was read. */
-    data object Empty : Stored<Nothing>
+    data object Empty : Stored<Nothing> {
+        override val value: Nothing? get() = null
+    }
 }
 
 /** An id column: the id's text exactly as it arrived, and [parse]'s reading of it. */
@@ -44,10 +49,12 @@ abstract class StoredIdColumnAdapter<T : Any> : ColumnAdapter<Stored<T>, String>
 
     protected abstract fun text(value: T): String
 
-    override fun decode(databaseValue: String): Stored<T> = when (databaseValue) {
-        EMPTY -> Stored.Empty
-        else -> Stored.Valid(parse(databaseValue) ?: throw InvalidProgramState("an id column holds an id or no text"))
-    }
+    override fun decode(databaseValue: String): Stored<T> =
+        parse(databaseValue)?.let { Stored.Valid(it) } ?: spellingNone(databaseValue)
+
+    /** A column text that spells no id: only ever the empty one a migration left. */
+    private fun spellingNone(text: String): Stored<T> =
+        Stored.Empty.takeIf { text == EMPTY } ?: throw InvalidProgramState("an id column holds an id or no text")
 
     override fun encode(value: Stored<T>): String = when (value) {
         is Stored.Valid -> text(value.value)

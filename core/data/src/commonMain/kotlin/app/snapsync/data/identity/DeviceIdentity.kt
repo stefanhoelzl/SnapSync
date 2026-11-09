@@ -129,17 +129,19 @@ class MintingDeviceIdentity @AppProcessOnly constructor(
         DeviceIdRead.Absent -> minted()
     }.also(::logged)
 
-    @OptIn(ExperimentalUuidApi::class)
     private fun minted(): DeviceIdRead {
-        val id = platformDeviceId.stableId() ?: Uuid.random().toString().uppercase()
-        return when (val written = store.write(TrustSlots.DEVICE_ID, id)) {
-            WriteOutcome.Ok -> DeviceIdRead.Ok(
-                DeviceId.parse(id) ?: throw InvalidProgramState("a minted id is a UUID or a contract-shaped one"),
-                DeviceIdRead.Via.MINTED,
-            )
+        val id = mintedId()
+        return when (val written = store.write(TrustSlots.DEVICE_ID, id.value)) {
+            WriteOutcome.Ok -> DeviceIdRead.Ok(id, DeviceIdRead.Via.MINTED)
             is WriteOutcome.Failed -> DeviceIdRead.Unavailable("write refused: ${written.detail}")
         }
     }
+
+    /** The platform's stable id, or a fresh UUID in its canonical upper-case form — each a device id by contract. */
+    @OptIn(ExperimentalUuidApi::class)
+    private fun mintedId(): DeviceId =
+        DeviceId.parse(platformDeviceId.stableId() ?: Uuid.random().toString().uppercase())
+            ?: throw InvalidProgramState("a minted id is a UUID or a contract-shaped one")
 }
 
 private val LOG = Log("DeviceIdentity")

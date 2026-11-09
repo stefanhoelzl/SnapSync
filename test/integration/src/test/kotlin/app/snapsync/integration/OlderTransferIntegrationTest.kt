@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.WorldEvent
 import kotlin.test.Test
@@ -9,6 +10,7 @@ import kotlin.test.Test
  * "Download rows with an empty event"): a transfer started before transfers named their event names none, and in an
  * encrypted event it is opened with the key of the event joined now — the one it was fetched for — and imported.
  */
+@Verifies(spec = "delivery", requirement = "A photo is never lost on the way")
 class OlderTransferIntegrationTest {
 
     @Test

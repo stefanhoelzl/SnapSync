@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
@@ -12,6 +13,7 @@ import kotlin.test.Test
  * registers nothing again; a revoke leaves the registration as iOS holds it; an uploader switched off is
  * never registered.
  */
+@Verifies(spec = "delivery", requirement = "Photos travel without the app being opened")
 class ExtensionRegistrationIntegrationTest {
 
     @Test

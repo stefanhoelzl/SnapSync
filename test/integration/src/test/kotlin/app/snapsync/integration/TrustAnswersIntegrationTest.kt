@@ -93,6 +93,7 @@ class TrustAnswersIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "delivery", requirement = "Only new photos are announced by a silent wake, and never only by it")
     fun a_rejected_token_the_service_cannot_renew_leaves_the_registration_for_the_next_delivery() = behaviour {
         given {
             joinedEvent()
