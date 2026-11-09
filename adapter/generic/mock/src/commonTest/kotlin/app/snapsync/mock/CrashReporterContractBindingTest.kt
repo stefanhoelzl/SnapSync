@@ -41,8 +41,8 @@ class CrashReporterContractBindingTest {
                 state == CrashReporterState.AFTER_A_PROCESS_DEATH
             ) {
                 return Entered.Unreachable(
-                    "the fake does not model the SDK: breadcrumbs riding the next event, the install id, the build " +
-                        "facts, the size caps, a relaunch's cache and a process's death are its serialization and the adapter's hooks",
+                    "the fake does not model the SDK: the install id, the build facts, the size caps, a relaunch's " +
+                        "cache and a process's death are its serialization and the adapter's hooks",
                 )
             }
             val started = MutableStateFlow(false)
@@ -56,7 +56,7 @@ class CrashReporterContractBindingTest {
                     val events = dumps.value.map { dump ->
                         DeliveredEvent(
                             message = dump.message,
-                            breadcrumbs = emptyList(),
+                            breadcrumbs = dump.breadcrumbs.mapNotNull { it.message },
                             installId = null,
                             tags = dump.tags,
                             contexts = dump.contexts,
