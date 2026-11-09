@@ -64,8 +64,7 @@ object MembershipRows {
     private fun SelectMembership.share(event: EventRange): Parsed<Share> =
         when (val range = CaptureRange.of(minPhotoDate, maxPhotoDate, event.start, event.end)) {
             is CaptureRangeVerdict.Ok -> Parsed.Ok(Share(range.range, direction, saveToAlbum))
-            CaptureRangeVerdict.Inverted, CaptureRangeVerdict.TooLong, CaptureRangeVerdict.OutsideEvent ->
-                Parsed.Refused("its shared range is $range")
+            is CaptureRangeVerdict.Refused -> Parsed.Refused("its shared range is $range")
         }
 
     private fun SelectMembership.counts(): MemberCounts? = listOfNotNull(membersActive, membersSettled)

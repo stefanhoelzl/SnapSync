@@ -42,8 +42,7 @@ class EnrollDevice(
         is CaptureRangeVerdict.Ok -> keyed(choice, Share(range.range, choice.direction, choice.album))
         // Refused, never clamped: no screen can produce one, so it is a bug, and moving it would join a range nobody
         // chose.
-        CaptureRangeVerdict.Inverted, CaptureRangeVerdict.TooLong, CaptureRangeVerdict.OutsideEvent ->
-            EnrollOutcome.InvalidRange
+        is CaptureRangeVerdict.Refused -> EnrollOutcome.InvalidRange
     }
 
     /** Enrol [admitted] at the server, once its key is [kept] — so a membership never names a key that is not kept. */
