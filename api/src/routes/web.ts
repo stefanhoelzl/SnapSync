@@ -16,7 +16,7 @@
 // after the page loaded stays reachable. A zip that outlasts it re-reads.
 
 import { Hono } from "hono";
-import { completeAssets, logUnionFetch, unionPosition, unionRows } from "../db.ts";
+import { completeAssets, unionPosition, unionRows } from "../db.ts";
 import { validateUUID } from "../validators.ts";
 import {
   gateEvent,
@@ -37,7 +37,7 @@ export const WEB_PHOTOS_PATH = /^\/web\/events\/[^/]+\/photos$/;
 
 /** The event page's read, at the root, built over `deps`. */
 export function webRoutes(deps: RouteDeps): Hono {
-  const { config, db, now, aws } = deps;
+  const { config, db, aws } = deps;
   const app = new Hono();
 
   // GET and HEAD only: HEAD answers the same status and headers with no body. A malformed id is the same
@@ -66,25 +66,10 @@ export function webRoutes(deps: RouteDeps): Hono {
         });
       }
 
-      // Best-effort, and ANONYMOUS: that a
-      // browser read the list, and when — no device, no trigger, nothing about the visitor.
-      try {
-        await logUnionFetch(db, {
-          eventId,
-          deviceId: null,
-          trigger: null,
-          from: null,
-          to: position,
-          served: photos.length,
-          at: new Date(now()).toISOString(),
-        });
-      } catch (e) {
-        c.var.log.error(
-          "read-log",
-          `web photos: could not log the read of ${eventId} (best-effort): ${e}`,
-        );
-      }
+      // The delivery record, ANONYMOUS: that a browser read the list, and when — no device, no trigger, nothing
+      // about the visitor, who leaves no trace in the event.
       c.var.log.field("served", photos.length);
+      c.var.log.field("to", position);
       return c.req.method === "HEAD" ? c.body(null) : c.json(photos);
     });
   });

@@ -6,11 +6,10 @@ import { CAPACITY_PLACEHOLDER } from "../config.ts";
 import {
   completeAssets,
   declaredTotal,
-  downloadStoragePath,
+  downloadTarget,
   type EventRow,
   insertEvent,
   leaveStatements,
-  logUnionFetch,
   memberCounts,
   type NameChange,
   putDeviceRecord,
@@ -19,20 +18,19 @@ import {
   unionRows,
 } from "../db.ts";
 import type { Handlers } from "../gen/wire.ts";
+import { CONTEXT_HEADER, contextFields } from "../delivery-context.ts";
 import { envelopeShape } from "../sealed-meta.ts";
-import { APP_VERSION_HEADER, splitVersion } from "../version.ts";
+import { splitVersion } from "../version.ts";
 import { refuse } from "../refusal.ts";
 import { canonicalFromMs, canonicalPlusSeconds } from "../validators.ts";
 import { openUntilAdmitted } from "../lifecycle.ts";
 import {
   closedForOldBuilds,
   closedRefusal,
-  declaredAppVersion,
   deviceOrigin,
   downloadPath,
   gateEvent,
   NO_CACHE,
-  noteAppVersion,
   orUpstream502,
   ownDevice,
   presignDownloadUrl,
@@ -74,6 +72,12 @@ export const CURSOR_HEADER = "SnapSync-Cursor";
 export const DECLARED_HEADER = "SnapSync-Declared";
 /** The request header naming why the client reads (decision record D5). */
 export const TRIGGER_HEADER = "SnapSync-Trigger";
+
+/** Whole days from one instant to a later one, rounded — the delivery record's measure of an event's dates. */
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
+}
+
 type UnionAsset = {
   deviceId: string;
   assetId: string;
@@ -157,7 +161,13 @@ export function sharedHandlers(
         `create: event insert failed for ${event.eventId}`,
         () => insertEvent(db, event),
       );
-      // The row exists — only now is the event created.
+      // The row exists — only now is the event created. The delivery record's facts of a creation: which event,
+      // whether it is encrypted, how many days its date range spans, and whether it was created after its end.
+      c.var.log.field("event", event.eventId);
+      c.var.log.field("encrypted", event.keyId !== null);
+      c.var.log.field("window_days", daysBetween(event.startsAt, event.endsAt));
+      c.var.log.field("open_days", daysBetween(event.endsAt, event.openUntil));
+      c.var.log.field("backdated", Date.parse(event.endsAt) < Date.parse(event.createdAt));
       return c.json(publicEvent(event), 201);
     },
 
@@ -345,30 +355,19 @@ export function sharedHandlers(
           }),
         }));
 
-        // Best-effort: the record of a read never costs the read.
-        try {
-          await logUnionFetch(db, {
-            eventId,
-            deviceId: reader,
-            trigger,
-            from: after ?? null,
-            to: position,
-            served: assets.length,
-            at: new Date(now()).toISOString(),
-          });
-        } catch (e) {
-          c.var.log.error(
-            "read-log",
-            `union: could not log the read of ${eventId} (best-effort): ${e}`,
-          );
-        }
+        // The delivery record of this read (decision record `changes/delivery-record`):
+        // which device read — verified by its token, `-` for any other reader, of whom nothing else is kept — why,
+        // from which position to which, how much it was given, and for a read a push caused, when the push arrived
+        // and which position it announced.
+        c.var.log.field("reader", reader ?? "-");
         c.var.log.field("served", assets.length);
         c.var.log.field("trigger", trigger ?? "-");
-        if (reader !== null) {
-          const declared = declaredAppVersion(c.req.url, c.req.header(APP_VERSION_HEADER));
-          const failed = await noteAppVersion(db, reader, declared, "union");
-          if (failed) c.var.log.error("app-version", failed);
-        }
+        if (after !== undefined) c.var.log.field("from", after);
+        c.var.log.field("to", position);
+        const notified = params["x-snapsync-notified"];
+        if (notified !== undefined) c.var.log.field("notified", notified);
+        const announced = params["x-snapsync-announced"];
+        if (announced !== undefined) c.var.log.field("announced", Number(announced));
 
         c.header("Cache-Control", NO_CACHE); // a `url` may be a time-limited presign; a cursor is a moment
         c.header(CURSOR_HEADER, String(position));
@@ -388,12 +387,29 @@ export function sharedHandlers(
     // The signature keeps S3's 7-day maximum on purpose (D2): an iOS background session resumes from the
     // redirect TARGET and never revisits this route (measured), so a shorter one turns a resume after an
     // outage into a restart.
-    async downloadResource(c, { params: { eventId, deviceId, assetId, role } }) {
+    //
+    // The redirect is where a receiver's download STARTS, so it carries the delivery record's facts of that start
+    // (decision record `changes/delivery-record`, D2/D7): when the phone queued it and why, and whether the photo
+    // landed before this receiver joined. The receiver is the context's `device`, unverified; a browser names none.
+    async downloadResource(c, { params }) {
+      const { eventId, deviceId, assetId, role } = params;
+      const receiver = contextFields(c.req.header(CONTEXT_HEADER)).device;
       return await orUpstream502(`download: lookup failed for ${eventId}`, async () => {
-        const path = await downloadStoragePath(db, eventId, deviceId, assetId, role);
+        const target = await downloadTarget(db, {
+          eventId,
+          deviceId,
+          assetId,
+          role,
+          receiver: typeof receiver === "string" ? receiver : null,
+        });
         c.header("Cache-Control", NO_CACHE);
-        if (path === null) return c.text("not found", 404);
-        return c.redirect(await presignDownloadUrl(aws, config, path), 302);
+        if (target === null) return c.text("not found", 404);
+        const queued = params["x-snapsync-queued"];
+        if (queued !== undefined) c.var.log.field("queued", queued);
+        const queuedBy = params["x-snapsync-queued-by"];
+        if (queuedBy !== undefined) c.var.log.field("queued_by", queuedBy);
+        if (target.backlog !== null) c.var.log.field("backlog", target.backlog);
+        return c.redirect(await presignDownloadUrl(aws, config, target.path), 302);
       });
     },
 
@@ -410,7 +426,7 @@ export function sharedHandlers(
       // route cannot attest on its behalf.
       const written = await tryUpstream(
         `config: device record write failed for ${deviceId}`,
-        () => putDeviceRecord(db, deviceId, push, new Date(now()).toISOString()),
+        () => putDeviceRecord(db, deviceId, push),
       );
       if (written.rowsAffected === 0) {
         // The token verified — it is ours and unexpired — but we hold no attestation for this device.

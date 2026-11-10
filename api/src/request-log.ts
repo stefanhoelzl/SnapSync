@@ -14,12 +14,19 @@
 // by the operator only.
 
 import type { Context, ErrorHandler, MiddlewareHandler } from "hono";
+import { CONTEXT_HEADER, contextFields } from "./delivery-context.ts";
 import { Refusal } from "./refusal.ts";
 import { APP_VERSION_HEADER } from "./version.ts";
 import { withoutPreviewName } from "./preview-name.ts";
 
 /** A field's value as the line spells it. */
-export type FieldValue = string | number | boolean;
+export type FieldValue = string | number | boolean | FieldEntry;
+
+/**
+ * One entry of a per-photo list in the delivery record (`docs/architecture.md`, "The delivery record"): a flat
+ * object of plain values, recorded once per photo under the list's key.
+ */
+export type FieldEntry = Readonly<Record<string, string | number | boolean>>;
 
 /**
  * Every fault a request can record, as a short tag — a CLOSED list, so `log.error` compiles only with a
@@ -43,16 +50,14 @@ export const ERROR_TAGS = [
   "completion-lookup",
   /** The byte route could not stamp the events' landing time. */
   "landing-stamp",
+  /** A delivery fact the route reads from the store could not be read; the request stands without it. */
+  "delivery-fact",
   /** A wake could not read the union position it announces; it was sent without one. */
   "union-position",
   /** A wake's fan-out failed or timed out; the write it announces stands. */
   "fanout",
-  /** The device's declared app version was not recorded. */
-  "app-version",
   /** The manifest publish could not look up which declared assets are fetchable. */
   "fetchability",
-  /** A union read was served but its row in the union log was not written. */
-  "read-log",
   /** The site's event page could not read its event. */
   "event-page",
   /** `/health`: the relational store did not answer. */
@@ -116,8 +121,12 @@ export const consoleSink: LogSink = (record) => writeLine(formatLine(record));
 
 const BARE = /^[A-Za-z0-9._:/-]+$/;
 
-/** A value bare when it is one plain token, else JSON-quoted — so a line parses unambiguously. */
+/**
+ * A value bare when it is one plain token, else JSON-quoted — so a line parses unambiguously. An entry of a
+ * per-photo list is its compact JSON object, which no quoted string can start like.
+ */
 export function encodeValue(value: FieldValue): string {
+  if (typeof value === "object") return JSON.stringify(value);
   const text = String(value);
   return BARE.test(text) ? text : JSON.stringify(text);
 }
@@ -221,6 +230,10 @@ export function requestLogMiddleware(
     const started = performance.now();
     const log = requestLog(newReqid());
     c.set("log", log);
+    // The delivery context leads the record's fields: the device and its conditions, before what the route adds.
+    for (const [key, value] of Object.entries(contextFields(c.req.header(CONTEXT_HEADER)))) {
+      log.field(key, value);
+    }
     const bytesIn = countRequestBody(c);
     await around(log.reqid, c, next);
 

@@ -115,10 +115,14 @@ Instructions, the Android wording of `metadata/review/notes.md`:
   - the **bug report** a user sends by hand, and the activity logs it carries: part of crash logs;
   - the **device, event and photo IDs** an automatic crash report may carry (never an event's key — capability
     `privacy-security`): part of crash logs, so the operator can find what a failure affected;
-  - the **read record** of an event's photo list (which install read it, why, when, how many photos it was given;
-    browsers anonymously; deleted with the event's photos — capability `privacy-security`): **diagnostics**, covered by
-    the diagnostics already declared in both stores (decided 2026-10-05, `changes/incremental-union`). It is not app
-    interactions: it records the app's own sync traffic, never what the member does.
+  - the **delivery record** (capability `privacy-security`, "The service records how photos are delivered"; it
+    replaced the read record of an event's photo list, `changes/delivery-record`): per request the install, the app
+    version, the phone's OS and model, the kind of build, the photo access, the network type and data setting,
+    power saving and background allowance; per photo when it was taken, found, sent, announced, downloaded and
+    added, and why; browsers anonymously; kept 30 days whether or not the event's photos were deleted. It is
+    **diagnostics** and **other app performance data**, both already declared in both stores (decided 2026-10-05,
+    `changes/incremental-union`; widened 2026-11-10). It is not app interactions: it records the app's own sync
+    traffic and the phone's conditions, never what the member does on screen.
 - **Diagnostics and other app performance data** were already declared in the Console (recorded here 2026-10-05,
   when this file was found listing only crash logs). They cover the **device state** a user-sent bug report carries —
   network access, power saving, background allowance, battery level and charging, thermal state, time zone and the

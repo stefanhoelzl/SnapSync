@@ -65,15 +65,3 @@ export function compareVersions(a: string, b: string): number {
   }
   return 0;
 }
-
-/**
- * The declared version as the device row stores it, or `null` when it is not worth storing: absent, not
- * an `X.Y…` version, or longer than any real one. The bound is what makes storing a caller's header safe —
- * the gate admits any parseable version at or above the minimum, and a parseable string has no length
- * limit of its own.
- */
-export function recordableVersion(declared: string | undefined): string | null {
-  const trimmed = declared?.trim();
-  if (!trimmed || trimmed.length > 32 || !/^\d+(\.\d+)*$/.test(trimmed)) return null;
-  return trimmed;
-}

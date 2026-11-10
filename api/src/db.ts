@@ -361,10 +361,11 @@ export function publishStatements(
     /** The device declares its asset set settled → `settled`, else `sharing`. */
     final?: boolean;
     /**
-     * The union-log rows this publish causes ([publishUnionChanges]), written inside the batch under the
-     * same gates as the asset set — so a refused (older) publish, or one racing a completion, logs nothing.
+     * The union-log gains this publish causes ([publishUnionChanges]), written inside the batch under the
+     * same gates as the asset set — so a refused (older) publish, or one racing a completion, logs nothing. What a
+     * publish withdraws is the delivery record's (`withdrawn`), never a union-log row: nothing reads one.
      */
-    log?: { gained: readonly string[]; removed: readonly string[]; at: string };
+    gained?: readonly string[];
   },
 ): Statement[] {
   const out: Statement[] = [];
@@ -403,19 +404,12 @@ export function publishStatements(
       ],
     });
   }
-  if (opts.log) {
-    const { at } = opts.log;
-    for (
-      const [kind, ids] of [["gained", opts.log.gained], ["removed", opts.log.removed]] as const
-    ) {
-      for (const assetId of ids) {
-        out.push({
-          sql: `INSERT INTO union_log (event_id, kind, device_id, asset_id, at)
-                SELECT ?, ?, ?, ?, ? WHERE 1${gate}`,
-          args: [eventId, kind, deviceId, assetId, at, ...gateArgs],
-        });
-      }
-    }
+  for (const assetId of opts.gained ?? []) {
+    out.push({
+      sql: `INSERT INTO union_log (event_id, kind, device_id, asset_id)
+            SELECT ?, 'gained', ?, ? WHERE 1${gate}`,
+      args: [eventId, deviceId, assetId, ...gateArgs],
+    });
   }
   // The device's own declaration, gated like the asset set so a refused (older) publish cannot flip it. It
   // follows each publish both ways, and moves only a PRESENT membership: a member that left stays gone.
@@ -821,8 +815,8 @@ export async function eventsCompletedBy(db: Db, r: {
 /**
  * How this publish changes what the event's union SERVES (decision record
  * `changes/incremental-union`, D4): the assets it makes servable (`gained` — the manifest route's wake list
- * and its union-log rows) and the servable assets it stops declaring or leaves incomplete (`removed` — log
- * rows only, never served).
+ * and its union-log rows) and the servable assets it stops declaring or leaves incomplete (`removed` — the
+ * delivery record's `withdrawn`, never served).
  *
  * The manifest publish is no longer the moment the union grows: under a manifest that declares INTENT, its
  * content changes when discovery changes, and the assets it names are usually incomplete. The one case
@@ -896,12 +890,10 @@ export function gainedStatements(
   eventIds: readonly string[],
   deviceId: string,
   assetId: string,
-  at: string,
 ): Statement[] {
   return eventIds.map((eventId) => ({
-    sql:
-      `INSERT INTO union_log (event_id, kind, device_id, asset_id, at) VALUES (?, 'gained', ?, ?, ?)`,
-    args: [eventId, deviceId, assetId, at],
+    sql: `INSERT INTO union_log (event_id, kind, device_id, asset_id) VALUES (?, 'gained', ?, ?)`,
+    args: [eventId, deviceId, assetId],
   }));
 }
 
@@ -1020,24 +1012,31 @@ export function completeAssets(rows: UnionResourceRow[]): UnionResourceRow[][] {
  * Narrower than the union on purpose: it asks about one role, so a photo whose OTHER role has not landed
  * still serves the role that has. Nothing hands out such a link — the union serves only complete assets —
  * and a client that guesses one learns nothing the event's union would not tell it.
+ *
+ * In the same statement, for the delivery record (decision record `changes/delivery-record`, D2): whether these
+ * bytes landed before the RECEIVER — the device the request says it comes from, unverified — joined the event
+ * (`backlog`), `null` when no receiver is named or it holds no membership. Compared as instants: a landing and a
+ * join written in different eras differ in their fraction.
  */
-export async function downloadStoragePath(
+export async function downloadTarget(
   db: Db,
-  eventId: string,
-  deviceId: string,
-  assetId: string,
-  role: string,
-): Promise<string | null> {
+  r: { eventId: string; deviceId: string; assetId: string; role: string; receiver: string | null },
+): Promise<{ path: string; backlog: boolean | null } | null> {
   const { rows } = await db.execute(
-    `SELECT r.path
+    `SELECT r.path, julianday(r.landed_at) < julianday(m.joined_at) AS backlog
        FROM event_assets ea
        JOIN resources r ON r.event_id = ea.event_id AND r.device_id = ea.device_id
                        AND r.asset_id = ea.asset_id AND r.role = ? AND ${landed("r")}
+       LEFT JOIN memberships m ON m.event_id = ea.event_id AND m.device_id = ?
       WHERE ea.event_id = ? AND ea.device_id = ? AND ea.asset_id = ?
         AND EXISTS (SELECT 1 FROM json_each(ea.roles) j WHERE j.value = ?)`,
-    [role, eventId, deviceId, assetId, role],
+    [r.role, r.receiver, r.eventId, r.deviceId, r.assetId, r.role],
   );
-  return rows.length === 0 ? null : String(rows[0].path);
+  if (rows.length === 0) return null;
+  return {
+    path: String(rows[0].path),
+    backlog: rows[0].backlog == null ? null : Number(rows[0].backlog) === 1,
+  };
 }
 
 /**
@@ -1080,29 +1079,6 @@ export async function declaredTotal(db: Db, eventId: string): Promise<number> {
   return Number(rows[0].n);
 }
 
-/** One read of the union, as the union log records it. */
-export type UnionFetch = {
-  eventId: string;
-  /** The device whose token verified; `null` for every other reader, of whom nothing else is kept. */
-  deviceId: string | null;
-  /** Why the client read, as it says; `null` when it said nothing this backend knows. */
-  trigger: string | null;
-  /** The position the read started from; `null` for a full read. */
-  from: number | null;
-  to: number;
-  served: number;
-  at: string;
-};
-
-/** Record one union read. The caller treats a failure as best-effort. */
-export async function logUnionFetch(db: Db, f: UnionFetch): Promise<void> {
-  await db.execute(
-    `INSERT INTO union_log (event_id, kind, device_id, trigger, cursor_from, cursor_to, served, at)
-     VALUES (?, 'fetch', ?, ?, ?, ?, ?, ?)`,
-    [f.eventId, f.deviceId, f.trigger, f.from, f.to, f.served, f.at],
-  );
-}
-
 // ── Devices: the attestation group ────────────────────────────────────────────────────────────────
 //
 // The ONE writer of `attest_*` and `created_at`, and the only route that may create a row at all.
@@ -1126,11 +1102,8 @@ export type AttestPlatform = "ios" | "android";
  *
  * Names ONLY the attestation columns in the conflict clause, so a re-attestation cannot disturb a push
  * registration — and leaves `created_at` alone, so it keeps meaning *first* attested rather than *most
- * recently* attested.
- *
- * `appVersion` is the version the minting request declared ({@link recordAppVersion}), so a row is never
- * versionless between its mint and the device's first recording call. `null` (a mint that declares none)
- * keeps whatever the row already held.
+ * recently* attested. When a device attested again, and with which app version, is the request log's
+ * (decision record `changes/delivery-record`, D9): nothing operational reads it.
  */
 export async function putAttestation(
   db: Db,
@@ -1138,28 +1111,22 @@ export async function putAttestation(
   attestation: DeviceAttestation,
   at: string,
   tokenExpiresAt: string,
-  appVersion: string | null = null,
 ): Promise<void> {
   await db.execute(
-    `INSERT INTO devices (device_id, created_at, attest_key, attest_platform, attest_env, attested_at,
-                          attest_token_expires_at, app_version)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO devices (device_id, created_at, attest_key, attest_platform, attest_env, attest_token_expires_at)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT (device_id) DO UPDATE SET
        attest_key              = excluded.attest_key,
        attest_platform         = excluded.attest_platform,
        attest_env              = excluded.attest_env,
-       attested_at             = excluded.attested_at,
-       attest_token_expires_at = excluded.attest_token_expires_at,
-       app_version             = COALESCE(excluded.app_version, devices.app_version)`,
+       attest_token_expires_at = excluded.attest_token_expires_at`,
     [
       deviceId,
       at,
       attestation.publicKey,
       attestation.platform,
       attestation.environment,
-      at,
       tokenExpiresAt,
-      appVersion,
     ],
   );
 }
@@ -1217,38 +1184,6 @@ export async function touchTokenExpiry(
   return { rowsAffected };
 }
 
-// ── Devices: the app version ──────────────────────────────────────────────────────────────────────
-
-/**
- * Keep the version the device last declared. The `IS NOT` clause makes
- * an unchanged version a read, not a write, so the routes that call this on every visit rewrite the row
- * only when the device upgraded (or rolled back). A device with no row is left alone: only the mint
- * creates one.
- */
-export async function recordAppVersion(
-  db: Db,
-  deviceId: string,
-  appVersion: string,
-): Promise<void> {
-  await db.execute(
-    `UPDATE devices SET app_version = ? WHERE device_id = ? AND app_version IS NOT ?`,
-    [appVersion, deviceId, appVersion],
-  );
-}
-
-/** One device row's version and platform — what the sweep's version table counts. */
-export type DeviceVersion = { deviceId: string; appVersion: string | null; platform: string };
-
-/** Every device row's version and platform. */
-export async function deviceVersions(db: Db): Promise<DeviceVersion[]> {
-  const { rows } = await db.execute(`SELECT device_id, app_version, attest_platform FROM devices`);
-  return rows.map((r) => ({
-    deviceId: String(r.device_id),
-    appVersion: r.app_version === null ? null : String(r.app_version),
-    platform: String(r.attest_platform),
-  }));
-}
-
 // ── Devices: the push-registration group ──────────────────────────────────────────────────────────
 
 /** A device's registered push token, as the notify fan-out needs it. */
@@ -1267,15 +1202,10 @@ export async function putDeviceRecord(
   db: Db,
   deviceId: string,
   push: DevicePushToken | null,
-  at: string,
 ): Promise<WriteResult> {
   const { rowsAffected } = await db.execute(
-    `UPDATE devices SET push_kind       = ?,
-                        push_token      = ?,
-                        push_env        = ?,
-                        push_updated_at = ?
-      WHERE device_id = ?`,
-    [push?.kind ?? null, push?.token ?? null, push?.env ?? null, at, deviceId],
+    `UPDATE devices SET push_kind = ?, push_token = ?, push_env = ? WHERE device_id = ?`,
+    [push?.kind ?? null, push?.token ?? null, push?.env ?? null, deviceId],
   );
   return { rowsAffected };
 }
@@ -1420,12 +1350,6 @@ export async function collectableDevices(
   return out;
 }
 
-/** How many device rows the store holds — the summary's devices tier reports kept as total minus deleted. */
-export async function countDevices(db: Db): Promise<number> {
-  const { rows } = await db.execute(`SELECT COUNT(*) AS n FROM devices`);
-  return Number(rows[0].n);
-}
-
 /**
  * Collect a fully-orphaned device's row — its whole global record, attestation included. There is no
  * second object beside it any more; the row IS the record.
@@ -1472,24 +1396,38 @@ export async function deviceResources(
  */
 /**
  * What a byte route needs to know about the event it files an upload under, in ONE statement (each is an
- * Edge subrequest the route's fan-out cannot spare): the device's membership state there, and the event's
- * key id — `null` for a plain event. `null` when the device holds no membership in it.
+ * Edge subrequest the route's fan-out cannot spare): the device's membership state there, when it joined (what the
+ * delivery record's `backlog` compares a photo's capture with), and the event's key id — `null` for a plain event.
+ * `null` when the device holds no membership in it.
  */
 export async function uploadMembership(
   db: Db,
   eventId: string,
   deviceId: string,
-): Promise<{ state: MembershipState; keyId: string | null } | null> {
+): Promise<{ state: MembershipState; joinedAt: string; keyId: string | null } | null> {
   const { rows } = await db.execute(
-    `SELECT m.state, e.key_id FROM memberships m JOIN events e ON e.id = m.event_id
+    `SELECT m.state, m.joined_at, e.key_id FROM memberships m JOIN events e ON e.id = m.event_id
      WHERE m.event_id = ? AND m.device_id = ?`,
     [eventId, deviceId],
   );
   if (rows.length === 0) return null;
   return {
     state: String(rows[0].state) as MembershipState,
+    joinedAt: String(rows[0].joined_at),
     keyId: rows[0].key_id == null ? null : String(rows[0].key_id),
   };
+}
+
+/**
+ * Whether this device has SHARED everything in this event — it settled, and every role it declares has landed
+ * (`sharedAll`). Asked once by a byte landing that completed an asset, for the delivery record's `uploaded_all`.
+ */
+export async function hasSharedAll(db: Db, eventId: string, deviceId: string): Promise<boolean> {
+  const { rows } = await db.execute(
+    `SELECT 1 FROM memberships m WHERE m.event_id = ? AND m.device_id = ? AND ${sharedAll("m")}`,
+    [eventId, deviceId],
+  );
+  return rows.length > 0;
 }
 
 /** {@link presentMembership} with the event's key id, in one statement — the event-less byte routes' read. */

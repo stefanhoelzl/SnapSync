@@ -1,16 +1,9 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import {
-  formatSummary,
-  humanBytes,
-  markdownSummary,
-  runSweep,
-  type SweepSummary,
-  versionTable,
-} from "../../src/scripts/sweep.ts";
+import { assert, assertEquals } from "@std/assert";
+import { runSweep, SWEEP_METHOD } from "../../src/scripts/sweep.ts";
 import type { Config } from "../../src/config.ts";
 import type { FetchLike } from "../../src/storage.ts";
 import { sqliteDb } from "../../src/dev/db-sqlite.ts";
-import { type Db, insertEvent, publishStatements, recordAppVersion } from "../../src/db.ts";
+import { type Db, insertEvent, publishStatements } from "../../src/db.ts";
 import { eventBytePath } from "../../src/storage.ts";
 import { replay } from "../../src/dev/replay.ts";
 import { DEAD_TOKEN, enrolDevice, LIVE_TOKEN } from "../support/db.ts";
@@ -186,16 +179,31 @@ async function member(
   return [...paths.values()];
 }
 
-/** A sweep run against both doubles, pinned clock. */
-function run(d: Db, store: ReturnType<typeof fake>, dryRun = false) {
-  return runSweep({
+/** A sweep run against both doubles, pinned clock; `log` is what it said. */
+async function run(d: Db, store: ReturnType<typeof fake>, dryRun = false) {
+  const log: string[] = [];
+  const outcome = await runSweep({
     fetch: store.fetchImpl,
     config: CONFIG,
     db: d,
     now: () => NOW,
     dryRun,
-    log: () => {},
-  }).then((summary) => ({ summary }));
+    log: (m) => log.push(m),
+  });
+  return { outcome, log };
+}
+
+/**
+ * What the sweep did to each event, as its delivery records say — `[eventId, "completed" | "deleted"]`, by event id.
+ * A kept event leaves none (decision record `changes/delivery-record`, D9).
+ */
+async function outcomes(d: Db): Promise<[string, string][]> {
+  const { rows } = await d.execute(
+    `SELECT json_extract(fields, '$.event') AS e, json_extract(fields, '$.outcome') AS o
+       FROM request_log WHERE method = ? ORDER BY e`,
+    [SWEEP_METHOD],
+  );
+  return rows.map((r) => [String(r.e), String(r.o)]);
 }
 
 async function eventIds(d: Db): Promise<string[]> {
@@ -213,8 +221,8 @@ Deno.test("event phase → an event past its deadline is deleted; one within it 
   await member(d, STALE, D, []);
   await member(d, LIVE, D, []);
 
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 1, completed: 0, kept: 1 });
+  await run(d, fake({}));
+  assertEquals(await outcomes(d), [[STALE, "deleted"]]);
   assertEquals(await eventIds(d), [LIVE]);
   d.close();
 });
@@ -242,8 +250,8 @@ Deno.test("event phase → an EMPTIED event is COMPLETED early: memberships gone
   await insertEvent(d, event(E, LIVE_STARTS));
   await member(d, E, D, ["a"], "left");
   await member(d, E, D2, [], "left");
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, completed: 1, kept: 0 });
+  await run(d, fake({}));
+  assertEquals(await outcomes(d), [[E, "completed"]]);
   // The row stays until its deadline so a device still joined is told "completed", not "not found".
   assertEquals(await eventIds(d), [E]);
   const row = (await d.execute(`SELECT closed_at, completed_at FROM events`)).rows[0];
@@ -265,8 +273,12 @@ Deno.test("event phase → a COMPLETED event is left alone until its deadline dr
     "2026-07-12T00:00:00.000Z",
     "2026-07-12T00:00:00.000Z",
   ]);
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 1, completed: 0, kept: 1 });
+  await run(d, fake({}));
+  assertEquals(
+    await outcomes(d),
+    [[EXPIRED, "deleted"]],
+    "a completed event is dropped at its deadline, never completed again",
+  );
   assertEquals(await eventIds(d), [DONE]);
   d.close();
 });
@@ -282,8 +294,8 @@ Deno.test("event phase → the CLOCK completes an ended event with a silent memb
   await insertEvent(d, event(NOT_YET, LIVE_STARTS, { endsAt: "2026-07-11T13:00:00Z" }));
   await member(d, DUE, D, []);
   await member(d, NOT_YET, D, []);
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, completed: 1, kept: 1 });
+  await run(d, fake({}));
+  assertEquals(await outcomes(d), [[DUE, "completed"]]);
   const completed = (await d.execute(`SELECT id FROM events WHERE completed_at IS NOT NULL`)).rows;
   assertEquals(completed.map((r) => String(r.id)), [DUE]);
   d.close();
@@ -296,8 +308,8 @@ Deno.test("event phase → a late LANDING moves the clock: 3 days after the last
   await insertEvent(d, event(E, LIVE_STARTS, { endsAt: "2026-07-05T00:00:00Z" }));
   await d.execute(`UPDATE events SET last_landed_at = ?`, ["2026-07-12T00:00:00.000Z"]);
   await member(d, E, D, []);
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
+  await run(d, fake({}));
+  assertEquals(await outcomes(d), [], "kept");
   d.close();
 });
 
@@ -305,8 +317,8 @@ Deno.test("event phase → the clock never applies to a NEVER-JOINED event", asy
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS, { endsAt: "2026-07-02T00:00:00Z" }));
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
+  await run(d, fake({}));
+  assertEquals(await outcomes(d), [], "kept");
   d.close();
 });
 
@@ -316,25 +328,24 @@ Deno.test("byte phase → a COMPLETED event's folder is deleted like a deleted e
   await insertEvent(d, event(E, LIVE_STARTS));
   const [path] = await member(d, E, D, ["a"], "left");
   const store = fake({ [path]: { len: 4 } });
-  const { summary } = await run(d, store);
-  assertEquals(summary.events.completed, 1);
-  assertEquals(summary.files.deleted, { count: 1, bytes: 4 });
-  assertEquals(summary.dirs, { deleted: 1, kept: 0 });
+  await run(d, store);
+  assertEquals(await outcomes(d), [[E, "completed"]]);
   // ONE recursive delete of the event's folder.
   assertEquals(store.deletes, [`files/${E}/`]);
   d.close();
 });
 
-Deno.test("dry-run → a completion is counted and nothing is written", async () => {
+Deno.test("dry-run → a completion is said and nothing is written", async () => {
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
   const [path] = await member(d, E, D, ["a"], "left");
   const store = fake({ [path]: { len: 4 } });
-  const { summary } = await run(d, store, true);
-  assertEquals(summary.events.completed, 1);
-  assertEquals(summary.files.deleted, { count: 1, bytes: 4 });
+  const { log } = await run(d, store, true);
+  assert(log.some((m) => m.startsWith(`[dry-run] would complete event ${E}`)), log.join("\n"));
+  assert(log.includes(`[dry-run] would delete files/${E}/`), log.join("\n"));
   assertEquals(store.deletes, []);
+  assertEquals(await outcomes(d), [], "a dry run records nothing");
   assertEquals((await d.execute(`SELECT * FROM memberships`)).rows.length, 1);
   assertEquals((await d.execute(`SELECT completed_at FROM events`)).rows[0].completed_at, null);
   d.close();
@@ -346,8 +357,8 @@ Deno.test("event phase → ONE active member keeps a within-deadline event alive
   await insertEvent(d, event(E, LIVE_STARTS));
   await member(d, E, D, [], "left");
   await member(d, E, D2, []);
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
+  await run(d, fake({}));
+  assertEquals(await outcomes(d), [], "kept");
   d.close();
 });
 
@@ -359,8 +370,8 @@ Deno.test("event phase → a MINTED-BUT-NEVER-JOINED event is not empty and surv
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
+  await run(d, fake({}));
+  assertEquals(await outcomes(d), [], "kept");
   d.close();
 });
 
@@ -416,8 +427,8 @@ Deno.test("event phase → a FINISHED event is completed at once; not before its
     await member(d, e, D, ["a"]);
     await done(d, e, D);
   }
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, completed: 1, kept: 1 });
+  await run(d, fake({}));
+  assertEquals(await outcomes(d), [[FINISHED, "completed"]]);
   const completed = (await d.execute(`SELECT id FROM events WHERE completed_at IS NOT NULL`)).rows;
   assertEquals(completed.map((r) => String(r.id)), [FINISHED]);
   d.close();
@@ -433,11 +444,11 @@ Deno.test("event phase → a member who has not received everything keeps a fini
   // D2 settled with its photo landed, but never said what it received.
   await d.execute(`UPDATE memberships SET state = 'settled' WHERE device_id = ?`, [D2]);
   await d.execute(
-    `INSERT INTO union_log (event_id, kind, device_id, asset_id, at) VALUES (?, 'gained', ?, 'a', 'at')`,
+    `INSERT INTO union_log (event_id, kind, device_id, asset_id) VALUES (?, 'gained', ?, 'a')`,
     [E, D],
   );
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
+  await run(d, fake({}));
+  assertEquals(await outcomes(d), [], "kept");
   d.close();
 });
 
@@ -452,8 +463,8 @@ Deno.test("event phase → a late JOIN moves the clock: 3 days after the last jo
     `INSERT INTO memberships (event_id, device_id, state, joined_at) VALUES (?, ?, 'sharing', ?)`,
     [E, D2, "2026-07-13T00:00:00.000Z"],
   );
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
+  await run(d, fake({}));
+  assertEquals(await outcomes(d), [], "kept");
   d.close();
 });
 
@@ -463,8 +474,8 @@ Deno.test("event phase → an event past its WINDOW but within 3 days of it is u
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS, { endsAt: "2026-07-12T00:00:00Z" }));
   await member(d, E, D, []);
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
+  await run(d, fake({}));
+  assertEquals(await outcomes(d), [], "kept");
   d.close();
 });
 
@@ -479,11 +490,10 @@ Deno.test("byte phase → a LIVE event's folder is kept, a dropped one's deleted
   const [gone] = await member(d, STALE, D, ["a"]);
   const [kept] = await member(d, LIVE, D, ["b"]);
   const store = fake({ [gone]: { len: 2 }, [kept]: { len: 3 } });
-  const { summary } = await run(d, store);
+  await run(d, store);
   assertEquals(store.deletes, [`files/${STALE}/`]);
   assert(store.store.has(kept));
-  assertEquals(summary.files, { deleted: { count: 1, bytes: 2 }, kept: { count: 1, bytes: 3 } });
-  assertEquals(summary.dirs, { deleted: 1, kept: 1 });
+  assert(!store.store.has(gone));
   d.close();
 });
 
@@ -503,9 +513,8 @@ Deno.test("byte phase → a folder with NO event row is deleted: a crash, or a b
     [`files/${E}/late`]: { len: 1 },
     [`files/${NO_ROW}/orphan`]: { len: 1 },
   });
-  const { summary } = await run(d, store);
+  await run(d, store);
   assertEquals(store.deletes.sort(), [`files/${E}/`, `files/${NO_ROW}/`].sort());
-  assertEquals(summary.dirs.deleted, 2);
   d.close();
 });
 
@@ -517,9 +526,8 @@ Deno.test("byte phase → files/devices/ and anything not named by an event id a
     [`files/devices/${D}/a-primary.heic`]: { len: 1 },
     [`files/not-an-event/x`]: { len: 1 },
   });
-  const { summary } = await run(d, store);
+  await run(d, store);
   assertEquals(store.deletes, []);
-  assertEquals(summary.dirs, { deleted: 0, kept: 0 });
   d.close();
 });
 
@@ -532,55 +540,43 @@ Deno.test("byte phase → a failed folder delete is counted as an error and the 
     init.method === "DELETE" && url.endsWith(`/files/${A}/`)
       ? Promise.resolve(new Response("boom", { status: 500 }))
       : store.fetchImpl(url, init);
-  const { summary } = await runSweep({
+  await runSweep({
     fetch: failing,
     config: CONFIG,
     db: d,
     now: () => NOW,
     dryRun: false,
     log: () => {},
-  }).then((summary) => ({ summary }));
-  assertEquals(summary.errors, 1);
+  });
   assert(!store.store.has(`files/${B}/y`), "the other folder still went");
   assert(store.store.has(`files/${A}/x`));
   d.close();
 });
 
-Deno.test("dry-run → deletes NOTHING, but counts the same candidates a real run would", async () => {
+Deno.test("dry-run → deletes NOTHING, but says the same candidates a real run would take", async () => {
   const d = await db();
   const STALE = "aaaaaaaa-0000-4000-8000-000000000001";
   await insertEvent(d, event(STALE, STALE_STARTS));
   const [path] = await member(d, STALE, D, ["a"]);
   const store = fake({ [path]: { len: 6 } });
-  const { summary } = await run(d, store, true);
-  assertEquals(summary.dryRun, true);
-  assertEquals(summary.events.deleted, 1);
-  assertEquals(summary.files.deleted, { count: 1, bytes: 6 });
-  assertEquals(summary.dirs.deleted, 1);
+  const { log } = await run(d, store, true);
+  assert(log.some((m) => m.startsWith(`[dry-run] would delete event ${STALE}`)), log.join("\n"));
+  assert(log.includes(`[dry-run] would delete files/${STALE}/`), log.join("\n"));
+  assertEquals(await outcomes(d), [], "a dry run records nothing");
   // Nothing actually went, on either side.
   assertEquals(store.deletes, []);
   assertEquals(await eventIds(d), [STALE]);
   d.close();
 });
 
-Deno.test("summary → file bytes are the SUM of each entry's Length, not the object count", async () => {
-  const d = await db();
-  const NO_ROW = "dddddddd-0000-4000-8000-000000000004";
-  const store = fake({
-    [`files/${NO_ROW}/a`]: { len: 1500 },
-    [`files/${NO_ROW}/b`]: { len: 2500 },
-  });
-  const { summary } = await run(d, store);
-  assertEquals(summary.files.deleted, { count: 2, bytes: 4000 });
-  d.close();
-});
-
 Deno.test("an empty store with an EMPTY zone sweeps normally", async () => {
   // An empty world is an ordinary world: nothing referenced, nothing stored, nothing to do.
   const d = await db();
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.errors, 0);
-  assertEquals(summary.files.deleted.count, 0);
+  const store = fake({});
+  const { outcome } = await run(d, store);
+  assertEquals(outcome, {});
+  assertEquals(store.deletes, []);
+  assertEquals(await outcomes(d), []);
   d.close();
 });
 
@@ -606,8 +602,7 @@ Deno.test("site/ prefix is never touched by the sweep", async () => {
 Deno.test("devices → a device in NO surviving event, whose token expired, loses its whole record", async () => {
   const d = await db();
   await enrolDevice(d, ORPHAN, DEAD_TOKEN);
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.devices, { deleted: 1, kept: 0 });
+  await run(d, fake({}));
   // One row, attestation included — there is no second object beside it any more.
   assertEquals((await d.execute(`SELECT * FROM devices`)).rows.length, 0);
   d.close();
@@ -621,8 +616,7 @@ Deno.test("devices → an orphan that may still hold a WORKING token keeps its r
   // run then re-arms the following night, once per launch-day, for as long as it stays orphaned.
   const d = await db();
   await enrolDevice(d, ORPHAN, LIVE_TOKEN);
-  const { summary } = await run(d, fake({}));
-  assertEquals(summary.devices, { deleted: 0, kept: 1 });
+  await run(d, fake({}));
   assertEquals((await d.execute(`SELECT * FROM devices`)).rows.length, 1);
   d.close();
 });
@@ -635,109 +629,14 @@ Deno.test("devices → a DEPARTED member of a surviving event keeps its record a
   const [path] = await member(d, E, D, ["a"], "left");
   await member(d, E, D2, []);
   const store = fake({ [path]: { len: 1 } });
-  const { summary } = await run(d, store);
-  assertEquals(summary.devices.deleted, 0);
+  await run(d, store);
+  assertEquals(
+    (await d.execute(`SELECT device_id FROM devices`)).rows.map((r) => String(r.device_id)),
+    [D],
+  );
   assert(store.store.has(path));
   d.close();
 });
-
-Deno.test("humanBytes → renders IEC-ish sizes; < 1024 stays bytes", () => {
-  assertEquals(humanBytes(0), "0 B");
-  assertEquals(humanBytes(512), "512 B");
-  assertEquals(humanBytes(1024), "1.0 KB");
-  assertEquals(humanBytes(1536), "1.5 KB");
-  assertEquals(humanBytes(5 * 1024 * 1024), "5.0 MB");
-  assertEquals(humanBytes(3 * 1024 * 1024 * 1024), "3.0 GB");
-});
-
-Deno.test("formatSummary → one line per tier, files show count and reclaimed size, dry-run flagged", () => {
-  const s: SweepSummary = {
-    events: { deleted: 40, completed: 5, kept: 1 },
-    devices: { deleted: 20, kept: 2 },
-    versions: [{ version: "0.12", ios: 31, android: 4 }, { version: null, ios: 9, android: 0 }],
-    files: { deleted: { count: 107, bytes: 12_900_000 }, kept: { count: 10, bytes: 3_100_000 } },
-    dirs: { deleted: 15, kept: 7 },
-    errors: 0,
-    dryRun: true,
-  };
-  const out = formatSummary(s);
-  assertStringIncludes(out, "sweep summary (dry-run):");
-  assertStringIncludes(out, "events    40 deleted   5 completed   1 kept");
-  assertStringIncludes(out, "devices   20 deleted   2 kept");
-  assertStringIncludes(out, "files     107 (12.3 MB) deleted   10 (3.0 MB) kept");
-  assertStringIncludes(out, "dirs      15 deleted   7 kept");
-  assertStringIncludes(out, "errors    0");
-  assertStringIncludes(out, "    version      ios  android");
-  assertStringIncludes(out, "    0.12          31        4");
-  assertStringIncludes(out, "    unknown        9        0");
-  assertStringIncludes(out, "    total         40        4");
-  // A real (non-dry) run drops the suffix.
-  assertStringIncludes(formatSummary({ ...s, dryRun: false }), "sweep summary:");
-});
-
-Deno.test("markdownSummary → a GFM table with a row per tier and an errors line", () => {
-  const s: SweepSummary = {
-    events: { deleted: 40, completed: 5, kept: 1 },
-    devices: { deleted: 20, kept: 2 },
-    versions: [{ version: "0.12", ios: 31, android: 4 }, { version: null, ios: 9, android: 0 }],
-    files: { deleted: { count: 107, bytes: 12_900_000 }, kept: { count: 10, bytes: 3_100_000 } },
-    dirs: { deleted: 15, kept: 7 },
-    errors: 3,
-    dryRun: false,
-  };
-  const md = markdownSummary(s);
-  assertStringIncludes(md, "## Nightly cleanup sweep");
-  assertStringIncludes(md, "| tier | deleted | completed | kept |");
-  assertStringIncludes(md, "| events | 40 | 5 | 1 |");
-  assertStringIncludes(md, "| devices | 20 | — | 2 |");
-  assertStringIncludes(md, "| files | 107 (12.3 MB) | — | 10 (3.0 MB) |");
-  assertStringIncludes(md, "| dirs | 15 | — | 7 |");
-  assertStringIncludes(md, "**errors:** 3");
-  assertStringIncludes(md, "| version | ios | android |");
-  assertStringIncludes(md, "| 0.12 | 31 | 4 |");
-  assertStringIncludes(md, "| unknown | 9 | 0 |");
-  assertStringIncludes(md, "| **total** | **40** | **4** |");
-  // Dry-run is flagged in the heading.
-  assertStringIncludes(markdownSummary({ ...s, dryRun: true }), "(dry-run — nothing deleted)");
-});
-
-Deno.test("versionTable → newest version first by number, unknown last, counted per platform", () => {
-  assertEquals(
-    versionTable([
-      { appVersion: "0.9", platform: "ios" },
-      { appVersion: null, platform: "ios" },
-      { appVersion: "0.10", platform: "android" },
-      { appVersion: "0.10", platform: "ios" },
-      { appVersion: "0.9", platform: "ios" },
-    ]),
-    [
-      // 0.10 above 0.9: a string sort would put it below.
-      { version: "0.10", ios: 1, android: 1 },
-      { version: "0.9", ios: 2, android: 0 },
-      { version: null, ios: 1, android: 0 },
-    ],
-  );
-  assertEquals(versionTable([]), []);
-});
-
-for (const dryRun of [false, true]) {
-  Deno.test(`runSweep → the version table counts only the devices it keeps (dryRun=${dryRun})`, async () => {
-    const d = await db();
-    await enrolDevice(d, D, LIVE_TOKEN);
-    await recordAppVersion(d, D, "0.12");
-    await enrolDevice(d, D2, LIVE_TOKEN);
-    // A device the sweep collects: absent from the table in a real run and a dry one alike.
-    await enrolDevice(d, ORPHAN, DEAD_TOKEN);
-    await recordAppVersion(d, ORPHAN, "0.11");
-    const { summary } = await run(d, fake({}), dryRun);
-    assertEquals(summary.devices, { deleted: 1, kept: 2 });
-    assertEquals(summary.versions, [
-      { version: "0.12", ios: 1, android: 0 },
-      { version: null, ios: 1, android: 0 },
-    ]);
-    d.close();
-  });
-}
 
 // The browser-facing site (capability `web-site`) lives under a `site/` prefix, co-tenant with the private
 // data in the same zone. The sweep is PREFIX-SCOPED — it enumerates only `files/` and deletes only the

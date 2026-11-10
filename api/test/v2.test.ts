@@ -802,9 +802,8 @@ async function withRecipient(db: Awaited<ReturnType<typeof storeWithEvent>>, sta
   // every assertion below vacuously green.
   await enrolDevice(db, D2);
   await db.execute(
-    `UPDATE devices SET push_kind = 'apns', push_token = 'recipient', push_env = 'sandbox',
-                        push_updated_at = '2026-07-14T00:00:00Z'
-      WHERE device_id = ?`,
+    `UPDATE devices SET push_kind = 'apns', push_token = 'recipient', push_env = 'sandbox'
+                        WHERE device_id = ?`,
     [D2],
   );
   return { app, pushed, headers };
@@ -853,7 +852,7 @@ Deno.test("fan-out → one completion wakes an iPhone through APNs and an Androi
     });
     await enrolDevice(db, device);
     await db.execute(
-      `UPDATE devices SET push_kind = ?, push_token = ?, push_env = ?, push_updated_at = '2026-07-14T00:00:00Z'
+      `UPDATE devices SET push_kind = ?, push_token = ?, push_env = ?
         WHERE device_id = ?`,
       [kind, token, env, device],
     );
@@ -996,9 +995,8 @@ Deno.test("manifest → a failed fan-out does not fail the publish", async () =>
   await app.request(`/api/v2/events/${E}/devices/${D2}`, { method: "PUT", headers: await as(D2) });
   await enrolDevice(db, D2);
   await db.execute(
-    `UPDATE devices SET push_kind = 'apns', push_token = 't', push_env = 'sandbox',
-                        push_updated_at = '2026-07-14T00:00:00Z'
-      WHERE device_id = ?`,
+    `UPDATE devices SET push_kind = 'apns', push_token = 't', push_env = 'sandbox'
+                        WHERE device_id = ?`,
     [D2],
   );
   await app.request(BYTE_PATH, { method: "PUT", body: "x" });

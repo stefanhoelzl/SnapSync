@@ -204,7 +204,7 @@ const playOffered = playOfferFor(deployment).kind !== "none";
       <p class="eyebrow">Legal</p>
       <h2>Privacy Policy</h2>
       <p class="meta">
-        Last updated 7 October 2026 · Contact:{" "}
+        Last updated 10 November 2026 · Contact:{" "}
         <a
           href="mailto:stefanh+snapsync@posteo.de"
           target="_blank"
@@ -261,14 +261,22 @@ const playOffered = playOfferFor(deployment).kind !== "none";
           Art. 6(1)(b)).
         </li>
         <li>
-          <strong>A record of when the photo list is read.</strong> When the app fetches an event's
-          list of photos, our service records the device ID of the phone that fetched it, why it did
-          (for example, the app was opened, or woken because a new photo arrived), when, and how
-          many photos it was given. When a browser fetches the list, it records only that a browser
-          did and when — nothing that identifies the visitor. We use this record to keep photo
-          delivery working and efficient, only we can see it, and it is deleted together with the
-          event's photos. Legal basis: our legitimate interest in keeping the service working (GDPR
-          Art. 6(1)(f)).
+          <strong>A record of how photos are delivered.</strong> Each time the app talks to our
+          service, the service records the device ID of the phone, the app's version, the phone's
+          operating system and version and its model, whether it is a store, test or development
+          build, the photo access you gave the app, whether the phone is on Wi-Fi or mobile data and
+          may use mobile data for SnapSync, whether power saving is on, and whether the app may work
+          in the background. For the photos you share and receive it records when each was taken,
+          found by the app, sent, announced to the other members, downloaded and added to their
+          library, why the app acted (for example, it was opened, or woken because a new photo
+          arrived), how much was sent, and when events are created, joined, left and deleted. When a
+          browser reads an event's photo list, it records only that a browser did and when — nothing
+          that identifies the visitor. The record holds no photo, no event name, no network address
+          and nothing that identifies you; your device ID is not linked to your identity. We use it
+          to keep photo delivery working and to see how SnapSync is used, only we can see it, and it
+          is kept for 30 days — whether or not the event's photos have been deleted — and then
+          deleted. Legal basis: our legitimate interest in keeping the service working (GDPR Art.
+          6(1)(f)).
         </li>
         <li>
           <strong>A push token.</strong> Each time the app starts, your phone's platform gives it a
@@ -312,8 +320,9 @@ const playOffered = playOfferFor(deployment).kind !== "none";
           never contains your photos, your location beyond the time zone, your contacts, other apps'
           data, your free storage or your device's name. It goes to the same error-monitoring
           service. Apart from bug reports and the stripped-down activity attached to automatic
-          reports, the app's activity logs never leave your phone. Legal basis: your consent (GDPR
-          Art. 6(1)(a)), given by sending the report.
+          reports, the app's activity logs never leave your phone; the facts of the delivery record
+          above travel with the app's own requests and are not its activity log. Legal basis: your
+          consent (GDPR Art. 6(1)(a)), given by sending the report.
         </li>
         <li>
           <strong>The event page.</strong> An invite link contains the event's identifier, which is
@@ -344,8 +353,10 @@ const playOffered = playOfferFor(deployment).kind !== "none";
         )}
       </ul>
       <p>
-        We do <strong>not</strong> use analytics, advertising, or tracking of any kind — in the app
-        or on this website.
+        We record nothing that identifies you: no name, email address, phone number, account,
+        contacts or network address. We use <strong>no</strong> advertising, no tracking and no
+        analytics service — in the app or on this website. What we learn about how SnapSync is used
+        comes only from the delivery record above, and stays with us.
       </p>
 
       <h3>Who processes it for us</h3>
@@ -369,15 +380,17 @@ const playOffered = playOfferFor(deployment).kind !== "none";
         </li>
       </ul>
 
-      <h3>How long we keep photos</h3>
+      <h3>How long we keep photos and records</h3>
       <p>
         Photos are stored only to enable sharing within an event. Once an event has ended and every
         member has received its photos, the photos shared to it are deleted — and in any case about
         three days after the last photo reached it once its dates have passed, and never later than
         30 days after it was created or after its start date, whichever is later (each at the latest
         about a day after that). A photo you also shared to another event stays until that event's
-        photos are deleted too. Photos already received into someone's photo library stay there. If
-        you want data associated with your device removed sooner, email us at the address above.
+        photos are deleted too. Photos already received into someone's photo library stay there. The
+        record of how photos are delivered is kept 30 days from each entry, whether or not the
+        event's photos have been deleted. If you want data associated with your device removed
+        sooner, email us at the address above.
       </p>
 
       <h3>Your rights</h3>

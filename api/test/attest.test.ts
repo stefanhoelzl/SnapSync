@@ -773,8 +773,8 @@ async function victimStore() {
   });
   await enrolDevice(db, D);
   await db.execute(
-    `UPDATE devices SET push_kind = 'apns', push_token = 'victim', push_env = 'sandbox',
-                        push_updated_at = 'x' WHERE device_id = ?`,
+    `UPDATE devices SET push_kind = 'apns', push_token = 'victim', push_env = 'sandbox'
+                        WHERE device_id = ?`,
     [D],
   );
   await db.execute(

@@ -944,9 +944,8 @@ event_assets  (event_id, device_id -> memberships CASCADE), asset_id, creation_d
 resources     (event_id, device_id -> memberships CASCADE), asset_id, role, path (the full storage
               path), content_type, filename; PK (event_id, device_id, asset_id, role) (migration 0010)
 devices       device_id, created_at, attest_* (NOT NULL; attest_platform ios|android, what proved the
-              key), push_* (nullable together), app_version? (the last v2 version declared)
-union_log     seq AUTOINCREMENT, (event_id -> events CASCADE), kind in {gained, removed, fetch},
-              device_id?, asset_id?, trigger?, cursor_from?, cursor_to?, served?, at
+              key), push_* (nullable together)
+union_log     seq AUTOINCREMENT, (event_id -> events CASCADE), kind = gained, device_id?, asset_id?
               + index (event_id, seq)
 ```
 
@@ -1004,9 +1003,10 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   the union gained an asset, which is also where the push fires: the v2 byte route (the events
   `eventsCompletedBy` answered, committed in ONE batch with the `resources` row) and the v2 publish (the
   `gained` set of `publishUnionChanges`, inside the publish batch under its version and closed-event
-  gates). The publish also logs `removed` for a servable asset it stops declaring or leaves incomplete;
-  no read serves those. A delta is the `gained` rows past the cursor, put through the union's own
-  declaration and completeness filter. Every union read logs a `fetch` row, best-effort. The log is
+  gates). A delta is the `gained` rows past the cursor, put through the union's own
+  declaration and completeness filter. What a publish withdraws and who read the union are the delivery
+  record's (`withdrawn=`, `reader=`; "The request log" below), never rows here: nothing read them, and
+  migration 0017 deleted the `removed` and `fetch` rows earlier builds wrote. The log is
   deleted when an event completes (with the photos, capability `privacy-security`), and cascades with
   the event row. Assets a v1 build wrote before v1's retirement are in no `gained` row; they reach readers
   through full reads.
@@ -1086,8 +1086,9 @@ the ephemeral test backend) and as one row of the store's `request_log` table (m
 **Why the row.** bunny keeps a ring of the script's **last 100 console lines**, not a time window, so a burst
 of errors pushes out everything before it. The row is the history: kept 30 days (the nightly sweep deletes
 older ones, `docs/deployment.md` §3), read with `deno task logs` (filters and statistics, §2 "Reading the
-api's log"). The columns are the line's facts (`at`, `reqid`, `method`, `url`, `status`, `ms`, `version`,
-`bytes_in`, `bytes_out`); `fields` is one JSON object — a key recorded once holds its value, one recorded
+api's log"). The columns are the request's own shape (`at`, `reqid`, `method`, `url`, `status`, `ms`,
+`bytes_in`, `bytes_out`); every other fact, the declared app version included, is a key of `fields` (the delivery
+record's contract, below) — one JSON object, where a key recorded once holds its value, one recorded
 again an array of its values — and `errors` holds the fault tags, space-joined and each once, `NULL` when
 there were none (`' ' || errors || ' ' LIKE '% fanout %'` finds one).
 
@@ -1130,13 +1131,45 @@ The fields today:
 | a wake (byte landing, publish) | `recipients= pushed= [unsent=<why ×n, …>]` |
 | byte upload (v2) | `completed=<n>` + one wake's per completed event; `aborted=true` when the phone's body broke off (answered `400 upload aborted`: the client's network, not a 5xx) |
 | manifest (v2) | `refused=older-version version=<n>` + the wake's |
-| union read | `served=<n> trigger=<why\|->` |
-| event page read (`/web/events/<id>/photos`) | `served=<n>` |
+| union read, event page read, … | the delivery record's (below) |
 | push registration | `refused=not-attested` |
 | attest | `attested=<platform>/<environment>` · `rejected="<format> (<reason> (<detail>)): <error>"` |
 | renew | `refused=not-attested\|vanished` · `rejected="<platform> assertion: <error>"` |
 | any 5xx or best-effort failure | `<tag>="<what>: <error>"` + `errors=<tag>` (the tags below) |
 | an exception no route caught | `bugsink=<event id>` where the service reports (below), else the `uncaught` fault; answered `500 Internal Server Error` |
+
+#### The delivery record: the fields are a contract
+
+The request log is also the **delivery record** (capability `privacy-security`, "The service records how photos are
+delivered"; decision record `changes/delivery-record`): every fact about how a photo travels and how SnapSync is
+used is a key of `fields`, and nothing of it lives in an operational table. Generated columns, indexes and views
+will read these keys later (that change's D1), so **a key, once shipped, keeps its name and its shape**:
+
+- **Names** are lower `snake_case`, one per fact. **Timestamps** are the wire's `Timestamp`, whole-second UTC
+  (`2026-07-09T19:24:17Z`) — a phone's own clock where the fact happened on the phone. **Ids** are the strings the
+  wire carries. **Yes/no** is a JSON boolean. A **per-photo list** is an array of objects (below).
+- **Never refused, never trusted**: each phone fact is dropped when it does not read as its shape, and none is
+  verified — the record is diagnostic.
+
+| Request | Keys | Source |
+|---|---|---|
+| every request | `app_version` (the line prints it in its head, as `v=`) | the version header |
+| the nightly sweep (no request) | method `SWEEP`, url `sweep:/events/<id>`: `event` `outcome` (`completed` `deleted`), written with the change | the sweep |
+| every app request | `device` `os` (`ios/18.6`) `model` `flavour` (`store` `testflight` `play-internal` `dev`) `access` (`full` `limited` `none`) `network` (`wifi` `cellular` `other` `none`) `mobile_data` `low_power` `background` | `x-snapsync-context: <key>=<value>;…` (`src/delivery-context.ts`) |
+| byte upload (event-scoped) | `kind` (`fresh`, or `resume` with a range) `from` `size` `media` (`photo` `video` `other`) · `taken` `discovered` `discovered_by` `queued` `queued_by` (phone) · `backlog` (taken before this device joined) · `uploaded_all` (the landing of a settled device's last declared photo) | route · `x-snapsync-taken` … `-queued-by` headers |
+| upload probe | `offset` (what a drop kept — `0` for nothing) or `landed=true` | route |
+| union read | `reader` (the verified token's device, `-` for any other reader) `served` `trigger` `from` (a delta's cursor) `to` (the position served) · `notified` `announced` (the push that caused the read, phone) | route · `x-snapsync-notified`, `-announced` headers |
+| event page read | `served` `to` — nothing about the visitor | route |
+| download redirect (a download starts) | `queued` `queued_by` (phone) · `backlog` (landed before the context's `device` joined; absent for a browser) | route · headers |
+| received report | `position` · `delivered` once per photo: `{owner, asset, downloaded, added, by}` (phone) · `caught_up` (the position reaches the union head) | route · body |
+| manifest that took | `assets` `state` (`sharing` `settled`) · `withdrawn` once per servable photo it withdrew | route |
+| create | `event` `encrypted` `window_days` `open_days` `backdated` (created after its end) | route |
+
+The device context leads the fields on the line, before what the route adds. A join and a leave add nothing: their
+method and URL say who joined or left which event, and how. A **restart** — a byte upload that sends a photo from
+byte 0 again (the PhotoKit extension; Android in a plain event) — is told when reading: a `fresh` attempt for a path
+that already has one. Per-photo totals (attempts, first attempt to landing, throughput, bytes sent again) are joins
+over a photo's records, never stored.
 
 The fault tags:
 
@@ -1150,9 +1183,8 @@ The fault tags:
 | `landing-stamp` | the byte route could not stamp the landing time | `201` |
 | `union-position` | a wake could not read the position it announces (sent without one) | as it was |
 | `fanout` | a wake's fan-out failed or timed out (the write stands) | as it was |
-| `app-version` | the declared app version was not recorded | as it was |
 | `fetchability` | the manifest publish could not look up which declared assets are fetchable | as it was |
-| `read-log` | a list read was served but its union-log row was not written | `200` |
+| `delivery-fact` | a delivery fact the route reads from the store (`uploaded_all`, `caught_up`) could not be read; the request stands without it | as it was |
 | `event-page` | the event page could not read its event | as it was |
 | `store-down` · `zone-down` | `/health`: the store / the storage zone did not answer (both always checked) | `503` |
 
@@ -1425,7 +1457,7 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `PUT` | `/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` | the **event-less** upload of builds before `per-event-storage-layout`: the same write, filed under the device's one present membership — and the same encrypted-event rule, so a build that predates encryption cannot put plaintext into one | as above, `409` with no present membership |
 | `GET` | `/events/<eventId>/files/devices/<deviceId>` | what the backend holds for me **in this event**, from the DB — never another event's | `200 [{assetId, role, filename}]` · `502` |
 | `GET` | `/files/devices/<deviceId>` | the event-less listing: the same answer for the device's present membership, `[]` with none | `200 [{assetId, role, filename}]` · `502` |
-| `GET`/`HEAD` | `/events/<eventId>/files[?cursor=<n>][&urls=false]` (ungated; an optional bearer token is verified) | the event union: one query over every membership, present or gone; an asset is included only when **every declared role** has a resource (a set comparison, not a count). `cursor` serves only assets the union log says were gained after it (`changes/incremental-union`); `urls=false` omits `url`, which is otherwise the download redirect's absolute address. Every answer carries `SnapSync-Cursor: <n>`, the position it covers. Every answer also carries `SnapSync-Declared: <n>`, the event's declared total — every asset the whole union serves plus every not-yet-complete asset a present member declares, the same on a full and a delta read; a member's received total is it minus the member's own published declaration as it stood at that read (`changes/count-declared-photos`). The `SnapSync-Trigger` header (`push`·`wake`·`foreground`·`join`·`grant`·`reconfigure`·`leave-check`) and the verified device, if any, go into the read's `fetch` log row, best-effort | `200 [{deviceId, assetId, creationDate, resources:[{role, contentType, key, filename, url?}]}]` · `400` bad cursor · `401` a sent token that does not verify · `404` · `502` |
+| `GET`/`HEAD` | `/events/<eventId>/files[?cursor=<n>][&urls=false]` (ungated; an optional bearer token is verified) | the event union: one query over every membership, present or gone; an asset is included only when **every declared role** has a resource (a set comparison, not a count). `cursor` serves only assets the union log says were gained after it (`changes/incremental-union`); `urls=false` omits `url`, which is otherwise the download redirect's absolute address. Every answer carries `SnapSync-Cursor: <n>`, the position it covers. Every answer also carries `SnapSync-Declared: <n>`, the event's declared total — every asset the whole union serves plus every not-yet-complete asset a present member declares, the same on a full and a delta read; a member's received total is it minus the member's own published declaration as it stood at that read (`changes/count-declared-photos`). The `SnapSync-Trigger` header (`push`·`wake`·`foreground`·`join`·`grant`·`reconfigure`·`leave-check`), the verified device, if any, and the `x-snapsync-notified`/`-announced` facts go into the read's delivery record | `200 [{deviceId, assetId, creationDate, resources:[{role, contentType, key, filename, url?}]}]` · `400` bad cursor · `401` a sent token that does not verify · `404` · `502` |
 | `GET`/`HEAD` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>` (ungated; behind the version gate, but a request with no version header is served — legacy builds) | the **download redirect**: the stored path of that role, when the event still declares the asset with it and its bytes are recorded; each segment percent-encoded | `302` to a 7-day presign, `Cache-Control: no-store, no-cache, max-age=0` · `404` · `502` |
 | `PUT` | `/devices/<deviceId>` `{pushToken: {kind, token, env}}` (`kind` is the push adapter's — `apns` or `fcm`) or explicit absence | updates the push columns | `201` · `400` · **`401` when no row was affected** (device never attested; the client re-attests and re-sends) · `502` |
 
@@ -1452,7 +1484,7 @@ call, at the root and under no version, so no device-API version can break the p
 (`changes/separate-event-page-from-device-api`). It lists the union's complete assets (the same
 `completeAssets` the device union uses) in the page's own shape,
 `200 [{deviceId, assetId, resources:[{role, filename, url}]}]`, each `url` a presign living **1 hour**. It
-reads no token (an `Authorization` header is ignored, not checked), logs one anonymous `fetch` row, and
+reads no token (an `Authorization` header is ignored, not checked), leaves one anonymous delivery record, and
 answers `NO_CACHE`; `404` for an absent or malformed event, `502` on a read failure. A zip that outlasts the
 hour reads the list once more (the page matches files by device, asset and role).
 
@@ -1506,11 +1538,10 @@ The event's identity reaching `/join/<eventId>` is a decision
   once, by create), `memberships` by join/leave (the publish writes only `manifest_version` and `state`'s
   settled half, the received report only `received_position`, and join only clears the version),
   `event_assets` by the manifest publish, `resources` by the byte upload, `union_log` by the byte upload
-  and the publish (`gained`/`removed`) and the union read (`fetch`), and `devices` by attestation
-  and the config write, each naming only its own column group — except `app_version`, which the mint,
-  the join, the manifest publish and a union read with a verified token all keep current from the
-  version header (best-effort, a write only when it changed; never the byte route, whose fan-out has
-  no subrequest to spare). The sweep otherwise only deletes. **review** (plus route tests).
+  and the publish (`gained`), and `devices` by attestation
+  and the config write, each naming only its own column group. The version a device runs is the request
+  log's (`app_version`), never a device column. The sweep otherwise only deletes, and records what it
+  completed and deleted in the request log. **review** (plus route tests).
 - **Capacity is one conditional insert**, never read-then-write. Measured: 10 racing devices for 3
   slots gave 10 under read-then-write and exactly 3 here.
 - **A manifest publish is one transaction**, chunked within it if needed, never across transactions.
@@ -1697,6 +1728,9 @@ route now keeps what arrives (`api/src/routes/resumable-upload.ts`, `api/src/s3.
   files), Android skips to it. The PhotoKit extension and Android in a plain event send the library's own
   bytes and restart, as before. ⚠️ A photo edited in place between a failed attempt and its retry resumes the
   pre-edit bytes (Android, encrypted events only): the kept staged file is not checked against the library.
+- **What the delivery record keeps of it** ("The request log"): each attempt's `kind` (`fresh`/`resume`), `from`
+  and `size`, and the probe's `offset` — what a drop kept. Attempts per photo and the bytes sent twice are joins
+  over those records; a restart from byte 0 is a second `fresh` attempt for the same path.
 - **Why the wire looks like this:** URLSession's own resumable uploads (the IETF resumable-upload draft)
   need a `104` interim response and `HEAD`, and the pull zone forwards neither — it drops 1xx and sends a
   HEAD to the origin as a GET (measured, bunny ticket open). So the status read is a GET on its own path

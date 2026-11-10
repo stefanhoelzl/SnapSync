@@ -283,7 +283,7 @@ Deno.test("devices → attestation creates the row; a re-attestation leaves the 
     "t0",
     "e0",
   );
-  await putDeviceRecord(db, D, { kind: "apns", token: "tok", env: "sandbox" }, "t1");
+  await putDeviceRecord(db, D, { kind: "apns", token: "tok", env: "sandbox" });
 
   await putAttestation(
     db,
@@ -311,20 +311,20 @@ Deno.test("devices → a push registration leaves the attestation alone", async 
     "t0",
     "e0",
   );
-  await putDeviceRecord(db, D, { kind: "apns", token: "tok", env: "sandbox" }, "t1");
+  await putDeviceRecord(db, D, { kind: "apns", token: "tok", env: "sandbox" });
 
   const [row] = await rows(db, `SELECT * FROM devices WHERE device_id=?`, [D]);
   assertEquals(row.attest_key, "k1");
   assertEquals(row.attest_token_expires_at, "e0");
   assertEquals(row.created_at, "t0");
-  assertEquals(row.push_updated_at, "t1");
+  assertEquals(row.push_token, "tok");
   db.close();
 });
 
 Deno.test("devices → a registration for an unattested device affects no row", async () => {
   // What the route turns into its 401. An insert here would fabricate an enrolment.
   const db = await store();
-  const { rowsAffected } = await putDeviceRecord(db, D, null, "t1");
+  const { rowsAffected } = await putDeviceRecord(db, D, null);
   assertEquals(rowsAffected, 0);
   assertEquals((await rows(db, `SELECT * FROM devices`)).length, 0);
   db.close();

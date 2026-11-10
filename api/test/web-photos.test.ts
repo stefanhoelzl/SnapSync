@@ -2,7 +2,7 @@
 // capabilities `event-site`, `privacy-security`): its shape, which photos it lists, its 1-hour links, that it
 // needs no credential and checks none, the anonymous record each read leaves, and its failure answers.
 
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals, assertMatch } from "@std/assert";
 import type { Db } from "../src/db.ts";
 import { eventBytePath } from "../src/storage.ts";
 import {
@@ -14,6 +14,7 @@ import {
   D,
   D2,
   E,
+  lineSink,
   NOW,
   recorder,
   rows,
@@ -144,15 +145,23 @@ Deno.test("web photos → no credential needed, and a bogus one is ignored rathe
 });
 
 // @Verifies(spec = "privacy-security", requirement = "A web visitor leaves no trace in the event", scenario = "What a visit leaves behind")
+// @Verifies(spec = "privacy-security", requirement = "A web visitor leaves no trace in the event", scenario = "What a visit leaves behind")
 Deno.test("web photos → each read leaves one anonymous record: no device, no trigger", async () => {
   const db = await storeWithEvent();
   await share(db, D, { A: ["primary"] }, [["A", "primary"]]);
-  await browser(db).request(PHOTOS, { headers: { "SnapSync-Trigger": "push" } });
-  const log = await rows(
+  const lines: string[] = [];
+  const app = createRealApp({
+    config: CONFIG,
     db,
-    `SELECT device_id, trigger, cursor_from, served FROM union_log WHERE kind = 'fetch'`,
-  );
-  assertEquals(log, [{ device_id: null, trigger: null, cursor_from: null, served: 1 }]);
+    fetch: recorder().fetchImpl,
+    now: () => NOW,
+    buildSha: "x",
+    logSink: lineSink(lines),
+  });
+  await (await app.request(PHOTOS, { headers: { "SnapSync-Trigger": "push" } })).text();
+  assertEquals(lines.length, 1);
+  assertMatch(lines[0], / served=1 to=\d+$/);
+  assertEquals(await rows(db, `SELECT kind FROM union_log WHERE kind <> 'gained'`), []);
   db.close();
 });
 
@@ -180,23 +189,6 @@ Deno.test("web photos → a store that cannot be read is 502, never the invalid 
   assertEquals((await browser(failing).request(PHOTOS)).status, 502);
   const down: Db = { ...failing, execute: () => Promise.reject(new Error("store down")) };
   assertEquals((await browser(down).request(PHOTOS)).status, 502);
-  db.close();
-});
-
-Deno.test("web photos → a failing record never fails the read", async () => {
-  const db = await storeWithEvent();
-  await share(db, D, { A: ["primary"] }, [["A", "primary"]]);
-  const failingLog: Db = {
-    execute: (sql, args) =>
-      /INSERT INTO union_log/.test(sql)
-        ? Promise.reject(new Error("log down"))
-        : db.execute(sql, args),
-    batch: (s) => db.batch(s),
-    transaction: (fn) => db.transaction(fn),
-  };
-  const res = await browser(failingLog).request(PHOTOS);
-  assertEquals(res.status, 200);
-  assert(((await res.json()) as Photo[]).length === 1);
   db.close();
 });
 

@@ -7,8 +7,9 @@ PR that removes a shim deletes its entry. Anchors name files and symbols rather 
 **An app shim that reads what an older build left on the device is unlocked by the nightly sweep, not by the floor
 alone.** A phone the version gate refuses keeps its event, and it updates later ("Photos wait for the update",
 capability `app-update-required`), so its old state must stay readable for as long as an event of that era can live.
-The sweep's version table (`api/src/scripts/sweep.ts`, `versionTable`) showing no kept device below the version is
-what proves no such phone remains.
+The request log's device count (`deno task logs --devices --since 30d`: each device once, at the app version it last
+declared, per platform) showing no device below the version is what proves no such phone remains: a phone in a live
+event is woken daily, so one silent for 30 days is the accepted gap (decision record `changes/delivery-record`, D9).
 
 **An app shim's entry names what covers it**: `AppUpdateIntegrationTest` updates a device from every version the
 migration chain still builds, over the state `older-install.installedAt` writes (`test/rig/.../OlderInstalls.kt`,
@@ -19,8 +20,7 @@ whose devices needed it, or those versions' cases fail — which is the point.
 
 **Unlock condition:**
 - 0.5 is live in both stores, and
-- the nightly sweep's version table (`api/src/scripts/sweep.ts`, `versionTable`) shows no kept device below 0.5.
-  Ignore its `unknown` row.
+- `deno task logs --devices --since 30d` shows no device below 0.5.
 
 Before that, a 0.4 phone still talks to the backend. It may also update straight to the next build in the
 middle of an event.
@@ -218,6 +218,17 @@ that release.
 - **Record:** `openspec/changes/archive/2026-10-12-defer-encrypt-by-default` (design D1–D5), `openspec/changes/archive/2026-10-08-encrypt-events-by-default`,
   `openspec/changes/seal-event-name` (design D7), `openspec/changes/archive/2026-11-09-seal-file-names` (design, Migration Plan).
 
+### The delivery record's retention rises to 12 months (api + site + spec)
+- **What:** the request log — the delivery record — is kept 30 days (`REQUEST_LOG_RETENTION_DAYS` in
+  `api/src/request-log-store.ts`). 12 months is decided, but waits for encrypted creation: while shipped builds create
+  plain events, a device id in the record ties to photos the operator could read (decision record
+  `changes/delivery-record`, D11).
+- **Raise it:** in the same release as the re-enable above, one OpenSpec change MODIFYING `privacy-security`'s "The
+  service records how photos are delivered" (30 days → 12 months, and its scenario "The record outlives the event's
+  photos"), with `REQUEST_LOG_RETENTION_DAYS`, the Privacy Policy's two mentions of 30 days in
+  `site/src/pages/index.astro`, `docs/architecture.md` ("The request log") and `metadata/play/declarations.md`.
+- **Record:** `openspec/changes/delivery-record` (design, D11).
+
 ## At the promote that re-enables encrypted creation
 
 ### The privacy claim on the site and the store listing (site + metadata)
@@ -233,8 +244,8 @@ that release.
 
 ## Once `MIN_APP_VERSION` ≥ 0.6
 
-**Unlock condition:** as for 0.5 above — 0.6 live in both stores, and the sweep's version table shows no kept
-device below it.
+**Unlock condition:** as for 0.5 above — 0.6 live in both stores, and `deno task logs --devices --since 30d` shows
+no device below it.
 
 0.6 is also the first release that carries the shared database's records (`13.sqm`), the first that stopped events
 closing (`back-dated-events`: open-until dates; the app never leaves an event on its own), and the first built from
@@ -325,8 +336,8 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
 
 ## Once no Android install predates the library-change job (the first release after 0.6)
 
-**Unlock condition:** `MIN_APP_VERSION` ≥ the first release carrying `WakeJobService`, and the sweep's version table
-(`api/src/scripts/sweep.ts`, `versionTable`) shows no kept Android device below it.
+**Unlock condition:** `MIN_APP_VERSION` ≥ the first release carrying `WakeJobService`, and
+`deno task logs --devices --since 30d` shows no Android device below it.
 
 ### The library-change wake an older build left on WorkManager (app)
 - **What:** `AndroidWake.forgetLegacyWatch` (`adapter/android/.../work/AndroidWake.kt`) cancels the unique WorkManager

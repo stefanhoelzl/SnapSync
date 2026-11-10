@@ -189,6 +189,30 @@ Deno.test("resumable → a retry from the offset completes the file, and leaves 
   await w.close();
 });
 
+Deno.test("resumable → the delivery record: a fresh attempt, the offset the probe served, the resume from it", async () => {
+  const w = await world();
+  const whole = file(12 * MiB);
+  await (await putFresh(w, whole, breaking(whole.subarray(0, 7 * MiB + 5)))).body?.cancel();
+  assert(w.lines[0].includes(` kind=fresh from=0 size=${12 * MiB} media=video `), w.lines[0]);
+  const offset = Number((await status(w, whole)).offset);
+  assert(w.lines[1].endsWith(` offset=${offset}`), w.lines[1]);
+  await (await putFrom(w, whole, offset)).body?.cancel();
+  assert(
+    w.lines[2].includes(` kind=resume from=${offset} size=${12 * MiB} media=video `),
+    w.lines[2],
+  );
+  await status(w, whole);
+  assert(w.lines[3].endsWith(" landed=true"), w.lines[3]);
+  await w.close();
+});
+
+Deno.test("resumable → the probe of nothing stored records offset 0", async () => {
+  const w = await world();
+  await status(w, file(1024));
+  assert(w.lines[0].includes(" 404 ") && w.lines[0].includes(" offset=0"), w.lines[0]);
+  await w.close();
+});
+
 Deno.test("resumable → drop after drop: each retry keeps going from where the last one stopped", async () => {
   const w = await world();
   const whole = file(16 * MiB + 77);

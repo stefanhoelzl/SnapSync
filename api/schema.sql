@@ -22,13 +22,11 @@ CREATE TABLE devices (
   created_at              TEXT NOT NULL,
   attest_key              TEXT NOT NULL,
   attest_env              TEXT NOT NULL,
-  attested_at             TEXT NOT NULL,
   attest_token_expires_at TEXT NOT NULL,
   push_kind               TEXT,
   push_token              TEXT,
   push_env                TEXT,
-  push_updated_at         TEXT
-, attest_platform TEXT NOT NULL DEFAULT 'ios', app_version TEXT) STRICT;
+  attest_platform TEXT NOT NULL DEFAULT 'ios') STRICT;
 
 CREATE TABLE event_assets (
   event_id      TEXT NOT NULL,
@@ -91,7 +89,6 @@ CREATE TABLE request_log (
   url       TEXT NOT NULL,
   status    INTEGER NOT NULL,
   ms        INTEGER NOT NULL,
-  version   TEXT,
   bytes_in  INTEGER,
   bytes_out INTEGER NOT NULL,
   fields    TEXT NOT NULL CHECK (json_valid(fields) AND json_type(fields) = 'object'),
@@ -126,12 +123,6 @@ CREATE TABLE union_log (
   event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   kind        TEXT NOT NULL,
   device_id   TEXT,
-  asset_id    TEXT,
-  trigger     TEXT,
-  cursor_from INTEGER,
-  cursor_to   INTEGER,
-  served      INTEGER,
-  at          TEXT NOT NULL
-) STRICT;
+  asset_id    TEXT) STRICT;
 
 CREATE INDEX union_log_by_event_seq ON union_log (event_id, seq);

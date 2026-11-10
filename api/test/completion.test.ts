@@ -71,9 +71,8 @@ async function twoMembers(db: Store) {
   await app.request(JOIN(D2), { method: "PUT", headers: await as(D2) });
   await enrolDevice(db, D2);
   await db.execute(
-    `UPDATE devices SET push_kind = 'apns', push_token = 'recipient', push_env = 'sandbox',
-                        push_updated_at = '2026-07-14T00:00:00Z'
-      WHERE device_id = ?`,
+    `UPDATE devices SET push_kind = 'apns', push_token = 'recipient', push_env = 'sandbox'
+                        WHERE device_id = ?`,
     [D2],
   );
   return { app, pushed, lines };

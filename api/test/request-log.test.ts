@@ -91,6 +91,34 @@ Deno.test("middleware → exactly one line per request, out= the bytes sent", as
   );
 });
 
+Deno.test("middleware → the delivery context leads the fields, every readable key once", async () => {
+  const { app, lines } = logged((a) => a.get("/x", (c) => c.body(null, 204)));
+  await app.request("/x", {
+    headers: {
+      "x-snapsync-context":
+        "device=0f8fad5b-d9cb-469f-a165-70867728950e;os=ios/18.6;model=iPhone12,8;" +
+        "flavour=testflight;access=limited;network=cellular;mobile_data=1;low_power=0;background=1",
+    },
+  });
+  assertMatch(
+    lines[0],
+    / out=0 device=0f8fad5b-d9cb-469f-a165-70867728950e os=ios\/18.6 model="iPhone12,8" flavour=testflight access=limited network=cellular mobile_data=true low_power=false background=true$/,
+  );
+});
+
+Deno.test("middleware → an absent, unknown or unreadable context value is left out, never refused", async () => {
+  const { app, lines } = logged((a) => a.get("/x", (c) => c.body(null, 204)));
+  await app.request("/x");
+  await app.request("/x", {
+    headers: {
+      "x-snapsync-context":
+        "os=windows/11;flavour=beta;mobile_data=yes;colour=red;device=nope;garbage;network=wifi;network=cellular",
+    },
+  });
+  assertMatch(lines[0], / out=0$/);
+  assertMatch(lines[1], / out=0 network=wifi$/);
+});
+
 Deno.test("middleware → a body-less answer writes at once", async () => {
   const { app, lines } = logged((a) => a.get("/x", (c) => c.body(null, 204)));
   await app.request("/x");

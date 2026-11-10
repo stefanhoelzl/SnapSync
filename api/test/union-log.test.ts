@@ -1,7 +1,7 @@
 // The event's UNION LOG (capability `privacy-security`; decision record `changes/incremental-union`, D4):
 // what makes a union read incremental. These tests assert the log's ROWS — when an asset is recorded as
 // gained or removed, that a refused publish records nothing, that completing an event deletes the record —
-// and the delta read `unionRows(after)` serves over them. The `/files` route's parameters and its `fetch`
+// and the delta read `unionRows(after)` serves over them. The `/files` route's parameters and its read record
 // rows are `union-read.test.ts`'s.
 //
 // v2 paths and bodies are literal here, like every version test file: a fixture shared with `v2.test.ts`
@@ -19,6 +19,7 @@ import {
   D2,
   E,
   enrolDevice,
+  lineSink,
   recorder,
   rows,
   storeWithEvent,
@@ -44,10 +45,16 @@ const asset = (id: string, roles: string[] = ["primary"]) => ({
 const body = (assets: ReturnType<typeof asset>[], version?: number) =>
   JSON.stringify({ deviceId: D, version: version ?? 0, final: false, assets });
 
-/** A joined v2 member D over a fresh store holding the event. */
+/** A joined v2 member D over a fresh store holding the event; `withdrawn` reads what its last publish withdrew. */
 async function member() {
   const db = await storeWithEvent();
-  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const lines: string[] = [];
+  const app = createApp({
+    config: CONFIG,
+    db,
+    fetch: recorder().fetchImpl,
+    logSink: lineSink(lines),
+  });
   const req = (path: string, init: RequestInit = {}) =>
     app.request(path, { ...init, headers: { [VERSION_HEADER]: "0.1", ...(init.headers ?? {}) } });
   await req(JOIN_PATH, { method: "PUT" });
@@ -56,6 +63,8 @@ async function member() {
     upload: (id: string, role = "primary") => req(bytePath(id, role), { method: "PUT", body: "b" }),
     publish: (assets: ReturnType<typeof asset>[], version?: number) =>
       req(MANIFEST_PATH, { method: "PUT", body: body(assets, version) }),
+    /** What the last publish withdrew, as its delivery record says (`withdrawn=`, once per photo). */
+    withdrawn: () => [...(lines.at(-1) ?? "").matchAll(/ withdrawn=(\S+)/g)].map((m) => m[1]),
   };
 }
 
@@ -80,7 +89,9 @@ Deno.test("union log → the byte that completes an asset logs it gained, once",
 
 // ── gained and removed, by the publish ────────────────────────────────────────────────────────────
 
-Deno.test("union log → a narrowing logs removed, a widening logs gained, an unchanged set logs nothing", async () => {
+// A withdrawal is the delivery record's (`withdrawn=` on the publish's line), never a union-log row: nothing reads one
+// (decision record `changes/delivery-record`, D9).
+Deno.test("union log → a narrowing records a withdrawal, a widening logs gained, an unchanged set logs nothing", async () => {
   const m = await member();
   await m.publish([asset("A"), asset("B")]);
   await m.upload("A");
@@ -88,24 +99,27 @@ Deno.test("union log → a narrowing logs removed, a widening logs gained, an un
   assertEquals(await log(m.db), ["gained A", "gained B"]);
 
   await m.publish([asset("A")]);
-  assertEquals(await log(m.db), ["gained A", "gained B", "removed B"]);
+  assertEquals(await log(m.db), ["gained A", "gained B"]);
+  assertEquals(m.withdrawn(), ["B"]);
 
   await m.publish([asset("A"), asset("B")]);
-  assertEquals(await log(m.db), ["gained A", "gained B", "removed B", "gained B"]);
+  assertEquals(await log(m.db), ["gained A", "gained B", "gained B"]);
+  assertEquals(m.withdrawn(), []);
 
   await m.publish([asset("A"), asset("B")]);
-  assertEquals((await log(m.db)).length, 4, "republishing the same complete set changes nothing");
+  assertEquals((await log(m.db)).length, 3, "republishing the same complete set changes nothing");
   m.db.close();
 });
 
-Deno.test("union log → an asset that declares a role not yet landed is removed until it lands", async () => {
+Deno.test("union log → an asset that declares a role not yet landed is withdrawn until it lands", async () => {
   const m = await member();
   await m.publish([asset("A")]);
   await m.upload("A");
   await m.publish([asset("A", ["primary", "live"])]);
-  assertEquals(await log(m.db), ["gained A", "removed A"]);
+  assertEquals(await log(m.db), ["gained A"]);
+  assertEquals(m.withdrawn(), ["A"]);
   await m.upload("A", "live");
-  assertEquals(await log(m.db), ["gained A", "removed A", "gained A"]);
+  assertEquals(await log(m.db), ["gained A", "gained A"]);
   m.db.close();
 });
 
@@ -188,8 +202,8 @@ Deno.test("union log → the byte route's wake names the gained position", async
   });
   await enrolDevice(db, D2);
   await db.execute(
-    `UPDATE devices SET push_kind = 'apns', push_token = 'r', push_env = 'sandbox',
-                        push_updated_at = '2026-07-14T00:00:00Z' WHERE device_id = ?`,
+    `UPDATE devices SET push_kind = 'apns', push_token = 'r', push_env = 'sandbox'
+                        WHERE device_id = ?`,
     [D2],
   );
   await app.request(MANIFEST_PATH, { method: "PUT", headers: h, body: body([asset("A")]) });

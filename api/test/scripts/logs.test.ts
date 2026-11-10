@@ -5,6 +5,8 @@ import { assertEquals, assertThrows } from "@std/assert";
 import type { RequestRecord } from "../../src/request-log.ts";
 import { insertRequestRecord } from "../../src/request-log-store.ts";
 import {
+  devicesByVersion,
+  formatDevices,
   formatStats,
   instant,
   parseOptions,
@@ -52,7 +54,13 @@ async function seeded() {
         ms: 900,
         bytesIn: 4096,
         bytesOut: 0,
-        fields: { completed: 1, fanout: "notify: Error: timed out" },
+        fields: {
+          completed: 1,
+          fanout: "notify: Error: timed out",
+          network: "cellular",
+          low_power: true,
+          recipients: [3, 2],
+        },
         errors: ["fanout"],
       }),
       record("bad001", {
@@ -78,6 +86,8 @@ Deno.test("options → durations, dates and instants; unknown options, tags and 
   assertEquals(parseOptions(["--stats=route", "--limit", "5"], NOW).stats, "route");
   assertThrows(() => parseOptions(["--frobnicate"], NOW));
   assertThrows(() => parseOptions(["--error", "fan-out"], NOW));
+  assertThrows(() => parseOptions(["--field", "network"], NOW));
+  assertThrows(() => parseOptions(["--field", "a.b=1"], NOW));
   assertThrows(() => parseOptions(["--stats", "weekday"], NOW));
   assertThrows(() => parseOptions(["--status", "5x"], NOW));
   assertThrows(() => parseOptions(["--since", "yesterday"], NOW));
@@ -104,6 +114,10 @@ Deno.test("filters → time, status class and code, method, path, ids, reqid, ve
   assertEquals(await read(["--event", EV, "--status", "2xx"]), ["get001", "get002", "put001"]);
   assertEquals(await read(["--reqid", "get002"]), ["get002"]);
   assertEquals(await read(["--v", "0.13"]), ["get002"]);
+  assertEquals(await read(["--field", "network=cellular"]), ["put001"]);
+  assertEquals(await read(["--field", "low_power=true"]), ["put001"]);
+  assertEquals(await read(["--field", "recipients=2"]), ["put001"]);
+  assertEquals(await read(["--field", "network=wifi"]), []);
   assertEquals(await read(["--error", "fanout"]), ["put001"]);
   assertEquals(await read(["--errors"]), ["put001", "bad001"]);
   assertEquals(await read(["--slow", "50"]), ["get002", "put001"]);
@@ -179,4 +193,34 @@ Deno.test("percentile → nearest rank", () => {
   assertEquals(percentile([1, 2, 3, 4], 50), 2);
   assertEquals(percentile([1, 2, 3, 4], 95), 4);
   assertEquals(percentile([7], 95), 7);
+});
+
+Deno.test("devices → each device once, at the version it last declared; the device from the context, the reader or the URL", () => {
+  const OLD = "2c2c2c2c-0000-4000-8000-000000000003";
+  const records = [
+    // An older build: no context, its device in the URL, on 0.13 — then it updates.
+    record("a", {
+      version: "0.13",
+      url: `https://snapsync.app/api/v2/events/${EV}/devices/${DEV}`,
+    }),
+    record("b", {
+      version: "0.14",
+      url: `https://snapsync.app/api/v2/events/${EV}/devices/${DEV}/manifest`,
+    }),
+    // A union read names its verified reader; a newer build names its device in the context.
+    record("c", { version: "0.12", fields: { reader: OLD } }),
+    record("d", { version: "0.15", fields: { device: "3d3d3d3d-0000-4000-8000-000000000004" } }),
+    // A browser names no device and is not counted.
+    record("e", { version: undefined, fields: { reader: "-" } }),
+  ].map((r, i) => ({ ...r, id: i }));
+  const platforms = new Map([[DEV, "android"], [OLD, "ios"]]);
+  assertEquals(devicesByVersion(records, platforms), [
+    { version: "0.15", ios: 0, android: 0, unknown: 1 },
+    { version: "0.14", ios: 0, android: 1, unknown: 0 },
+    { version: "0.12", ios: 1, android: 0, unknown: 0 },
+  ]);
+  assertEquals(
+    formatDevices(devicesByVersion(records, platforms)).split("\n")[0].split(/ +/),
+    ["version", "ios", "android", "unknown"],
+  );
 });

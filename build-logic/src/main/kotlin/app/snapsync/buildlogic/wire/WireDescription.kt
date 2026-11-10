@@ -73,7 +73,7 @@ class WireDescription private constructor(private val api: OpenAPI) {
 
     private fun readExports(): Map<String, Int> = api.components.schemas.values.mapNotNull { schema ->
         val name = schema.extensions?.get("x-snapsync-export") as String? ?: return@mapNotNull null
-        name to (schema.maxLength ?: fail(name, "only a `maxLength` is exported"))
+        name to (schema.maxLength ?: schema.maxItems ?: fail(name, "only a `maxLength` or `maxItems` is exported"))
     }.toMap()
 
     private fun resolveParameter(p: Parameter): Parameter =

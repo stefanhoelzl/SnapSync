@@ -35,6 +35,12 @@ info:
         A body that is not JSON is always `400 invalid body`; `body` answers JSON that is not the declared shape;
       - `x-snapsync-on-invalid: drop` — an input that fails validation is treated as absent, never refused;
       - `x-snapsync-trim: true` — the string is trimmed before it is validated, and the trimmed value is used.
+    - **The delivery context** rides every request in the `x-snapsync-context` header, `<key>=<value>;…` — the device, its
+      platform and its conditions, for the request log only (`docs/architecture.md`, "The request log"). No route
+      reads it and nothing is refused for it, so it is declared here once rather than on every operation; the
+      gateway and the transfer services add it.
+    - **A delivery fact** (`x-snapsync-taken`, `-discovered`, `-queued`, `-notified`, …) is recorded and never
+      refused: each is `x-snapsync-on-invalid: drop`.
 servers:
   - url: /api/v2
     description: The device API, version 2, on the deployment's origin.
@@ -509,6 +515,19 @@ paths:
           description: Why the client reads. A value outside the list is recorded as unknown, never refused.
           schema:
             $ref: "#/components/schemas/UnionTrigger"
+        - name: x-snapsync-notified
+          in: header
+          x-snapsync-on-invalid: drop
+          description: When the push that caused this read arrived, by the device's clock — a delivery fact.
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: x-snapsync-announced
+          in: header
+          x-snapsync-on-invalid: drop
+          description: The union position that push announced, echoed — a delivery fact.
+          schema:
+            type: string
+            pattern: "^[0-9]{1,15}$"
       responses:
         "200":
           description: The assets, and the position the answer covers.
@@ -634,6 +653,36 @@ paths:
           description: The file's 49 opening bytes, base64url — only with `x-snapsync-file-key`.
           schema:
             type: string
+        - name: x-snapsync-taken
+          in: header
+          x-snapsync-on-invalid: drop
+          description: When the photo was taken, by the device's clock — a delivery fact.
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: x-snapsync-discovered
+          in: header
+          x-snapsync-on-invalid: drop
+          description: When the app first admitted the photo for sharing, by the device's clock — a delivery fact.
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: x-snapsync-discovered-by
+          in: header
+          x-snapsync-on-invalid: drop
+          description: The entry point that found the photo — a delivery fact.
+          schema:
+            $ref: "#/components/schemas/EntryPoint"
+        - name: x-snapsync-queued
+          in: header
+          x-snapsync-on-invalid: drop
+          description: When this upload was handed to the transfer service, by the device's clock — a delivery fact.
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: x-snapsync-queued-by
+          in: header
+          x-snapsync-on-invalid: drop
+          description: The entry point that queued this upload — a delivery fact.
+          schema:
+            $ref: "#/components/schemas/EntryPoint"
       requestBody:
         required: true
         content:
@@ -698,6 +747,19 @@ paths:
         "Header-less download redirects").
       security: []
       x-snapsync-transport: os
+      parameters:
+        - name: x-snapsync-queued
+          in: header
+          x-snapsync-on-invalid: drop
+          description: When this download was handed to the transfer service, by the device's clock — a delivery fact.
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: x-snapsync-queued-by
+          in: header
+          x-snapsync-on-invalid: drop
+          description: The entry point that queued this download — a delivery fact.
+          schema:
+            $ref: "#/components/schemas/EntryPoint"
       responses:
         "302":
           description: The presigned URL, valid for up to 7 days.
@@ -1369,6 +1431,41 @@ components:
             says the device receives, and its position counts again.
           type: boolean
           default: false
+        delivered:
+          description: |
+            When each photo received since the last report was downloaded and added to the library, by the device's
+            clock — delivery facts, recorded and never refused: a list that does not validate is dropped whole.
+          x-snapsync-on-invalid: drop
+          $ref: "#/components/schemas/DeliveredList"
+
+    DeliveredList:
+      description: The delivery facts of one report; a device with more sends several reports.
+      type: array
+      maxItems: 200
+      x-snapsync-export: DELIVERED_MAX
+      items:
+        $ref: "#/components/schemas/Delivered"
+
+    Delivered:
+      description: One received photo's delivery facts.
+      type: object
+      required: [owner, asset]
+      properties:
+        owner:
+          $ref: "#/components/schemas/Uuid"
+        asset:
+          $ref: "#/components/schemas/AssetId"
+        downloaded:
+          $ref: "#/components/schemas/Timestamp"
+        added:
+          $ref: "#/components/schemas/Timestamp"
+        by:
+          $ref: "#/components/schemas/EntryPoint"
+
+    EntryPoint:
+      description: The name of the app's entry point that ran a step — why the app acted. A delivery fact.
+      type: string
+      pattern: "^[A-Za-z][A-Za-z0-9]{0,63}$"
 
     Manifest:
       description: What a device shares in an event — a full snapshot, replacing the last.
