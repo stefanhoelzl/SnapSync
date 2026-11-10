@@ -61,8 +61,8 @@
   (OS and version, model, build flavour, photo access, network type and mobile-data setting, low power,
   background allowed), reusing the bug report's device-state reads where they exist; verify core tests over the
   mock backend assert every header
-- [ ] 4.2 Put the same headers on every background transfer (upload and download sessions, the PhotoKit
-  extension, Android work); verify the transfer port contracts on iOS (simulator) and Android (emulator)
+- [x] 4.2 Put the same headers on every background transfer (upload and download sessions, the PhotoKit
+  extension, Android work); verify the transfer port contracts on iOS (simulator) and Android (emulator) — the all-real journeys passed on both (2026-11-11), every transfer carrying the context and its stage fields; an iOS BACKGROUND session exists only on a device, so there it is unmeasured
 - [x] 4.3 Verify the iOS compile proxy `./gradlew compileIosMainKotlinMetadata` and `./gradlew build`
 
 ## 5. Photo stage facts (app)
@@ -98,6 +98,11 @@
   B's library; verify the request log holds every stage of D2 for it, with triggers and device context, and no
   `fetch` row exists
 - [ ] 7.2 The same on the Android emulator as receiver; verify the same stages
+  - Measured 2026-11-11 by the all-real journeys (one app, the second member played over HTTP), on the Android
+    emulator and an iOS simulator: every upload stage with its triggers (`taken` `discovered[_by]` `queued[_by]`),
+    the download's `queued[_by]`, the device context on every app request, and `union_log` holding `gained` rows
+    only. NOT yet seen live: the `delivered` entries (told only once the event has ended), the push echo
+    (`notified` `announced`: no push on either host) and the extension's triggers.
 - [ ] 7.3 With the sync/archive (not before — `VerifiesGateTest` reads the main specs): re-point every
   `@Verifies` claim of "The service records who reads an event's photo list" to "The service records how photos
   are delivered", and claim its new scenarios; verify `./gradlew build`
