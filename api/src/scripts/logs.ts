@@ -27,7 +27,7 @@ filters (AND):
   --status <502|5xx|4xx|2xx>          --method <GET>    --path <substring>    --route <pattern>
   --event <id>   --device <id>        (matched in the URL and the fields)
   --reqid <id>   --v <app version>    --error <tag>     --errors (any)        --slow <ms>
-  --field <key=value>                 (a recorded field: device=<id> network=cellular low_power=true …)
+  --field <key=value>                 (a recorded field: device=<id> network=restricted mobile_data=true …)
 stats:  --stats <route|hour|day|error|status|version>
         --devices   (each device once, at the app version it last declared — the MIN_APP_VERSION check)
 tags:   ${ERROR_TAGS.join(" ")}`;
