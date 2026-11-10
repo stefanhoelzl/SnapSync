@@ -10,6 +10,7 @@ import app.snapsync.ui.state.Layer
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -55,6 +56,36 @@ class EventKeyIntegrationTest {
             assertNull(stored.openedWith(Random(OTHER_KEY_SEED).nextBytes(KEY_LENGTH)), "no other key opens it")
             assertFalse(stored.storedBytes().holds(photo), "${stored.asset} is not stored in the clear")
         }
+    }
+
+    @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "Only the whole invite opens an event's photos",
+        scenario = "The stored photos cannot be opened without the invite",
+    )
+    fun a_camera_sized_photo_is_stored_sealed_segment_by_segment_and_opens_whole_with_the_invites_key() = behaviour {
+        // A camera's photo is megabytes: its file runs past the format's first segment, so every later one is sealed too.
+        val event = given {
+            appUploadsOnly()
+            joinedEvent().also {
+                step("a camera-sized photo taken", act = {
+                    library.add(CAMERA_SIZED, date = Defaults.PHOTO_DATE, size = CAMERA_SIZE)
+                }, until = { settled { true } })
+                step("uploading", act = { os.foreground() }, until = {
+                    settled { it.state.inFlight?.sessionTransfers?.size == 1 }
+                })
+            }
+        }
+        val key = keyOfInvite(given { inviteFor(event) })
+
+        lateinit var stored: Seen<WorldEvent.BytesStored>
+        whenever { uploadSession.complete() }
+        then { stored = event<WorldEvent.BytesStored> { it.asset == CAMERA_SIZED } }
+
+        val photo = assertNotNull(stored.value.openedWith(key), "the invite's key opens every segment")
+        assertEquals(CAMERA_SIZE, photo.size, "the whole photo, every segment of it")
+        assertNull(stored.value.openedWith(Random(OTHER_KEY_SEED).nextBytes(KEY_LENGTH)), "no other key opens it")
     }
 
     @Test
@@ -132,5 +163,10 @@ class EventKeyIntegrationTest {
         const val FILE_HEAD = EncryptedFileFormat.FILE_HEAD_HEADER
         const val KEY_LENGTH = 32
         const val OTHER_KEY_SEED = 38
+
+        const val CAMERA_SIZED = "CAMERA"
+
+        /** Past three of the format's 64 KiB segments, so the photo is sealed as four. */
+        const val CAMERA_SIZE = 200 * 1024
     }
 }

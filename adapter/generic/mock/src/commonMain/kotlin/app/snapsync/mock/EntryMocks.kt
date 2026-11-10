@@ -118,7 +118,19 @@ class LinksMock {
 }
 
 class LinksOperator internal constructor(private val mock: LinksMock) : LinksLevers {
-    override suspend fun startInstalled(referrer: String) = mock.startInstalled(referrer)
+    /**
+     * Only Google Play answers a referrer, so the start is an Android phone's: its activity is created with the
+     * launcher's intent — which carries no link — before the store's answer arrives.
+     */
+    override suspend fun startInstalled(referrer: String) {
+        mock.deliver(LinkDelivery.NotALink("onCreate", LAUNCHER_ACTION))
+        mock.startInstalled(referrer)
+    }
+
+    private companion object {
+        /** The action a launcher starts an Android activity with. */
+        const val LAUNCHER_ACTION = "android.intent.action.MAIN"
+    }
 }
 
 /**

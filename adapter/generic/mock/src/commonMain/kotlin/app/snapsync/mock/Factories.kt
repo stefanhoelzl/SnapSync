@@ -32,7 +32,7 @@ fun inMemoryDeviceIntegrity(
 ): DeviceIntegrity = InMemoryDeviceIntegrity(
     available,
     unusable = unusable,
-    vendorReachable = vendorReachable,
+    vendor = AttestationServer(vendorReachable),
     platform = platform,
 )
 

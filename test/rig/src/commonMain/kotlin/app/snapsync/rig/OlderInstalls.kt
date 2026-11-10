@@ -104,6 +104,12 @@ internal class OlderInstalls(private val world: MockWorld) {
         check(written is DbResult.Ok) { "the membership could not be rewritten: $written" }
     }
 
+    /** The membership file 0.4 kept, holding [bytes] in place of what 0.4 wrote. */
+    fun membershipFile(bytes: ByteArray) {
+        checkNotNull(disk.read(FileArea.SHARED, CONFIG_FILE)) { "no 0.4 membership file is held to damage" }
+        disk.write(FileArea.SHARED, CONFIG_FILE, bytes)
+    }
+
     // ---- ledger.db ----------------------------------------------------------------------------------------------
 
     /** What the build at ledger.db [version] wrote on top of what it found — applied as the build passes [version]. */

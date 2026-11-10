@@ -155,7 +155,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     override suspend fun export(resource: GalleryResourceHandle, to: String): WriteOutcome {
         val asset = (resource as? InMemoryResource)?.asset ?: return WriteOutcome.Failed("$resource is not this library's")
         return if (state.library.value.any { it.id == asset }) {
-            state.exported += to to asset.value.encodeToByteArray()
+            state.export(asset, to)
             WriteOutcome.Ok
         } else {
             WriteOutcome.Failed("$asset is no longer in the library")

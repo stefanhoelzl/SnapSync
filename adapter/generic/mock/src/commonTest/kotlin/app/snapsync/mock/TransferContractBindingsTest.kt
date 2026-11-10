@@ -196,7 +196,12 @@ class TransferContractBindingsTest {
             var restricted = state == TransferSessionState.RESTRICTED_NETWORK
             val held: (TransferNetwork) -> Boolean = { rule -> restricted && rule == TransferNetwork.UNRESTRICTED_ONLY }
             val resources = state == TransferSessionState.TAKES_RESOURCES_AND_FILES
-            val mock = UploadSessionMock(answeringNetwork(received), held, sendsResources = resources, read = { null })
+            // Android's in-process session is the one that takes resources too.
+            val mock = UploadSessionMock(
+                answeringNetwork(received),
+                held,
+                read = { null },
+            ).also { it.inProcess = resources }
             // The binding plays the network around the mock's own face, so what the clause sees is the mock's answer.
             val networked = NetworkedSession(mock, mock.port().recorded(log))
             val ended = mutableListOf<Ended>()

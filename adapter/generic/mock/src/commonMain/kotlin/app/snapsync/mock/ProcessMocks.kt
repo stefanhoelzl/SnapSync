@@ -8,6 +8,7 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.ClockLevers
 import app.snapsync.levers.CrashReporterLevers
 import app.snapsync.levers.Footprint
+import app.snapsync.levers.IntegrityLevers
 import app.snapsync.levers.MetricReportKind
 import app.snapsync.levers.ProcessInfoLevers
 import app.snapsync.levers.ProcessInfoView
@@ -206,18 +207,32 @@ class ClockOperator internal constructor(private val mock: ClockMock) : ClockLev
 }
 
 /**
- * The device's Secure Enclave (or Keystore): its keys outlive a process. Nothing to pull, so no operator face — and no
- * lever of its own for the kind of proof it makes: that follows from the phone the build is for, [platform], the cell
- * the build mock reads (the LEVER RULE).
+ * The device's Secure Enclave (or Keystore): its keys outlive a process. No lever of its own for the kind of proof it
+ * makes: that follows from the phone the build is for, [platform], the cell the build mock reads (the LEVER RULE). Its
+ * operator face plays only whether the vendor's attestation server answers.
  */
 class DeviceIntegrityMock(private val platform: BuildPlatform = BuildPlatform(Platform.IOS)) {
     internal val keys = EnclaveKeys()
+
+    /** The vendor's attestation server, which every process's face reaches at each fresh key's attestation. */
+    internal val vendor = AttestationServer()
 
     /**
      * A process's face, proving as the platform its build is for as it launches; a simulator has no App Attest:
      * `available = false`.
      */
-    fun port(available: Boolean = true): DeviceIntegrity = InMemoryDeviceIntegrity(available, keys, platform.value)
+    fun port(available: Boolean = true): DeviceIntegrity =
+        InMemoryDeviceIntegrity(available, keys, platform.value, vendor = vendor)
+
+    val operator: IntegrityOperator = IntegrityOperator(this)
+}
+
+class IntegrityOperator internal constructor(private val mock: DeviceIntegrityMock) : IntegrityLevers {
+    override suspend fun attestationServerReachable(on: Boolean) {
+        mock.vendor.reachable = on
+    }
+
+    override suspend fun restoredOntoAnotherPhone() = mock.keys.replaced()
 }
 
 /**

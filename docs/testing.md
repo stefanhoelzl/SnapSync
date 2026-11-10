@@ -842,7 +842,13 @@ backend mock's operator has answers `409` with the reason.
   grant revoked from a usable one (`library.permission(DENIED)`) ends the app's process where the platform does so
   (`played-os.revokingAccessEndsTheProcess`, Android's), and the app starts again over what it left. Where the upload
   session lives in the process (`upload-session.inProcess`, Android's), a process that ends takes its live transfers
-  with it, and the next process hears each one ended, failed, as it listens. A download's signed link opens for a week
+  with it, and the next process hears each one ended, failed, as it listens; that session is Android's WorkManager,
+  which also sends a library item straight from its content URI (`TransferSession.takesResources`). Background App
+  Refresh switched off (`device-conditions.set`, `background_refresh` denied or restricted) refuses every background
+  task the app asks iOS for, as `BGTaskScheduler` answers `unavailable`. A start that Google Play answers a referrer to
+  (`links.startInstalled`) is an Android one, whose activity is first created with the launcher's intent, no link. The
+  photo library's export writes the photo's bytes where the app asked, on the device's own disk — its stand-in, or
+  `library.add`'s `size` of them, as a camera's photo is megabytes. A download's signed link opens for a week
   from its transfer's start, on the mocked clock, as the backend signs it: a transfer performed after that is refused
   `403`, and the next read plans the photo again.
 - What the OS recorded of the app is each system's own read: `played-os.completions` (the completion handlers handed
@@ -934,9 +940,11 @@ The operating system's relaunch for a session's events hands the app a live comp
 stays the played OS's (the `os` service, `MockEntryDriver`), on the mock rather than its face.
 
 The device's surroundings followed (`SurroundingsLevers.kt`, `BuildLevers.kt`), each needing its system mocked:
-`network`, `device-conditions`, `process-info`, `crash-reporter` (what its backend received: the dumps, and the automatic
-events with the contexts that rode them) and `system-ui` (what the app handed the share sheet, the URL opener and the
-Settings page, and the levers that refuse a hand-over). Four differ:
+`network`, `device-conditions`, `integrity` (whether the vendor's attestation server answers a fresh key's attestation;
+the kind of proof the phone makes follows from the build's platform, never from a lever), `process-info`,
+`crash-reporter` (what its backend received: the dumps, and the automatic events with the contexts that rode them) and
+`system-ui` (what the app handed the share sheet, the URL opener and the Settings page, and the levers that refuse a
+hand-over). Four differ:
 
 - `process-metrics` (`ProcessMetricsLevers`) needs the app composed over the process-metric reports' mock, which only
   the JVM host does: a device's reports are the platform's own (MetricKit's on an iPhone, none on Android). It delivers
@@ -992,6 +1000,9 @@ too):
   - `older-install.refusedShareRange()` stretches the joined membership's share range past 30 days on the device's own
     ledger: a row a build with looser rules could have stored, which this build refuses (`MembershipRead.Unavailable.refused`).
     The relaunch after it is the update (`RefusedMembershipIntegrationTest`).
+  - `older-install.membershipFile(bytes)` replaces what 0.4's membership file (`eventconfig.json`, which `installedAt`
+    left) holds: whatever corruption or a damaged backup left. No build wrote such a file; the update must keep the
+    event whatever it holds (`LegacyRecordsFaultIntegrationTest`).
 - `device` (`DeviceLevers`) — a phone before its first unlock since it restarted, implemented by the rig over three
   mocks at once: the Keychain, the databases and the files sealed together, never one without the others, so it needs
   all three mocked. What each store answers then is Apple's documented semantics for the classes the app writes —

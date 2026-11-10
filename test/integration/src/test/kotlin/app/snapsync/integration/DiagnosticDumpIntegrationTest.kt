@@ -9,6 +9,7 @@ import app.snapsync.domain.report.DiagnosticDump
 import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.levers.LogProcess
 import app.snapsync.levers.NetworkState
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.PreferenceItem
 import app.snapsync.levers.StoreFault
 import app.snapsync.levers.WorldEvent
@@ -163,6 +164,33 @@ class DiagnosticDumpIntegrationTest {
 
         assertEquals("offline", offline.value.dump.state[DiagnosticKeys.NETWORK])
         assertEquals("blocked", blocked.value.dump.state[DiagnosticKeys.NETWORK])
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
+    fun a_dump_carries_photo_access_not_yet_asked_and_then_refused() = behaviour {
+        given {
+            photoAccess(PhotoGrant.NOT_DETERMINED)
+            inFront()
+        }
+
+        lateinit var unasked: Seen<WorldEvent.DumpReceived>
+        lateinit var refused: Seen<WorldEvent.DumpReceived>
+        whenever {
+            sendDiagnostics("not asked yet", screen = "CreateEvent")
+            library.permission(PhotoGrant.DENIED)
+            sendDiagnostics("refused", screen = "CreateEvent")
+        }
+        then {
+            unasked = event<WorldEvent.DumpReceived> { it.dump.note == "not asked yet" }
+            refused = event<WorldEvent.DumpReceived> { it.dump.note == "refused" }
+        }
+
+        assertEquals("NOT_DETERMINED", unasked.value.dump.state["photo_permission"])
+        assertEquals("DENIED", refused.value.dump.state["photo_permission"])
     }
 
     @Test

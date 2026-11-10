@@ -44,10 +44,9 @@ kotlin {
 // a declaration layer and moves out.
 coverage {
     unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
-    // → 90 with the update test (`AppUpdateIntegrationTest`), and 91 since; → 92 in phase 31, once the polling
-    // tests waited on outcome events instead. → 90 in phase 4.3 (encryption), when the Files port's answers moved
-    // in from model: the ways a file operation fails — a denied or failed one's facts — are the adapters' and their
-    // contracts' (`FilesContract`) to reach, never a member's day. → 91 in phase 38 (missing levers and world
-    // events). Measured 91.38 %, two runs.
-    integration(instructions = 91, branches = 85) // no branches: any branch target is met
+    // At the goal since phase 44. What it does not reach is the screens' date formatting (`DateFormatting`, read
+    // only by the UI, which this suite renders none of) and the platform answers no member's day gives: a file
+    // denied, a VIEW with no URI, a change PhotoKit refuses, a phone without App Attest. No branches: any branch
+    // target is met.
+    integration()
 }

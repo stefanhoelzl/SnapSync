@@ -312,6 +312,14 @@ interface OlderInstallLevers {
      */
     suspend fun refusedShareRange()
 
+    /**
+     * The membership file 0.4 kept (`eventconfig.json`, which [installedAt] left) now holds [bytes] — whatever corruption
+     * or a damaged backup left in it. Every build wrote it whole, so no build wrote what this plays; the update must keep
+     * the event whatever the file holds. Refused while no such file is held. The app's processes keep what they hold
+     * until they die: the relaunch after it is the update.
+     */
+    suspend fun membershipFile(bytes: ByteArray)
+
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<OlderInstallLevers>(
         OlderInstallLevers::class,

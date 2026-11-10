@@ -288,8 +288,6 @@ class UploadSessionMock(
     internal val network: UploadNetwork,
     /** Whether the device's network holds a transfer created under this rule. */
     internal val held: (TransferNetwork) -> Boolean,
-    /** Whether the session also sends a library resource, as Android's in-process session does; a file otherwise. */
-    private val sendsResources: Boolean = false,
     /** The bytes at a platform path the app hands a transfer — the device's own disk — or `null` where it holds none. */
     private val read: (path: String) -> ByteArray?,
 ) {
@@ -339,7 +337,11 @@ class UploadSessionMock(
 
     /** The port face a process is handed. */
     internal inner class Face : TransferSession {
-        override val takesResources: Boolean = sendsResources
+        /**
+         * Android's in-process session — WorkManager reading a library item's content URI — also sends a library
+         * resource; a background `URLSession` sends files only. Read as the process composes, as the session it is.
+         */
+        override val takesResources: Boolean = inProcess
 
         /**
          * The process listens. In a session that lives in the process ([inProcess]), a transfer still live was the
@@ -358,7 +360,7 @@ class UploadSessionMock(
         }
 
         override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome {
-            if (source !is TransferSource.File && !(sendsResources && source is TransferSource.Resource)) {
+            if (source !is TransferSource.File && !(takesResources && source is TransferSource.Resource)) {
                 return CreateOutcome.FAILED
             }
             val accepted = locked {

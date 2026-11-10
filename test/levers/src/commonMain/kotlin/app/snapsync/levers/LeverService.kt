@@ -126,6 +126,9 @@ enum class LeverNeed(val what: String) {
     /** The upload extension's registration is the mock's. */
     EXTENSION_REGISTRY_MOCKED("the extension registration's mock"),
 
+    /** The device's integrity service — App Attest, or Android's Keystore attestation — is the mock's. */
+    INTEGRITY_MOCKED("the device integrity's mock"),
+
     /**
      * The host serves the service itself, and classifies it **method by method**: each honoured, or refused with the
      * host's reason. For a verb whose subject is the host — its process, its screen, its launch, its platform — and not
@@ -168,6 +171,7 @@ val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(
     LibraryLevers,
     NetworkLevers,
     DeviceConditionsLevers,
+    IntegrityLevers,
     ClockLevers,
     ProcessInfoLevers,
     ProcessMetricsLevers,

@@ -18,6 +18,7 @@ import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.ExtensionRegistryLevers
 import app.snapsync.levers.FilesLevers
+import app.snapsync.levers.IntegrityLevers
 import app.snapsync.levers.JoinedEvent
 import app.snapsync.levers.KeychainLevers
 import app.snapsync.levers.LEVER_SERVICES
@@ -273,6 +274,7 @@ private fun MockWorld.implementationOf(
         LinksLevers -> device.links.operator
         PushLevers -> device.pushService.operator
         WakeLevers -> device.wakes.operator
+        IntegrityLevers -> device.enclave.operator
         BackgroundTimeLevers -> device.backgroundTime.operator
         ExtensionRegistryLevers -> device.extensionRegistry.operator
         else -> error("$service has no implementation in this world")
@@ -304,6 +306,7 @@ private fun needOf(need: LeverNeed): Need = when (need) {
     LeverNeed.WAKE_MOCKED -> Need.Mocked(MockedSystem.WAKE)
     LeverNeed.BACKGROUND_TIME_MOCKED -> Need.Mocked(MockedSystem.BACKGROUND_TIME)
     LeverNeed.EXTENSION_REGISTRY_MOCKED -> Need.Mocked(MockedSystem.EXTENSION_REGISTRY)
+    LeverNeed.INTEGRITY_MOCKED -> Need.Mocked(MockedSystem.INTEGRITY)
     LeverNeed.HOST -> error("a host's own service is classified by the host, method by method (servedHostServices)")
 }
 
@@ -318,8 +321,8 @@ private class PlayedLibrary(
     private val changed: suspend () -> Unit,
     private val revoked: suspend () -> Unit,
 ) : LibraryLevers by library {
-    override suspend fun add(id: String, kind: LibraryPhotoKind?, date: String?) {
-        library.add(id, kind, date)
+    override suspend fun add(id: String, kind: LibraryPhotoKind?, date: String?, filename: String?, size: Int?) {
+        library.add(id, kind, date, filename, size)
         changed()
     }
 

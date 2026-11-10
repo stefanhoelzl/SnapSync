@@ -21,9 +21,17 @@ interface LibraryLevers {
 
     /**
      * The person takes the photo [id], of [kind] (omitted: a camera photo), captured at [date] (omitted:
-     * 2026-06-01T10:00:00Z): it is in the library from now on.
+     * 2026-06-01T10:00:00Z): it is in the library from now on. [filename] is the library's own name for its still
+     * (omitted: the kind's) — any name a photo may carry, a saved or renamed one's included. [size] is its still's size
+     * in bytes, as a camera's photo is megabytes (omitted: a stand-in of a few bytes).
      */
-    suspend fun add(id: String, kind: LibraryPhotoKind? = null, date: String? = null)
+    suspend fun add(
+        id: String,
+        kind: LibraryPhotoKind? = null,
+        date: String? = null,
+        filename: String? = null,
+        size: Int? = null,
+    )
 
     /** The person deletes the photo [asset] from the library. */
     suspend fun remove(asset: String)

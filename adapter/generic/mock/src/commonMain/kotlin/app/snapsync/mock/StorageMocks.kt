@@ -84,6 +84,15 @@ class FileSystemMock {
         if (location.startsWith(prefix)) read(area, location.removePrefix(prefix)) else null
     }
 
+    /**
+     * Writes [bytes] at [location], a platform path a process's face handed out — what another system the app hands a
+     * path to writes there (the photo library's export). `false` for a path that is not this disk's.
+     */
+    fun place(location: String, bytes: ByteArray): Boolean = FileArea.entries.any { area ->
+        val prefix = "${InMemoryFiles.MEM}${area.name.lowercase()}/"
+        location.startsWith(prefix).also { ours -> if (ours) write(area, location.removePrefix(prefix), bytes) }
+    }
+
     /** The paths [area] holds now: one whole snapshot of it, however the app writes meanwhile. */
     fun paths(area: FileArea): List<String> = held(area).snapshot().keys.toList()
 

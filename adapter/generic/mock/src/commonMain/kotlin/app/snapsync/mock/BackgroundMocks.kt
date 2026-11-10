@@ -37,8 +37,8 @@ class WakeMock(
      * ([WakeOperator.carriesLibraryWake] changes it for the next launch).
      */
     @Volatile internal var supported: Set<WakeId> = setOf(WakeId.Heartbeat),
-    /** Why the operating system refuses this process's requests, or `null` where it takes them. */
-    internal val refusal: String? = null,
+    /** The device's conditions, whose Background App Refresh decides at each request whether iOS takes it. */
+    private val conditions: DeviceConditionsMock = DeviceConditionsMock(),
 ) {
     internal val pending = MutableStateFlow<Map<WakeId, WakeTrigger>>(emptyMap())
     internal val handlers = HandlerSlot<WakeHandlers>("Wake", BeforeListen.Thrown)
@@ -65,7 +65,7 @@ class WakeMock(
         }
 
         override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
-            refusal?.let { ScheduleResult.Refused(it) } ?: queue.schedule(id, trigger).also {
+            conditions.wakeRefusal()?.let { ScheduleResult.Refused(it) } ?: queue.schedule(id, trigger).also {
                 if (it != ScheduleResult.Scheduled) return@also
                 if (id == WakeId.Heartbeat) scheduled++
                 watcher.told(WorldEvent.WakeScheduled(pendingWake(id, trigger)))
