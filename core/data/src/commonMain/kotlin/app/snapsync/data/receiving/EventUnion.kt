@@ -14,6 +14,7 @@ import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.AssetRef
 import app.snapsync.domain.receiving.HeldUnion
 import app.snapsync.domain.receiving.OthersDeclared
+import app.snapsync.domain.receiving.PushNotice
 import app.snapsync.domain.receiving.SenderFilename
 import app.snapsync.domain.receiving.ServedFileName
 import app.snapsync.domain.receiving.ServedPhoto
@@ -75,28 +76,47 @@ class EventUnion(
             ?: HeldRead.Unavailable("the union of $event names what this build cannot read")
     }
 
-    /** [membership]'s event's union, read as [plan] says, its names read as that membership's event serves them. */
-    suspend fun read(membership: Membership, plan: UnionReadPlan.Reading, trigger: UnionTrigger): UnionRead =
-        when (plan) {
-            UnionReadPlan.Whole -> fetched(membership, null, trigger)
-            is UnionReadPlan.Since -> fetched(membership, plan.from, trigger)
-        }
+    /**
+     * [membership]'s event's union, read as [plan] says, its names read as that membership's event serves them. A read
+     * a push caused names it ([push]) for the service's delivery record.
+     */
+    suspend fun read(
+        membership: Membership,
+        plan: UnionReadPlan.Reading,
+        trigger: UnionTrigger,
+        push: PushNotice? = null,
+    ): UnionRead = when (plan) {
+        UnionReadPlan.Whole -> fetched(membership, null, trigger, push)
+        is UnionReadPlan.Since -> fetched(membership, plan.from, trigger, push)
+    }
 
-    private suspend fun fetched(membership: Membership, from: Long?, trigger: UnionTrigger): UnionRead {
+    private suspend fun fetched(
+        membership: Membership,
+        from: Long?,
+        trigger: UnionTrigger,
+        push: PushNotice?,
+    ): UnionRead {
         val event = membership.event.id
         return when (val reading = names.of(membership)) {
-            is NameReading.Opens -> requested(ServedPhotos(gateway, event, reading), from, trigger)
+            is NameReading.Opens -> requested(ServedPhotos(gateway, event, reading), from, trigger, push)
             is NameReading.Unavailable -> UnionRead.Unavailable("the names of $event cannot be read: ${reading.detail}")
         }
     }
 
-    private suspend fun requested(photos: ServedPhotos, from: Long?, trigger: UnionTrigger): UnionRead {
+    private suspend fun requested(
+        photos: ServedPhotos,
+        from: Long?,
+        trigger: UnionTrigger,
+        push: PushNotice?,
+    ): UnionRead {
         val event = photos.event
         val request = Routes.EventFiles.request(
             event.value,
             from?.toString(),
             urls = false,
             snapSyncTrigger = trigger.wire,
+            xSnapsyncNotified = PushHeaders.notified(push),
+            xSnapsyncAnnounced = PushHeaders.announced(push),
         )
         return when (val reply = gateway.send(request)) {
             is EventFilesReply.Page -> paged(photos, reply)
@@ -212,4 +232,19 @@ sealed interface HeldRead {
     class Counted(val union: HeldUnion) : HeldRead
 
     class Unavailable(val detail: String) : HeldRead
+}
+
+/** The delivery record's facts of a read a push caused, as its headers spell them — none for a read no push caused. */
+internal object PushHeaders {
+    /** When the app acted on the push. */
+    fun notified(push: PushNotice?): String? = when (push) {
+        null -> null
+        is PushNotice -> TimestampText.format(push.at)
+    }
+
+    /** The union position the push announced. */
+    fun announced(push: PushNotice?): String? = when (push) {
+        null -> null
+        is PushNotice -> push.announced.toString()
+    }
 }

@@ -1,0 +1,10 @@
+-- v20 -> v21: a row keeps when a walk first recorded it, and the entry point that ran that walk — the delivery record's
+-- `discovered` and `discovered_by`, which the photo's byte upload sends (decision record `changes/delivery-record`, D2).
+--
+-- Row-preserving: both columns are nullable, and a row recorded before them has neither, which the upload sends as
+-- nothing — no fact is guessed for it. Neither column is named by the manifest-version triggers: the manifest carries no
+-- delivery fact, so recording one advances nothing.
+-- DOWNGRADE: an earlier build names neither column in any statement, so it reads and writes the table as before.
+
+ALTER TABLE ledgerRow ADD COLUMN foundAt TEXT;
+ALTER TABLE ledgerRow ADD COLUMN foundBy TEXT;

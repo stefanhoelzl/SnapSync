@@ -139,10 +139,11 @@ internal class Receiver {
         download,
         mobileDataAnswering { TransferNetwork.ANY },
         exchangeOver(device.transport),
+        app.snapsync.data.walkClock,
     )
     val store = DownloadStore(file, staging, transfers)
     val plans = ReceivingPlans(store)
-    val queue = ImportQueue(store)
+    val queue = ImportQueue(store, app.snapsync.data.walkClock)
     val releases = ImportedReleases(store)
     val records = RecognitionRecords(store)
     val cleanup = ReceivingCleanup(store)

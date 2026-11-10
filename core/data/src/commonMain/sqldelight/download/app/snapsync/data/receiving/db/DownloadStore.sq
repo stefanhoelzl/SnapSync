@@ -116,7 +116,7 @@ WHERE sourceDeviceId = :sourceDeviceId
 
 markImported:
 UPDATE downloadAsset
-SET state = 'IMPORTED', createdLocalId = :createdLocalId
+SET state = 'IMPORTED', createdLocalId = :createdLocalId, addedAt = :addedAt, addedBy = :addedBy
 WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
 
 -- Record ONLY the created local id (suppression handle), leaving state PENDING. Written synchronously
@@ -347,6 +347,29 @@ markResourceStaged:
 UPDATE downloadResource
 SET stagedPath = :stagedPath
 WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId AND resourceKey = :resourceKey;
+
+-- When a photo's bytes were downloaded, for the delivery record: each staged resource writes it, so it ends as the
+-- last one's.
+markAssetDownloaded:
+UPDATE downloadAsset
+SET downloadedAt = :downloadedAt
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
+
+-- The delivery facts of an event's photos added to the library that no recorded report carried yet, oldest first, at
+-- most :limit — what the next `received` report sends (decision record `changes/delivery-record`, D3).
+selectUnreportedDeliveries:
+SELECT r.sourceDeviceId, r.sourceAssetId, a.downloadedAt, a.addedAt, a.addedBy
+FROM eventRef r
+JOIN downloadAsset a ON a.sourceDeviceId = r.sourceDeviceId AND a.sourceAssetId = r.sourceAssetId
+WHERE r.eventId = :eventId AND a.addedAt IS NOT NULL AND a.deliveryReported = 0
+ORDER BY a.addedAt, r.sourceDeviceId, r.sourceAssetId
+LIMIT :limit;
+
+-- A report the service recorded carried this photo's delivery facts: never sent again.
+markDeliveryReported:
+UPDATE downloadAsset
+SET deliveryReported = 1
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
 
 -- Mark a resource's download as sent to the OS (a background URLSession task now exists).
 markResourceEnqueued:

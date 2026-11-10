@@ -11,20 +11,26 @@ import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.token
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.TokenText
+import app.snapsync.data.walkClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.BearerToken
+import app.snapsync.domain.upload.Discovery
 import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.UploadKey
+import app.snapsync.inbound.Trigger
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Limits
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.time.Instant
 
 /**
  * An upload's request as the backend's byte route takes it: one event's destination naming this device, the asset and
@@ -54,8 +60,14 @@ class UploadRequestsTest {
 
     private val held = Held(token = token(30))
     private val identity = FixedIdentity(DeviceIdRead.Ok(device, DeviceIdRead.Via.READ))
-    private val requests =
-        UploadRequests(FakeClient().exchange(), held.store, Gated(held.store), identity, FileNameCipher(fakeCrypto()))
+    private val requests = UploadRequests(
+        FakeClient().exchange(),
+        held.store,
+        Gated(held.store),
+        identity,
+        FileNameCipher(fakeCrypto()),
+        walkClock,
+    )
 
     private fun built(answer: RequestBuilt): BuiltRequest = assertIs<RequestBuilt.Built>(answer).request
 
@@ -72,6 +84,52 @@ class UploadRequestsTest {
     }
 
     @Test
+    fun `an upload carries when the photo was taken, found and queued, and the entry points that did so`() = runTest {
+        val taken = Timestamp.of(Instant.parse("2026-07-14T09:00:00Z"))
+        val found = Discovery(Timestamp.of(Instant.parse("2026-07-14T11:58:00Z")), "OnForeground")
+        val dated = RowDetail(CaptureDate.Dated(taken), "image/heic", "IMG_0001.HEIC", found)
+
+        val request = withContext(Trigger.of("OnUploadSessionEvents")) {
+            built(requests.first(event, key, dated, UploadSeal.Plain))
+        }
+
+        assertEquals("2026-07-14T09:00:00Z", request.headers["x-snapsync-taken"])
+        assertEquals("2026-07-14T11:58:00Z", request.headers["x-snapsync-discovered"])
+        assertEquals("OnForeground", request.headers["x-snapsync-discovered-by"])
+        assertEquals("2026-07-14T12:00:00Z", request.headers["x-snapsync-queued"])
+        assertEquals("OnUploadSessionEvents", request.headers["x-snapsync-queued-by"])
+    }
+
+    @Test
+    fun `a row recorded before discoveries were kept, undated and off an entry point, carries only its queueing`() =
+        runTest {
+            val request = built(
+                requests.first(
+                    event,
+                    key,
+                    RowDetail(
+                        CaptureDate.Undated,
+                        "image/heic",
+                        "",
+                        Discovery(
+                            Timestamp.of(Instant.parse("2026-07-14T11:58:00Z")),
+                            null,
+                        ),
+                    ),
+                    UploadSeal.Plain,
+                ),
+            )
+            val bare = built(requests.first(event, key, detail, UploadSeal.Plain))
+
+            assertEquals(null, request.headers["x-snapsync-taken"])
+            assertEquals(null, request.headers["x-snapsync-discovered-by"])
+            assertEquals("2026-07-14T11:58:00Z", request.headers["x-snapsync-discovered"])
+            assertEquals(null, bare.headers["x-snapsync-discovered"])
+            assertEquals(null, bare.headers["x-snapsync-queued-by"])
+            assertEquals("2026-07-14T12:00:00Z", bare.headers["x-snapsync-queued"])
+        }
+
+    @Test
     fun `a row that records no file name is named by its key, whose extension is the same`() = runTest {
         val request =
             built(requests.first(event, key, RowDetail(CaptureDate.Undated, "video/quicktime", ""), UploadSeal.Plain))
@@ -83,7 +141,8 @@ class UploadRequestsTest {
     fun `a phone that holds no proof obtains one first, and where it cannot nothing is built`() = runTest {
         val empty = Held().store
         val attesting = Gated(empty, obtains = token(31))
-        val app = UploadRequests(FakeClient().exchange(), empty, attesting, identity, FileNameCipher(fakeCrypto()))
+        val app =
+            UploadRequests(FakeClient().exchange(), empty, attesting, identity, FileNameCipher(fakeCrypto()), walkClock)
         assertEquals(
             "Bearer ${token(31)}",
             built(app.first(event, key, detail, UploadSeal.Plain)).headers["Authorization"],
@@ -91,7 +150,8 @@ class UploadRequestsTest {
         assertEquals(1, attesting.asked, "the app attests on the spot")
 
         val dropOnly = Gated(empty)
-        val extension = UploadRequests(FakeClient().exchange(), empty, dropOnly, identity, FileNameCipher(fakeCrypto()))
+        val extension =
+            UploadRequests(FakeClient().exchange(), empty, dropOnly, identity, FileNameCipher(fakeCrypto()), walkClock)
         assertIs<RequestBuilt.Unverified>(
             extension.first(event, key, detail, UploadSeal.Plain),
             "no request without a proof",
@@ -107,8 +167,14 @@ class UploadRequestsTest {
             override suspend fun rejected(sent: BearerToken): TokenRead = TokenRead.None
             override suspend fun missing(): TokenRead = TokenRead.None.also { asked++ }
         }
-        val locked =
-            UploadRequests(FakeClient().exchange(), held.store, unreadable, identity, FileNameCipher(fakeCrypto()))
+        val locked = UploadRequests(
+            FakeClient().exchange(),
+            held.store,
+            unreadable,
+            identity,
+            FileNameCipher(fakeCrypto()),
+            walkClock,
+        )
 
         assertEquals(RequestBuilt.Unverified("keychain locked"), locked.first(event, key, detail, UploadSeal.Plain))
         assertEquals(0, unreadable.asked)

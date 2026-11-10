@@ -14,11 +14,13 @@ import app.snapsync.data.receiving.DownloadTransfers
 import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.receiving.StagingArea
 import app.snapsync.data.receiving.db.DownloadDatabase
+import app.snapsync.data.time.WallClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.ports.Databases
@@ -30,6 +32,7 @@ import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
+import kotlin.time.Instant
 
 /**
  * What the download store says of how far this device received, over [databases] — the store as the app composes it,
@@ -52,6 +55,7 @@ fun receivingCounts(databases: Databases): ReceivingCounts = ReceivingCounts(
                 NoVersions,
                 DeliveryContext(),
             ),
+            WallClock(fixedClock(Instant.parse("2026-07-14T12:00:00Z"))),
         ),
     ),
 )

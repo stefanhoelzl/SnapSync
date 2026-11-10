@@ -77,8 +77,12 @@ internal class RecordingDownload(var answer: StartResult = StartResult.Started) 
     @CompositionOnly
     override fun inbound(handlers: DownloadHandlers) = Unit
 
+    /** The headers each transfer was started with, in order. */
+    val headers = mutableListOf<Map<String, String>>()
+
     override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult {
         started += tag
+        this.headers += headers
         return answer
     }
 
@@ -124,12 +128,18 @@ internal class Store(val databases: DatabasesMock = DatabasesMock()) {
     val files = ScriptedFiles()
     val download = RecordingDownload()
     var network = TransferNetwork.ANY
-    val transfers = DownloadTransfers(download, mobileDataAnswering { network }, exchangeOver(ScriptedTransport()))
+    val transfers =
+        DownloadTransfers(
+            download,
+            mobileDataAnswering { network },
+            exchangeOver(ScriptedTransport()),
+            app.snapsync.data.walkClock,
+        )
     val staging = StagingArea(files)
     val file = DownloadDatabaseFile(databases.port())
     val downloads = DownloadStore(file, staging, transfers)
     val plans = ReceivingPlans(downloads)
-    val queue = ImportQueue(downloads)
+    val queue = ImportQueue(downloads, app.snapsync.data.walkClock)
     val releases = ImportedReleases(downloads)
     val records = RecognitionRecords(downloads)
     val cleanup = ReceivingCleanup(downloads)

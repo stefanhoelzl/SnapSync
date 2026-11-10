@@ -19,6 +19,9 @@ import app.snapsync.domain.upload.LedgerState;
 --   (capability `photo-sharing`), so the manifest is a projection of the `COMPLETED` rows rather than a parallel
 --   accumulator. `''` is the "not yet enriched" sentinel a join-time load's row starts in, swept by
 --   `backfillManifestDetail`.
+-- - `foundAt`, `foundBy` are when a walk first recorded the row and the entry point that ran it (`20.sqm`;
+--   decision record `changes/delivery-record`), NULL for a row recorded before them — the delivery record's
+--   `discovered`, which the byte upload sends. Written by `recordDiscovered` only, never rewritten.
 -- - `destinationPath` is the destination the row's upload was addressed to, NULL for a row recorded before the column
 --   existed. The ack path resolves a returned upload job to its row through `ledgerRow_destinationPath`; without that
 --   index every returned job would scan the table, on a path the OS invokes with a deadline. (`ALTER TABLE … ADD
@@ -45,7 +48,7 @@ import app.snapsync.domain.upload.LedgerState;
 --   update trigger names must DROP and re-CREATE that trigger around it.
 
 get:
-SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath, foundAt, foundBy
 FROM ledgerRow
 WHERE eventId = :eventId AND key = :key;
 
@@ -87,7 +90,7 @@ VALUES (
 -- A NULL column never matches, which is correct: such a row predates the write and is recovered by the
 -- tier's fallback instead.
 selectByDestinationPath:
-SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath, foundAt, foundBy
 FROM ledgerRow
 WHERE eventId = :eventId AND destinationPath = :destinationPath;
 
@@ -228,7 +231,7 @@ SELECT changes();
 -- further down would never be reached. This is a local indexed scan; the platform round-trip and the
 -- staged temp file the bound exists to protect follow the admitted rows, in the caller.
 selectNeedingJob:
-SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath, foundAt, foundBy
 FROM ledgerRow
 WHERE eventId = :eventId AND state IN :needsJobStates
 ORDER BY key;
@@ -236,7 +239,7 @@ ORDER BY key;
 -- Every row of one event, whatever its state — what the upload's own rows read (`OwnUploadRows.rows`): the walk's
 -- presence diff, the manifest's projection and the policy's row admission all start from the whole set.
 selectRows:
-SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath, foundAt, foundBy
 FROM ledgerRow
 WHERE eventId = :eventId
 ORDER BY key;
@@ -248,10 +251,10 @@ ORDER BY key;
 -- version advances only for a row that lands.
 recordDiscovered:
 INSERT INTO ledgerRow (
-    eventId, key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+    eventId, key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath, foundAt, foundBy
 )
 VALUES (
-    :eventId, :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, NULL
+    :eventId, :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, NULL, :foundAt, :foundBy
 )
 ON CONFLICT(eventId, key) DO NOTHING;
 

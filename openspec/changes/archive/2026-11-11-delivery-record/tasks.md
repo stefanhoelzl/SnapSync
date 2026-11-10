@@ -67,16 +67,16 @@
 
 ## 5. Photo stage facts (app)
 
-- [ ] 5.1 Keep each own photo's `discovered` time and entry point when the selection first admits it, bounded
+- [x] 5.1 Keep each own photo's `discovered` time and entry point when the selection first admits it, bounded
   and oldest-first dropped; verify a data-layer test
-- [ ] 5.2 Send `taken`, `discovered`, `discovered_by`, `queued`, `queued_by` on every byte upload, and `queued`,
+- [x] 5.2 Send `taken`, `discovered`, `discovered_by`, `queued`, `queued_by` on every byte upload, and `queued`,
   `queued_by`, `x-snapsync-device` on every download redirect; verify `FileUploads` and download tests assert them
-- [ ] 5.3 Echo the push's union position and its arrival time (`announced`, `notified`) on the read the push
+- [x] 5.3 Echo the push's union position and its arrival time (`announced`, `notified`) on the read the push
   causes; verify an `OnSilentPush` test on both platforms' push adapters
-- [ ] 5.4 Keep each received photo's `downloaded` and `added` time and entry point until reported, and send them
+- [x] 5.4 Keep each received photo's `downloaded` and `added` time and entry point until reported, and send them
   as `delivered` with the `received` report, split above a fixed count; verify a receiving test, including a
   back-dated join of several hundred photos
-- [ ] 5.5 Document the delivery facts the app keeps and sends in `docs/architecture.md` (or the data layer's
+- [x] 5.5 Document the delivery facts the app keeps and sends in `docs/architecture.md` (or the data layer's
   KDoc, as the placement guide says); verify `./gradlew build`
 
 ## 6. What users read

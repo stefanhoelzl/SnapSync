@@ -1,7 +1,9 @@
 package app.snapsync.data.receiving
 
+import app.snapsync.inbound.Trigger
 import app.snapsync.ports.StartResult
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -19,6 +21,17 @@ class DownloadTransfersTest {
         device.planned(page(a))
         device.planned(page(a))
         assertEquals(1, device.download.started.size)
+    }
+
+    @Test
+    fun `a download carries when it was queued and the entry point that queued it`() = runTest {
+        withContext(Trigger.of("OnSilentPush")) { device.planned(page(photo(ref("A")))) }
+        device.planned(page(photo(ref("B"))))
+
+        val (pushed, plain) = device.download.headers
+        assertEquals("2026-07-14T12:00:00Z", pushed["x-snapsync-queued"])
+        assertEquals("OnSilentPush", pushed["x-snapsync-queued-by"])
+        assertEquals(null, plain["x-snapsync-queued-by"], "queued off an entry point, it names none")
     }
 
     @Test

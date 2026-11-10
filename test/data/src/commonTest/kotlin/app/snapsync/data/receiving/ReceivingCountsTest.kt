@@ -71,7 +71,7 @@ class ReceivingCountsTest {
     @Test
     fun `a row whose created id is no id is no imported photo of the event`() = runTest {
         device.sql(
-            "INSERT INTO downloadAsset VALUES ('${ANNA.value}', 'X', 'IMPORTED', '$DURING', '')",
+            "INSERT INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId) VALUES ('${ANNA.value}', 'X', 'IMPORTED', '$DURING', '')",
             "INSERT INTO eventRef VALUES ('${EVENT.value}', '${ANNA.value}', 'X')",
         )
         assertEquals(emptySet(), device.counts.importedOf(EVENT).ok())

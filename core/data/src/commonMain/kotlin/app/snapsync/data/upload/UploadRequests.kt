@@ -2,19 +2,24 @@ package app.snapsync.data.upload
 
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.Credential
+import app.snapsync.data.backend.EntryPointLabel
 import app.snapsync.data.backend.TokenRead
 import app.snapsync.data.crypto.FileNameCipher
 import app.snapsync.data.crypto.UploadSeal
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.time.WallClock
 import app.snapsync.data.trust.CachedCredentialStore
+import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.trust.BearerToken
 import app.snapsync.domain.upload.DestinationPath
+import app.snapsync.domain.upload.Discovery
 import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.ResourceRoleText
+import app.snapsync.format.TimestampText
 import app.snapsync.format.UploadKeyText
 import app.snapsync.wire.api.Routes
 
@@ -40,6 +45,7 @@ class UploadRequests(
     private val credential: Credential,
     private val identity: DeviceIdentity,
     private val names: FileNameCipher,
+    private val clock: WallClock,
 ) {
     /**
      * [key]'s first upload into [event], described by [detail] — as its event's [seal] says: an encrypted event's
@@ -83,7 +89,7 @@ class UploadRequests(
         )
         val url = exchange.url(path)
         val headers = mapOf("Content-Type" to upload.detail.contentType) + exchange.transferHeaders() +
-            mapOf("Authorization" to "Bearer ${token.secret}")
+            delivery(upload.detail) + mapOf("Authorization" to "Bearer ${token.secret}")
         return BuiltRequest(url, headers, Destinations.pathOf(url), device)
     }
 
@@ -101,6 +107,28 @@ class UploadRequests(
 
     /** One upload's request, as its tier asks for it. */
     private class Upload(val event: EventId, val key: UploadKey, val detail: RowDetail, val seal: UploadSeal.Goes)
+
+    /**
+     * The delivery record's facts of this upload (decision record `changes/delivery-record`, D3): when the photo was
+     * taken, when the app found it and why, and when this upload is queued and why. A background transfer's headers are
+     * fixed now, so `queued` is the moment it is handed over by construction.
+     */
+    private suspend fun delivery(detail: RowDetail): Map<String, String> =
+        taken(detail.captured) + discovered(detail.discovered) +
+            mapOf(Routes.UploadResource.HEADER_X_SNAPSYNC_QUEUED to TimestampText.format(clock.now())) +
+            EntryPointLabel.current()?.let { mapOf(Routes.UploadResource.HEADER_X_SNAPSYNC_QUEUED_BY to it) }.orEmpty()
+
+    private fun taken(captured: CaptureDate): Map<String, String> = when (captured) {
+        is CaptureDate.Dated -> mapOf(
+            Routes.UploadResource.HEADER_X_SNAPSYNC_TAKEN to TimestampText.format(captured.at),
+        )
+        CaptureDate.Undated -> emptyMap()
+    }
+
+    private fun discovered(discovery: Discovery?): Map<String, String> = discovery?.let {
+        mapOf(Routes.UploadResource.HEADER_X_SNAPSYNC_DISCOVERED to TimestampText.format(it.at)) +
+            it.by?.let { by -> mapOf(Routes.UploadResource.HEADER_X_SNAPSYNC_DISCOVERED_BY to by) }.orEmpty()
+    }.orEmpty()
 }
 
 /** What building an upload's request came to. */

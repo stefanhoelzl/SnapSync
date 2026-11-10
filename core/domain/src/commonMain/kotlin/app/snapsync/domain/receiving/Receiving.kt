@@ -167,7 +167,8 @@ sealed interface ReceivedReport {
 
 /**
  * Whether a report is worth sending: the backend keeps the highest position and the latest word on receiving nothing,
- * so only a higher position, or a change of word, is sent.
+ * so only a higher position, or a change of word, is sent — or any report while delivery facts wait to be told
+ * (decision record `changes/delivery-record`, D3), which would otherwise wait for the next new photo.
  */
 sealed interface ReportDue {
     class Report(val report: ReceivedReport) : ReportDue
@@ -175,8 +176,16 @@ sealed interface ReportDue {
     data object Unchanged : ReportDue
 
     companion object {
-        /** [found], against the [last] report the backend recorded in this process (`null`: none yet). */
-        fun of(found: ReceivedReport, last: ReceivedReport?): ReportDue = when (found) {
+        /**
+         * [found], against the [last] report the backend recorded in this process (`null`: none yet), and whether
+         * delivery facts are [untold].
+         */
+        fun of(found: ReceivedReport, last: ReceivedReport?, untold: Boolean): ReportDue = when (untold) {
+            true -> Report(found)
+            false -> of(found, last)
+        }
+
+        private fun of(found: ReceivedReport, last: ReceivedReport?): ReportDue = when (found) {
             is ReceivedReport.Position -> positioned(found, last)
             ReceivedReport.ReceivesNothing -> when (last) {
                 ReceivedReport.ReceivesNothing -> Unchanged

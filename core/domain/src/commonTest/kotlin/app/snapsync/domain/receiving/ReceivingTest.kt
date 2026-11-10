@@ -112,16 +112,28 @@ class ReceivingTest {
     fun only_a_higher_position_or_a_change_of_word_is_reported() {
         fun at(position: Long) = ReceivedReport.Position(position)
         fun reported(found: ReceivedReport, last: ReceivedReport?) = assertIs<ReportDue.Report>(
-            ReportDue.of(found, last),
+            ReportDue.of(found, last, untold = false),
         )
         assertEquals(4, assertIs<ReceivedReport.Position>(reported(at(4), null).report).position)
         assertEquals(4, assertIs<ReceivedReport.Position>(reported(at(4), at(3)).report).position)
-        assertEquals(ReportDue.Unchanged, ReportDue.of(at(4), at(4)))
-        assertEquals(ReportDue.Unchanged, ReportDue.of(at(3), at(4)))
+        assertEquals(ReportDue.Unchanged, ReportDue.of(at(4), at(4), untold = false))
+        assertEquals(ReportDue.Unchanged, ReportDue.of(at(3), at(4), untold = false))
         assertIs<ReceivedReport.Position>(reported(at(0), ReceivedReport.ReceivesNothing).report, "receiving again")
         assertEquals(ReceivedReport.ReceivesNothing, reported(ReceivedReport.ReceivesNothing, null).report)
         assertEquals(ReceivedReport.ReceivesNothing, reported(ReceivedReport.ReceivesNothing, at(4)).report)
-        assertEquals(ReportDue.Unchanged, ReportDue.of(ReceivedReport.ReceivesNothing, ReceivedReport.ReceivesNothing))
+        assertEquals(
+            ReportDue.Unchanged,
+            ReportDue.of(ReceivedReport.ReceivesNothing, ReceivedReport.ReceivesNothing, untold = false),
+        )
+    }
+
+    @Test
+    fun untold_delivery_facts_are_reported_even_at_an_unchanged_position() {
+        val at4 = ReceivedReport.Position(4)
+        assertIs<ReportDue.Report>(ReportDue.of(at4, at4, untold = true))
+        assertIs<ReportDue.Report>(
+            ReportDue.of(ReceivedReport.ReceivesNothing, ReceivedReport.ReceivesNothing, untold = true),
+        )
     }
 
     @Test

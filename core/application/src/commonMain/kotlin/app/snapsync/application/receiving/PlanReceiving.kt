@@ -15,6 +15,7 @@ import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.receiving.PushNotice
 import app.snapsync.domain.receiving.ReceivingMembership
 import app.snapsync.domain.receiving.UnionPage
 import app.snapsync.domain.receiving.UnionReadPlan
@@ -90,7 +91,10 @@ class PlanReceiving(
         /** Either way the hour is stamped: a union was read for this event now — by this act or by the caller's. */
         private suspend fun pageOf(plan: UnionReadPlan.Reading): UnionRead {
             checks.stamp(EventCheck.PHOTOS, event, clock.now())
-            return known?.let(UnionRead::Ok) ?: union.read(membership, plan, trigger)
+            // A read a push caused names it for the service's delivery record: what it announced, and that the app
+            // acted on it now.
+            return known?.let(UnionRead::Ok)
+                ?: union.read(membership, plan, trigger, announced?.let { PushNotice(it, clock.now()) })
         }
 
         private suspend fun identified(page: UnionPage, plan: UnionReadPlan.Reading, stored: StoredPosition) =

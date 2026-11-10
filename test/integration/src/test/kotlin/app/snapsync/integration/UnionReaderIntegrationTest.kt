@@ -56,6 +56,33 @@ class UnionReaderIntegrationTest {
         }
     }
 
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "The service records who reads an event's photo list",
+        scenario = "A member's app is woken for a new photo",
+    )
+    fun the_read_a_push_caused_names_the_position_it_announced_and_when_the_app_acted() = behaviour {
+        // The delivery record's half of the push: which announcement this read answers, so the service can tell a
+        // push it sent from one that never arrived (decision record `changes/delivery-record`, D3).
+        val event = given {
+            joinedEvent().also {
+                pushToken(TOKEN)
+                backgroundLaunch()
+                fellowMember(DEV_F, "FA")
+            }
+        }
+
+        whenever { os.silentPush(event) }
+        then {
+            event<WorldEvent.BackendReceived> {
+                it.operation == UNION_READ && it.header(TRIGGER) == PUSH &&
+                    it.header(ANNOUNCED)?.toLongOrNull() != null &&
+                    it.header(NOTIFIED)?.matches(WHOLE_SECOND_UTC) == true
+            }
+        }
+    }
+
     private fun WorldEvent.BackendReceived.isUnionRead(whole: Boolean) =
         operation == UNION_READ && (url?.contains(DELTA_FROM) == false) == whole
 
@@ -69,5 +96,10 @@ class UnionReaderIntegrationTest {
         /** The request header that names why the app reads the list (`api/openapi.yaml`), and its push value. */
         const val TRIGGER = "SnapSync-Trigger"
         const val PUSH = "push"
+
+        /** The delivery facts of a read a push caused (`api/openapi.yaml`), and the one time shape the wire speaks. */
+        const val ANNOUNCED = "x-snapsync-announced"
+        const val NOTIFIED = "x-snapsync-notified"
+        val WHOLE_SECOND_UTC = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z""")
     }
 }

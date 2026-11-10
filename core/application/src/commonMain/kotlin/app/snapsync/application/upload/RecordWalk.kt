@@ -1,6 +1,7 @@
 package app.snapsync.application.upload
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.data.backend.EntryPointLabel
 import app.snapsync.data.store.StoreWrite
 import app.snapsync.data.upload.RecentWalk
 import app.snapsync.data.upload.WalkRecord
@@ -22,7 +23,7 @@ class RecordWalk(private val walk: WalkRecord, private val recent: RecentWalk) {
         val diff = walked.diff
         logged("withdrawn", diff.departed.size, walk.withdraw(event, diff.departed))
         logged("filled", diff.bare.size, walk.backfill(event, diff.bare))
-        logged("recorded", diff.fresh.size, walk.discover(event, diff.fresh))
+        logged("recorded", diff.fresh.size, walk.discover(event, diff.fresh, EntryPointLabel.current()))
         val added = diff.fresh.isNotEmpty()
         if (added) recent.put(walked.handles)
         return RecordedWalk(added)

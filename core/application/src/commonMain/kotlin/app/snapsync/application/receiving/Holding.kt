@@ -4,6 +4,7 @@ import app.snapsync.application.EntryPointCall
 import app.snapsync.data.identity.AppDeviceIdentity
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.receiving.DeliveredPhotos
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.EventUnion
 import app.snapsync.data.receiving.HeldFacts
@@ -13,9 +14,11 @@ import app.snapsync.data.receiving.ReceivedReporting
 import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.receiving.ReportedReceived
 import app.snapsync.data.time.WallClock
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventPhase
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
+import app.snapsync.domain.receiving.DeliveredPhoto
 import app.snapsync.domain.receiving.HeldPosition
 import app.snapsync.domain.receiving.HeldUnion
 import app.snapsync.domain.receiving.ReceivedReport
@@ -80,6 +83,8 @@ class HoldsEverything(
 class ReportReceivedPosition(
     private val reporter: ReceivedReporting,
     private val reported: ReportedReceived,
+    /** The received photos' delivery facts the service was not told yet, which the report carries. */
+    private val delivered: DeliveredPhotos,
     private val clock: WallClock,
     private val membership: MembershipRepository,
 ) {
@@ -103,7 +108,9 @@ class ReportReceivedPosition(
     // The read takes time — the union's is a whole one — and a join or a leave can land meanwhile: a report is only
     // ever about the membership this step found.
     private suspend fun told(active: Membership.Active, report: ReceivedReport) = when (stillJoined(active)) {
-        true -> reportedAt(active, ReportDue.of(report, reported.last(active.event.id)))
+        true -> untold(active.event.id).let { untold ->
+            reportedAt(active, ReportDue.of(report, reported.last(active.event.id), untold.isNotEmpty()), untold)
+        }
         false -> Unit
     }
 
@@ -112,14 +119,30 @@ class ReportReceivedPosition(
         is MembershipRead.NotJoined, is MembershipRead.Unavailable -> false
     }
 
-    private suspend fun reportedAt(active: Membership.Active, due: ReportDue) = when (due) {
-        is ReportDue.Report -> recorded(active, due.report, reporter.report(active.event.id, due.report))
-        ReportDue.Unchanged -> Unit
+    /** An untold-facts read that fails tells none: the report goes as it would have, and they wait for the next. */
+    private suspend fun untold(event: EventId): List<DeliveredPhoto> = when (val read = delivered.untold(event)) {
+        is DownloadRead.Ok -> read.value
+        is DownloadRead.Unavailable -> emptyList<DeliveredPhoto>().also {
+            log.w("the received photos' delivery facts were not read", "why" of read.detail)
+        }
     }
 
-    private suspend fun recorded(active: Membership.Active, report: ReceivedReport, reply: ReceivedReply) =
+    private suspend fun reportedAt(active: Membership.Active, due: ReportDue, untold: List<DeliveredPhoto>) =
+        when (due) {
+            is ReportDue.Report ->
+                recorded(active, due.report, untold, reporter.report(active.event.id, due.report, untold))
+            ReportDue.Unchanged -> Unit
+        }
+
+    private suspend fun recorded(
+        active: Membership.Active,
+        report: ReceivedReport,
+        untold: List<DeliveredPhoto>,
+        reply: ReceivedReply,
+    ) =
         when (reply) {
             ReceivedReply.Recorded -> reported.recorded(active.event.id, report).also {
+                delivered.told(untold)
                 log.i("the event knows what it received", "event" of active.event.id, "report" of report.text())
             }
             is ReceivedReply.NotRecorded -> log.w("what this device received was not recorded", "why" of reply.detail)

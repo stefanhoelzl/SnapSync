@@ -4,6 +4,7 @@ import app.snapsync.data.membership.sharedOver
 import app.snapsync.data.store.StoreWrite
 import app.snapsync.data.store.Stored
 import app.snapsync.data.store.use
+import app.snapsync.data.walkClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
@@ -25,6 +26,7 @@ import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -39,7 +41,7 @@ class OwnUploadRowsTest {
     private val device = DatabasesMock()
     private val shared = sharedOver(device)
     private val reads = OwnUploadRows(shared)
-    private val walk = WalkRecord(shared)
+    private val walk = WalkRecord(shared, walkClock)
     private val moves = RowTransitions(shared)
     private val event = testEventId("E1")
     private val other = testEventId("E2")
@@ -58,6 +60,41 @@ class OwnUploadRowsTest {
     private fun only(asset: String): UploadRow = all().single { it.key == key(asset) }
 
     private val to = DestinationPath("/files/events/E1/devices/D/A/primary")
+
+    @Test
+    fun `a find keeps when it was first found and by which entry point, and a later walk changes neither`() {
+        walk.discover(event, listOf(found("A")), "OnForeground")
+        walk.discover(event, listOf(found("A")), "OnScheduledWake")
+
+        val discovered = assertNotNull(only("A").detail.discovered)
+        assertEquals("2026-07-14T12:00:00Z", TimestampText.format(discovered.at))
+        assertEquals("OnForeground", discovered.by)
+        walk.discover(event, listOf(found("B")))
+        assertEquals(null, assertNotNull(only("B").detail.discovered).by, "a walk off an entry point names none")
+    }
+
+    @Test
+    fun `a row recorded before discoveries were kept, or holding one that does not read, has none`() {
+        for ((asset, foundAt) in listOf("A" to null, "B" to "yesterday")) {
+            shared.execute {
+                it.ledgerQueries.recordDiscovered(
+                    event.value,
+                    UploadKeyText.of(key(asset)),
+                    Stored.Valid(key(asset).asset),
+                    LedgerState.DISCOVERED,
+                    "2026-07-01T10:00:00Z",
+                    "primary",
+                    "image/heic",
+                    "IMG.HEIC",
+                    foundAt,
+                    "OnForeground",
+                )
+            }
+        }
+
+        assertNull(only("A").detail.discovered)
+        assertNull(only("B").detail.discovered)
+    }
 
     @Test
     fun `a walk's finds are recorded as needing a job, with their detail, in key order`() {
