@@ -121,8 +121,8 @@ class DownloadTransfers(
             log.w("an unfetchable download address is skipped", "resource" of next.tag.resourceKey)
     }
 
-    private fun start(next: PendingResource): StartResult =
-        download.start(next.url, exchange.versionHeaders(), next.tag.text, network.transferNetwork())
+    private suspend fun start(next: PendingResource): StartResult =
+        download.start(next.url, exchange.transferHeaders(), next.tag.text, network.transferNetwork())
 
     private suspend fun started(next: PendingResource, result: StartResult) = when (result) {
         StartResult.Started -> running.add(next.tag.text).let { }

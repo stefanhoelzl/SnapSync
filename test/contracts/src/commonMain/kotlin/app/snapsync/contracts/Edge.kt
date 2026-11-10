@@ -5,6 +5,7 @@ import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.BackendTarget
 import app.snapsync.data.backend.Credential
+import app.snapsync.data.backend.DeliveryContext
 import app.snapsync.data.backend.TokenRead
 import app.snapsync.data.backend.VersionIgnored
 import app.snapsync.data.trust.TokenText
@@ -114,7 +115,8 @@ class EdgeSubject<P>(
  * ([backendCell]). The credential is the identity's token, never renewed: a rejected one is the request's answer.
  */
 class BackendClient(transport: HttpTransport, base: String, identity: ClientIdentity, private val log: CallLog) {
-    private val exchange = BackendExchange(transport, FixedTarget(base, identity.appVersion), VersionIgnored)
+    private val exchange =
+        BackendExchange(transport, FixedTarget(base, identity.appVersion), VersionIgnored, DeliveryContext())
     private val gateway = BackendGateway(exchange, HeldCredential(identity.token))
 
     /** One gated request, answered in its route's reply. */

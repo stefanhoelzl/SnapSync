@@ -21,8 +21,9 @@ import app.snapsync.wire.runtime.WireResponse
 
 /**
  * The backend's protocol (`docs/architecture.md`, "The backend boundary"), over the plain [HttpTransport]: every
- * request carries the declared version — the OS transfers too, through [versionHeaders] — and goes to the [target]'s
- * backend; every answer becomes its route's generated reply, and what it says about this build reaches [versions].
+ * request carries the declared version and the delivery context — the OS transfers too, through [transferHeaders] —
+ * and goes to the [target]'s backend; every answer becomes its route's generated reply, and what it says about this
+ * build reaches [versions].
  *
  * It sends [OpenRequest]s — the `/attest/…` issuers, which mint the very token a gated request needs — and carries no
  * credential of its own. [BackendGateway] is it with one: the app's attesting credential reaches the issuers through
@@ -32,17 +33,20 @@ class BackendExchange(
     private val transport: HttpTransport,
     private val target: BackendTarget,
     private val versions: VersionObserver,
+    /** The delivery context every request carries for the service's request log ([DeliveryContext]). */
+    private val context: DeliveryContext,
 ) {
     /** One open request, answered in its own reply type. Never throws (cancellation aside). */
     suspend fun <R : Reply> send(request: OpenRequest<R>): R =
         exchange(request.wire, request.decide, request.unreachable, token = null)
 
     /**
-     * The version every request declares, as headers — for the OS-performed transfers too, which carry it besides their
-     * own. None for a build that declares no version (a test's), which the backend answers as too old.
+     * What every request declares besides its own headers — the OS-performed transfers too: the version, which none
+     * declares for a build without one (a test's) and the backend then answers as too old, and the delivery context.
      */
-    fun versionHeaders(): Map<String, String> =
-        target.declaredVersion.takeIf { it.isNotBlank() }?.let { mapOf(Limits.VERSION_HEADER to it) }.orEmpty()
+    suspend fun transferHeaders(): Map<String, String> =
+        target.declaredVersion.takeIf { it.isNotBlank() }?.let { mapOf(Limits.VERSION_HEADER to it) }.orEmpty() +
+            context.headers()
 
     /** The absolute address of [path] — a route's path — on the target's backend. */
     fun url(path: String): String = target.base.trimEnd('/') + path
@@ -53,7 +57,7 @@ class BackendExchange(
         unreachable: (String) -> R,
         token: BearerToken?,
     ): R {
-        val headers = wire.headers + versionHeaders() +
+        val headers = wire.headers + transferHeaders() +
             listOfNotNull(token?.let { AUTHORIZATION to "Bearer ${it.secret}" })
         val reply = when (val result = transport.send(HttpRequest(wire.method, url(wire.path), headers, wire.body))) {
             is HttpResult.Response -> decide(WireResponse(result.status, result.headers, result.body))

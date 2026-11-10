@@ -4,6 +4,7 @@ import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.BackendTarget
 import app.snapsync.data.backend.Credential
+import app.snapsync.data.backend.DeliveryContext
 import app.snapsync.data.backend.TokenRead
 import app.snapsync.data.backend.VersionIgnored
 import app.snapsync.data.trust.TokenText
@@ -41,7 +42,8 @@ class ScriptedBackend(var answer: suspend (HttpRequest) -> HttpResult) {
         override suspend fun rejected(sent: BearerToken): TokenRead = TokenRead.None
     }
 
-    val gateway: BackendGateway = BackendGateway(BackendExchange(transport, target, VersionIgnored), credential)
+    val gateway: BackendGateway =
+        BackendGateway(BackendExchange(transport, target, VersionIgnored, DeliveryContext()), credential)
 
     companion object {
         /** A JSON answer. */

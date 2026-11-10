@@ -57,7 +57,7 @@ async function seeded() {
         fields: {
           completed: 1,
           fanout: "notify: Error: timed out",
-          network: "cellular",
+          network: "restricted",
           low_power: true,
           recipients: [3, 2],
         },
@@ -114,10 +114,10 @@ Deno.test("filters → time, status class and code, method, path, ids, reqid, ve
   assertEquals(await read(["--event", EV, "--status", "2xx"]), ["get001", "get002", "put001"]);
   assertEquals(await read(["--reqid", "get002"]), ["get002"]);
   assertEquals(await read(["--v", "0.13"]), ["get002"]);
-  assertEquals(await read(["--field", "network=cellular"]), ["put001"]);
+  assertEquals(await read(["--field", "network=restricted"]), ["put001"]);
   assertEquals(await read(["--field", "low_power=true"]), ["put001"]);
   assertEquals(await read(["--field", "recipients=2"]), ["put001"]);
-  assertEquals(await read(["--field", "network=wifi"]), []);
+  assertEquals(await read(["--field", "network=unrestricted"]), []);
   assertEquals(await read(["--error", "fanout"]), ["put001"]);
   assertEquals(await read(["--errors"]), ["put001", "bad001"]);
   assertEquals(await read(["--slow", "50"]), ["get002", "put001"]);

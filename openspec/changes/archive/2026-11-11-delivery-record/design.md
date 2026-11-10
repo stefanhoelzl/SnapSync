@@ -115,7 +115,7 @@ browser sends none.
 ### D8. Device context on every request
 `os`, `model`, `flavour`, `access`, `network`, `mobile_data`, `low_power`, `background` are added by the gateway
 (and to every background transfer's headers), from the platform's own facts — the same ones the user-sent bug
-report's device state reads. All builds send them; `flavour` separates test traffic.
+report's device state reads. All builds send them; `flavour` (release or dev, as `BuildInfo.reporterEnvironment` knows it — the same binary is promoted between tracks) separates test traffic.
 
 ### D9. Operational tables lose their diagnostics
 The app reads the union log's `gained` rows and the event/membership clock columns, so those stay. The `fetch`

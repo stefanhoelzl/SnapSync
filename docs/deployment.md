@@ -395,7 +395,7 @@ log"). `deno task logs` (in `api/`, `src/scripts/logs.ts`) reads it with the rea
 secrets-env -- deno task logs                              # the last 24 h, oldest first, as console lines
 secrets-env -- deno task logs --status 5xx --since 7d      # --method --path --route --event --device --reqid --v --error <tag> --errors --slow <ms> --until
 secrets-env -- deno task logs --stats route                # or hour · day · error · status · version
-secrets-env -- deno task logs --field network=cellular     # any delivery-record field (`docs/architecture.md`)
+secrets-env -- deno task logs --field network=restricted    # any delivery-record field (`docs/architecture.md`)
 secrets-env -- deno task logs --devices --since 30d        # each device once, at its last app version, per platform
 secrets-env -- deno task logs --method SWEEP --since 7d    # what the nightly sweep completed and deleted
 secrets-env -- deno task logs --live                       # the console itself, streamed (the account key)

@@ -52,7 +52,7 @@ internal class Target(override val base: String = BASE, override val declaredVer
 
 /** The exchange over [transport], declaring [VERSION] at [BASE], reporting to [versions]. */
 internal fun exchangeOver(transport: HttpTransport, versions: VersionObserver = VersionIgnored): BackendExchange =
-    BackendExchange(transport, Target(), versions)
+    BackendExchange(transport, Target(), versions, DeliveryContext())
 
 /** A [Credential] holding [current], which a rejection replaces with [recovered] (or keeps, for `null`). */
 internal class ScriptedCredential(

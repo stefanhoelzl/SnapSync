@@ -97,12 +97,12 @@ Deno.test("middleware → the delivery context leads the fields, every readable 
     headers: {
       "x-snapsync-context":
         "device=0f8fad5b-d9cb-469f-a165-70867728950e;os=ios/18.6;model=iPhone12,8;" +
-        "flavour=testflight;access=limited;network=cellular;mobile_data=1;low_power=0;background=1",
+        "flavour=release;access=limited;network=restricted;mobile_data=1;low_power=0;background=1",
     },
   });
   assertMatch(
     lines[0],
-    / out=0 device=0f8fad5b-d9cb-469f-a165-70867728950e os=ios\/18.6 model="iPhone12,8" flavour=testflight access=limited network=cellular mobile_data=true low_power=false background=true$/,
+    / out=0 device=0f8fad5b-d9cb-469f-a165-70867728950e os=ios\/18.6 model="iPhone12,8" flavour=release access=limited network=restricted mobile_data=true low_power=false background=true$/,
   );
 });
 
@@ -112,11 +112,11 @@ Deno.test("middleware → an absent, unknown or unreadable context value is left
   await app.request("/x", {
     headers: {
       "x-snapsync-context":
-        "os=windows/11;flavour=beta;mobile_data=yes;colour=red;device=nope;garbage;network=wifi;network=cellular",
+        "os=windows/11;flavour=beta;mobile_data=yes;colour=red;device=nope;garbage;network=unrestricted;network=restricted",
     },
   });
   assertMatch(lines[0], / out=0$/);
-  assertMatch(lines[1], / out=0 network=wifi$/);
+  assertMatch(lines[1], / out=0 network=unrestricted$/);
 });
 
 Deno.test("middleware → a body-less answer writes at once", async () => {

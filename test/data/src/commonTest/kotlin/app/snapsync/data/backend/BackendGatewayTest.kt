@@ -50,7 +50,12 @@ class BackendGatewayTest {
     @Test
     fun a_build_that_declares_no_version_sends_no_version_header() = runTest {
         val transport = ScriptedTransport()
-        BackendExchange(transport, Target(declaredVersion = ""), VersionIgnored).send(Routes.Challenge.request())
+        BackendExchange(
+            transport,
+            Target(declaredVersion = ""),
+            VersionIgnored,
+            DeliveryContext(),
+        ).send(Routes.Challenge.request())
         assertEquals(null, transport.requests.single().headers[Limits.VERSION_HEADER], "the backend answers it too old")
     }
 

@@ -2,14 +2,23 @@ package app.snapsync.composition.app
 
 import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.composition.process.ProcessGraph
+import app.snapsync.data.backend.AccessContext
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.backend.BuildContext
 import app.snapsync.data.backend.BuildTarget
+import app.snapsync.data.backend.ConditionsContext
+import app.snapsync.data.backend.DeliveryContext
+import app.snapsync.data.backend.IdentityContext
+import app.snapsync.data.backend.MobileDataContext
+import app.snapsync.data.backend.NetworkContext
 import app.snapsync.data.backend.Observers
 import app.snapsync.data.event.EventDirectory
 import app.snapsync.data.event.EventRename
+import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.membership.EventJoin
 import app.snapsync.data.membership.LeaveNotifier
+import app.snapsync.data.network.NetworkReadings
 import app.snapsync.data.push.PushEndpointPublisher
 import app.snapsync.data.service.ServiceConditions
 import app.snapsync.data.trust.AttestationIssuer
@@ -35,9 +44,22 @@ class BackendGraph(ports: AppPorts, process: ProcessGraph, services: ServicesGra
     /** Whether SnapSync's service is failing, as the latest answer told — an opening forgets it. */
     val serviceConditions: ServiceConditions = ServiceConditions()
 
+    /**
+     * The delivery context every request carries (`DeliveryContext`): the app reads every part — its build, its device
+     * id, the photo access, the network and the mobile-data choice, and the device's power and background allowance.
+     */
+    private val context: DeliveryContext = DeliveryContext(
+        BuildContext(process.build),
+        IdentityContext(services.deviceIdentity),
+        AccessContext(GrantRead(ports.gallery.grant)),
+        NetworkContext(NetworkReadings(ports.network)),
+        MobileDataContext(services.mobileData),
+        ConditionsContext(ports.deviceConditions, process.clock),
+    )
+
     /** Where every request goes, the version it declares, and the reply it reads — reporting a refused build. */
     val exchange: BackendExchange =
-        BackendExchange(ports.http, BuildTarget(process.build), Observers(versionGate, serviceConditions))
+        BackendExchange(ports.http, BuildTarget(process.build), Observers(versionGate, serviceConditions), context)
 
     /** The bearer token EVERY backend call carries, kept alive and recovered when the backend rejects it. */
     val attestation: AttestingCredential = AttestingCredential(

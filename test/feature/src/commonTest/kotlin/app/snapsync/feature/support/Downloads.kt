@@ -4,6 +4,7 @@ package app.snapsync.feature.support
 
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendTarget
+import app.snapsync.data.backend.DeliveryContext
 import app.snapsync.data.backend.VersionObserver
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.receiving.DOWNLOADS_DB_NAME
@@ -49,6 +50,7 @@ fun receivingCounts(databases: Databases): ReceivingCounts = ReceivingCounts(
                 },
                 NoTarget,
                 NoVersions,
+                DeliveryContext(),
             ),
         ),
     ),
