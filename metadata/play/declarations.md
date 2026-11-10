@@ -117,7 +117,7 @@ Instructions, the Android wording of `metadata/review/notes.md`:
     `privacy-security`): part of crash logs, so the operator can find what a failure affected;
   - the **delivery record** (capability `privacy-security`, "The service records how photos are delivered"; it
     replaced the read record of an event's photo list, `changes/delivery-record`): per request the install, the app
-    version, the phone's OS and model, the kind of build, the photo access, the network type and data setting,
+    version, the phone's OS and model, whether it is a release or a development build, the photo access, the network type and data setting,
     power saving and background allowance; per photo when it was taken, found, sent, announced, downloaded and
     added, and why; browsers anonymously; kept 30 days whether or not the event's photos were deleted. It is
     **diagnostics** and **other app performance data**, both already declared in both stores (decided 2026-10-05,

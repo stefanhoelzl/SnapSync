@@ -6,6 +6,7 @@ import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.contracts.attest.InMemoryKeyAttestation
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.backend.DeliveryContext
 import app.snapsync.data.backend.VersionIgnored
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.HttpTransport
@@ -19,7 +20,7 @@ import app.snapsync.wire.api.Reply
  * the test's own), minted as a device mints one; a device the mock refuses to attest sends none.
  */
 internal class Wire(transport: HttpTransport, version: String = "99.0") {
-    private val exchange = BackendExchange(transport, FixedTarget(BASE, version), VersionIgnored)
+    private val exchange = BackendExchange(transport, FixedTarget(BASE, version), VersionIgnored, DeliveryContext())
     private val tokens = DeviceTokens(transport, BASE, { InMemoryKeyAttestation() }, { version })
 
     suspend fun <R : Reply> send(request: GatedRequest<R>): R {

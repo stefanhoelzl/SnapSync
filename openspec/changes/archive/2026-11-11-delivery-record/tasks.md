@@ -57,13 +57,13 @@
 
 ## 4. Device context on every request (app)
 
-- [ ] 4.1 Add the context headers in the gateway beside the version header, from platform facts behind ports
+- [x] 4.1 Add the context headers in the gateway beside the version header, from platform facts behind ports
   (OS and version, model, build flavour, photo access, network type and mobile-data setting, low power,
   background allowed), reusing the bug report's device-state reads where they exist; verify core tests over the
   mock backend assert every header
 - [ ] 4.2 Put the same headers on every background transfer (upload and download sessions, the PhotoKit
   extension, Android work); verify the transfer port contracts on iOS (simulator) and Android (emulator)
-- [ ] 4.3 Verify the iOS compile proxy `./gradlew compileIosMainKotlinMetadata` and `./gradlew build`
+- [x] 4.3 Verify the iOS compile proxy `./gradlew compileIosMainKotlinMetadata` and `./gradlew build`
 
 ## 5. Photo stage facts (app)
 

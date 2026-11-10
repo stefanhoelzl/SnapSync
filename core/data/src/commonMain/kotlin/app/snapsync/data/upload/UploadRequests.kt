@@ -72,7 +72,7 @@ class UploadRequests(
         is TokenRead.Held, is TokenRead.Unavailable -> read
     }
 
-    private fun request(upload: Upload, device: DeviceId, token: BearerToken): BuiltRequest {
+    private suspend fun request(upload: Upload, device: DeviceId, token: BearerToken): BuiltRequest {
         val key = upload.key
         val path = Routes.UploadResource.path(
             upload.event.value,
@@ -82,7 +82,7 @@ class UploadRequests(
             nameOf(upload),
         )
         val url = exchange.url(path)
-        val headers = mapOf("Content-Type" to upload.detail.contentType) + exchange.versionHeaders() +
+        val headers = mapOf("Content-Type" to upload.detail.contentType) + exchange.transferHeaders() +
             mapOf("Authorization" to "Bearer ${token.secret}")
         return BuiltRequest(url, headers, Destinations.pathOf(url), device)
     }

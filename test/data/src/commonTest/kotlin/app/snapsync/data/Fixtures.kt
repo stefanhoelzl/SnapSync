@@ -2,6 +2,7 @@ package app.snapsync.data
 
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendTarget
+import app.snapsync.data.backend.DeliveryContext
 import app.snapsync.data.backend.TokenRead
 import app.snapsync.data.backend.VersionIgnored
 import app.snapsync.data.backend.VersionObserver
@@ -152,7 +153,12 @@ internal class FakeClient(
     }
 
     /** The exchange the credential reaches the issuers through, reporting to [versions]. */
-    fun exchange(versions: VersionObserver = VersionIgnored) = BackendExchange(this, Target, versions)
+    fun exchange(versions: VersionObserver = VersionIgnored) = BackendExchange(
+        this,
+        Target,
+        versions,
+        DeliveryContext(),
+    )
 
     private fun minted(text: String?): TokenIssuance = text?.let { TokenIssuance.Minted(bearer(it)) } ?: REFUSED
 

@@ -5,8 +5,8 @@
 ### Requirement: The service records how photos are delivered
 The service SHALL keep a delivery record of every request it is sent. For a request from a genuine SnapSync app it
 SHALL record which phone sent it (by its device identifier, requirement "No account and no personal identity"),
-the app's version, the phone's operating system and its version, its model, the kind of build (from the App
-Store, TestFlight or Google Play, or a development build), the photo access the app has, the kind of network the
+the app's version, the phone's operating system and its version, its model, whether it is a release or a
+development build, the photo access the app has, the kind of network the
 phone is on and whether it may use mobile data for SnapSync, whether power saving is on, and whether the system
 lets the app work in the background. For the photos the app shares and receives it SHALL record when each photo
 was taken, when the app found it, when it was queued, sent and became available to the members, when it was
