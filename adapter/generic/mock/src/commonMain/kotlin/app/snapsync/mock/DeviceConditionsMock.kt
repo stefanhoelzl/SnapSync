@@ -32,6 +32,15 @@ class DeviceConditionsMock(reading: DeviceConditionsReading = TYPICAL) {
 
     fun port(): DeviceConditions = InMemoryDeviceConditions(cell, holding)
 
+    /**
+     * Why the operating system refuses a background task request now: while Background App Refresh is off — the user's
+     * switch, or a profile's — `BGTaskScheduler` answers `unavailable`. `null` while it is available, or a fact this
+     * platform does not report (Android's work is not refused for it).
+     */
+    internal fun wakeRefusal(): String? = (reading.backgroundRefresh as? Fact.Known)?.value
+        ?.takeIf { it != BackgroundRefresh.AVAILABLE }
+        ?.let { "BGTaskScheduler unavailable: background refresh ${it.label}" }
+
     val operator: DeviceConditionsOperator = DeviceConditionsOperator(this)
 
     companion object {

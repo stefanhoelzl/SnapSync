@@ -97,7 +97,9 @@ class InviteLinkIntegrationTest {
         scenario = "The invite carries the event identifier only",
     )
     fun an_encrypted_events_invite_carries_its_identifier_and_its_key_only() = behaviour {
-        val event = given { joinedEvent() }
+        // A name with a space, digits and punctuation, so its preview carries both escaped and plain characters.
+        val name = "Anna's 40th (Mo.-So.)"
+        val event = given { joinedEvent(name = name) }
 
         lateinit var shared: Seen<WorldEvent.Shared>
         whenever { tap(UiIntent.ShareInvite) }
@@ -107,7 +109,7 @@ class InviteLinkIntegrationTest {
         val text = shared.value.text
         assertEquals(prefix, text.take(prefix.length), "the path names the event, the query its name for previews")
         assertEquals(
-            Defaults.EVENT_NAME,
+            name,
             URLDecoder.decode(text.substringAfter("?n=").substringBefore('#'), Charsets.UTF_8),
         )
         assertEquals(true, text.contains("#k="), "the fragment its key")
@@ -294,6 +296,27 @@ class InviteLinkIntegrationTest {
 
         whenever { advance(NOTICE_GONE) }
         then { screen<Layer.CreateEvent> { it.error == null } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "A damaged invite is reported and changes nothing",
+        scenario = "A truncated link shows a passing error",
+    )
+    fun every_way_a_fragment_form_invite_is_damaged_shows_the_passing_error() = behaviour {
+        given { inFront() }
+
+        for (damaged in DAMAGED_FRAGMENT_FORMS) {
+            whenever { openLink(damaged) }
+            then {
+                screen<Layer.CreateEvent> { it.passing == ScreenMessage.INVALID_LINK }
+                neverScreen<Layer.JoiningEvent>()
+            }
+
+            whenever { advance(NOTICE_GONE) }
+            then { screen<Layer.CreateEvent> { it.error == null } }
+        }
     }
 
     @Test
@@ -577,6 +600,26 @@ class InviteLinkIntegrationTest {
 
         /** A fragment-form invite whose payload was cut off. */
         const val TRUNCATED = "$LINK_ORIGIN/join#v=3&d=eyJldmVudElkIjoiMTIz"
+
+        private fun payload(json: String) = Base64.getUrlEncoder().withoutPadding().encodeToString(json.toByteArray())
+
+        /**
+         * A fragment-form invite damaged every other way a pasted, cut or hand-edited link can be: a fragment not made
+         * of pairs, an older version, no payload, a payload that is no base64url, no object, carries a key no invite
+         * holds, or names no event.
+         */
+        val DAMAGED_FRAGMENT_FORMS = listOf(
+            "$LINK_ORIGIN/join#garbage",
+            "$LINK_ORIGIN/join#v=2&d=${payload("""{"eventId":"8d4f0b6e-1a2b-4c3d-9e8f-0a1b2c3d4e5f"}""")}",
+            "$LINK_ORIGIN/join#v=3",
+            "$LINK_ORIGIN/join#v=3&d=!!!",
+            "$LINK_ORIGIN/join#v=3&d=${payload("[1]")}",
+            "$LINK_ORIGIN/join#v=3&d=${payload("""{"eventId":"8d4f0b6e-1a2b-4c3d-9e8f-0a1b2c3d4e5f","x":1}""")}",
+            "$LINK_ORIGIN/join#v=3&d=${payload("""{"autoJoin":true}""")}",
+            "$LINK_ORIGIN/join#v=3&d=${payload("""{"eventId":{}}""")}",
+            "$LINK_ORIGIN/join#v=3&d=${payload("""{"eventId":42}""")}",
+            "$LINK_ORIGIN/join#v=3&d=${payload("""{"eventId":"not an event"}""")}",
+        )
 
         /** Longer than a passing notice stays. */
         val NOTICE_GONE = 6.seconds

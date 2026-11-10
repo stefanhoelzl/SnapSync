@@ -14,6 +14,7 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryResource
 import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
@@ -113,9 +114,14 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
 
     // ---- the library ------------------------------------------------------------------------------
 
-    override suspend fun add(id: String, kind: LibraryPhotoKind?, date: String?) {
-        val at = date ?: LibraryAssets.DEFAULT_DATE
-        val asset = when (kind ?: LibraryPhotoKind.PHOTO) {
+    override suspend fun add(id: String, kind: LibraryPhotoKind?, date: String?, filename: String?, size: Int?) {
+        val asset = ofKind(id, kind ?: LibraryPhotoKind.PHOTO, date ?: LibraryAssets.DEFAULT_DATE)
+        size?.let { state.sizes[asset.asset.id] = it }
+        state.library.update { it + (filename?.let { asset.stillNamed(it) } ?: asset) }
+    }
+
+    private fun ofKind(id: String, kind: LibraryPhotoKind, at: String): GalleryAssetResources =
+        when (kind) {
             LibraryPhotoKind.PHOTO -> LibraryAssets.photo(id, creationDate = at)
             LibraryPhotoKind.LOW_RES -> LibraryAssets.lowResPhoto(id, at)
             LibraryPhotoKind.SCREENSHOT -> LibraryAssets.screenshot(id, at)
@@ -129,8 +135,14 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
             LibraryPhotoKind.RECEIVED_FULL_RES -> LibraryAssets.receivedFullResPhoto(id, at)
             LibraryPhotoKind.MOTION_PHOTO -> LibraryAssets.motionPhoto(id, at)
         }
-        state.library.update { it + asset }
-    }
+
+    /** This photo with its still — its first resource — named [filename] by the library. */
+    private fun GalleryAssetResources.stillNamed(filename: String) = GalleryAssetResources(
+        asset,
+        resources.mapIndexed { i, r ->
+            if (i == 0) GalleryResource(r.kind, r.contentType, filename, r.handle) else r
+        },
+    )
 
     override suspend fun remove(asset: String) {
         state.library.update { library -> library.filterNot { it.id.value == asset } }
@@ -307,6 +319,19 @@ internal class LibraryState(
 ) {
     private val lock = mockLock()
 
+    /** The size of each photo's still an operator stated, in bytes; a photo not here is its stand-in's size. */
+    val sizes = SnapshotMap<PlatformAssetId, Int>()
+
+    /**
+     * The bytes the library exports for [asset]'s still: a stand-in naming the photo — long enough that finding it in
+     * other bytes is no chance — repeated to the size stated for it, if any.
+     */
+    private fun bytesOf(asset: PlatformAssetId): ByteArray {
+        val standIn = "the still of photo ${asset.value}, as the library holds it".encodeToByteArray()
+        val size = sizes[asset] ?: return standIn
+        return ByteArray(size) { standIn[it % standIn.size] }
+    }
+
     fun <T> locked(block: () -> T): T = lock.locked(block)
 
     @Volatile var answer: LibraryGrant = answer
@@ -346,6 +371,13 @@ internal class LibraryState(
 
     /** What each export wrote, by the path it was written to: the files an exporting library leaves. */
     @Volatile var exported: Map<String, ByteArray> = emptyMap()
+
+    /** [asset]'s still exported to [to]: written there on the device's disk, where the app reads it next. */
+    fun export(asset: PlatformAssetId, to: String) {
+        val bytes = bytesOf(asset)
+        exported += to to bytes
+        disk?.place(to, bytes)
+    }
 
     @Volatile var albumKind = LibraryAlbumKind.COLLECTION
 

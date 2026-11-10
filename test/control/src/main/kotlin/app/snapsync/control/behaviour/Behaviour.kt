@@ -14,6 +14,7 @@ import app.snapsync.levers.ExtensionRegistryLevers
 import app.snapsync.levers.FilesLevers
 import app.snapsync.levers.GalleryLevers
 import app.snapsync.levers.HostLevers
+import app.snapsync.levers.IntegrityLevers
 import app.snapsync.levers.KeychainLevers
 import app.snapsync.levers.LibraryLevers
 import app.snapsync.levers.LinksLevers
@@ -246,6 +247,9 @@ class Acts internal constructor(
 
     /** The device's power, battery, thermal state and background allowance, as the operating system reports them. */
     val deviceConditions: DeviceConditionsLevers = client.levers(DeviceConditionsLevers)
+
+    /** The device's integrity service, as far as its vendor's attestation server reaches it. */
+    val integrity: IntegrityLevers = client.levers(IntegrityLevers)
 
     /** What the operating system says of the app's process: its memory footprint. */
     val processInfo: ProcessInfoLevers = client.levers(ProcessInfoLevers)

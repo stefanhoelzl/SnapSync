@@ -122,6 +122,65 @@ class VerificationFaultIntegrationTest {
     @Test
     @Verifies(
         spec = "privacy-security",
+        requirement = "A refused phone is told why",
+        scenario = "No answer is not a refusal",
+    )
+    fun a_create_whose_fresh_key_the_attestation_server_cannot_vouch_for_is_never_told_as_a_refusal() = behaviour {
+        // A phone verified for the first time attests a fresh key, which needs its vendor's server (Apple's App Attest
+        // service): while that server cannot be reached the phone produces no proof — and SnapSync never refused it.
+        given {
+            step(
+                "the attestation server cannot be reached",
+                act = { integrity.attestationServerReachable(false) },
+                until = {},
+            )
+            inFront()
+        }
+        whenever { createTheEvent() }
+        then {
+            screen<Layer.CreateEvent> { it.error != null }
+            neverScreen<Layer.CreateEvent> { it.error?.let(REFUSALS::contains) == true }
+            never<WorldEvent.EventCreated>()
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A verification problem never loses a photo",
+        scenario = "The proof expires while the phone sits unused",
+    )
+    fun a_phone_restored_onto_new_hardware_attests_a_fresh_key_and_its_photos_are_shared() = behaviour {
+        // Restored from a backup onto another phone, the app still names the key it attested with — and that phone's
+        // secure hardware holds no such key. Its expired proof is renewed with a fresh key instead.
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            inFront()
+            step("in the background", act = { os.background() }, until = { settled { true } })
+            step(
+                "left unopened longer than the proof lasts",
+                act = { advance(PROOF_EXPIRED) },
+                until = { settled { true } },
+            )
+            step("restored onto another phone", act = { integrity.restoredOntoAnotherPhone() }, until = {})
+            photos("P")
+        }
+
+        whenever { os.foreground() }
+        then {
+            event<WorldEvent.BackendReceived> { it.operation == "mintToken" }
+            neverScreen<Layer.Joined> { it.health is SyncHealth.Unattested }
+            settled { true }
+        }
+
+        whenever { uploadAll() }
+        then { event<WorldEvent.BytesStored> { it.asset == "P" } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
         requirement = "A verification problem never loses a photo",
         scenario = "A renewal fails while the proof is still valid",
     )

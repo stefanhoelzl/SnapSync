@@ -5,6 +5,7 @@ import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.Proof
 import app.snapsync.ports.ProofFormat
 import app.snapsync.ports.ProveResult
+import kotlin.concurrent.Volatile
 
 /**
  * The honest in-memory [DeviceIntegrity] — the device half of App Attest on an iPhone, or of Keystore key attestation
@@ -34,8 +35,8 @@ internal class InMemoryDeviceIntegrity(
     private val platform: Platform = Platform.IOS,
     /** Handles of keys the enclave holds but will not sign with. */
     private val unusable: Set<String> = emptySet(),
-    /** Whether the vendor that vouches for a fresh key can be reached — not on a device that is offline. */
-    private val vendorReachable: Boolean = true,
+    /** The vendor that vouches for a fresh key — not reachable from a device that is offline. */
+    private val vendor: AttestationServer = AttestationServer(),
 ) : DeviceIntegrity {
 
     /** The platform's service, its call that attests a fresh key, its call that signs, and the format of its proofs. */
@@ -56,7 +57,7 @@ internal class InMemoryDeviceIntegrity(
         !available -> ProveResult.Refused.NotAvailable("$service: unsupported in this process")
         handle != null && handle in unusable ->
             ProveResult.Refused.Failed("$sign: the secure hardware will not use $handle")
-        handle == null && !vendorReachable -> ProveResult.Refused.Failed("$attest: the server is unavailable")
+        handle == null && !vendor.reachable -> ProveResult.Refused.Failed("$attest: the server is unavailable")
         handle == null -> keys.create().let { key ->
             ProveResult.Ok(
                 fresh(key, MockKeyAttestation.payload(key, challenge)),
@@ -76,6 +77,9 @@ internal class InMemoryDeviceIntegrity(
  * The keys a device's Secure Enclave holds: distinct per creation, and there for every process of the device — each
  * on its own thread, so every read and write is [locked].
  */
+/** The vendor's attestation server — Apple's App Attest service, Google's — as every process of one device reaches it. */
+internal class AttestationServer(@Volatile var reachable: Boolean = true)
+
 internal class EnclaveKeys {
     private val lock = mockLock()
     private var generated = 0
@@ -86,6 +90,9 @@ internal class EnclaveKeys {
     fun create(): String = locked { "in-memory-key-${++generated}".also { held += it } }
 
     fun holds(handle: String): Boolean = locked { handle in held }
+
+    /** The hardware is another phone's: it holds none of the keys this one made. */
+    fun replaced() = locked { held.clear() }
 
     /** How many keys were ever generated, and the ones held — what the device keeps. */
     fun snapshot(): Pair<Int, List<String>> = locked { generated to held.toList() }

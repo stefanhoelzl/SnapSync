@@ -64,7 +64,10 @@ open class MockDevice(
 
     /** The device's power saving, battery, thermal state and background allowance, read for a bug report. */
     val deviceConditions = DeviceConditionsMock()
-    val wakes = WakeMock()
+
+    /** iOS refuses the app's background task requests while Background App Refresh is off for it. */
+    val wakes = WakeMock(conditions = deviceConditions)
+
     val backgroundTime = BackgroundTimeMock()
 
     /** The registration judges a change by the library's grant now, as the platform does. */

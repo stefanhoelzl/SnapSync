@@ -160,6 +160,8 @@ internal class OlderInstall(private val world: MockWorld) : OlderInstallLevers {
 
     override suspend fun refusedShareRange() = OlderInstalls(world).refusedShareRange()
 
+    override suspend fun membershipFile(bytes: ByteArray) = OlderInstalls(world).membershipFile(bytes)
+
     private companion object {
         /** The device a backlog is seeded for when the caller names none — a device id like every other. */
         const val LEGACY_DEVICE = "1e6ac700-0000-4000-8000-000000000001"

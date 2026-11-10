@@ -17,6 +17,8 @@ import app.snapsync.contracts.WakeState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.domain.report.BackgroundRefresh
+import app.snapsync.domain.report.Fact
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.Running
 import app.snapsync.ports.BackgroundTime
@@ -61,7 +63,8 @@ class BackgroundMockContractBindingsTest {
             val mock = when (state) {
                 WakeState.DELIVERING, WakeState.DELIVERING_LIBRARY_CHANGES ->
                     WakeMock(supported = setOf(WakeId.Heartbeat, WakeId.LibraryChanged))
-                WakeState.REFUSING -> WakeMock(refusal = "this process may schedule no task")
+                // iOS refuses every background task while Background App Refresh is off.
+                WakeState.REFUSING -> WakeMock(conditions = DeviceConditionsMock(REFRESH_OFF))
                 else -> WakeMock()
             }
             val port = mock.port().recorded(log)
@@ -154,3 +157,6 @@ class BackgroundMockContractBindingsTest {
     @Test
     fun `the registry mock satisfies the ExtensionRegistry contract`() = verify(ExtensionRegistryContract, registry)
 }
+
+/** An iPhone whose Background App Refresh the member switched off. */
+private val REFRESH_OFF = DeviceConditionsMock.TYPICAL.copy(backgroundRefresh = Fact.Known(BackgroundRefresh.DENIED))

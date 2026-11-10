@@ -237,6 +237,34 @@ interface SystemUiLevers {
     )
 }
 
+/**
+ * **The device's integrity service** — App Attest on an iPhone, Keystore attestation on an Android phone — as far as
+ * its vendor's servers reach it. The keys themselves follow from the phone the build is for, not from a lever.
+ */
+@Rpc
+interface IntegrityLevers {
+    /**
+     * Whether the vendor's attestation server answers: while it does not, attesting a fresh key fails, as App Attest
+     * answers `serverUnavailable` and asks the app to try again later. A key already attested still signs.
+     */
+    suspend fun attestationServerReachable(on: Boolean)
+
+    /**
+     * The phone was restored from an encrypted backup onto another phone: the app's Keychain items came along — the
+     * key id it attested with among them — and no key of the old phone's secure hardware did, as App Attest keys never
+     * travel. A key the app names is then one this phone does not hold. The process keeps running until the next launch.
+     */
+    suspend fun restoredOntoAnotherPhone()
+
+    @OptIn(ExperimentalRpcApi::class)
+    companion object : LeverService<IntegrityLevers>(
+        IntegrityLevers::class,
+        "integrity",
+        setOf(LeverNeed.INTEGRITY_MOCKED),
+        { serviceDescriptorOf() },
+    )
+}
+
 /** What the app handed the platform's UI, each list in order. */
 @Serializable
 data class SystemUiRecord(

@@ -127,13 +127,6 @@ object EncryptedFileFormat {
 
 /** An encrypted file's opening bytes: everything before its first segment, each part of its exact length. */
 class FileHead internal constructor(val keyId: ByteArray, val salt: ByteArray, val noncePrefix: ByteArray) {
-
-    override fun equals(other: Any?): Boolean =
-        other is FileHead && keyId.contentEquals(other.keyId) && salt.contentEquals(other.salt) &&
-            noncePrefix.contentEquals(other.noncePrefix)
-
-    override fun hashCode(): Int = keyId.contentHashCode()
-
     companion object {
         /** The head of these parts, or `null` unless each is of its length ([EncryptedFileFormat]'s constants). */
         fun of(keyId: ByteArray, salt: ByteArray, noncePrefix: ByteArray): FileHead? = when {

@@ -35,7 +35,5 @@ coverage {
         packages = listOf("app.snapsync.wire.api", "app.snapsync.wire.models"),
     )
     unit()
-    // → 81 in phase 5 (clean-up), when the runtime's helpers moved onto `Wire` (no top-level functions in the
-    // core): the same code, measured as one object. No test was lost. Measured 81.90 %.
-    integration(instructions = 81, branches = 71)
+    integration() // at the goal since phase 44: a saved photo's name escaped in its upload, and a publish refused
 }

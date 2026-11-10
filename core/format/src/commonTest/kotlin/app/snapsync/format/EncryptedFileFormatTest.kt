@@ -11,7 +11,6 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 /**
@@ -94,17 +93,10 @@ class EncryptedFileFormatTest {
         assertEquals(40, bytes[9].toInt(), "Tink's header length")
         assertContentEquals(head.salt, bytes.copyOfRange(10, 42))
         assertContentEquals(head.noncePrefix, bytes.copyOfRange(42, 49))
-        assertEquals(head, assertIs<HeadRead.Read>(EncryptedFileFormat.decodeHead(bytes + byteArrayOf(1, 2))).head)
-        assertEquals(
-            head.hashCode(),
-            FileHead.of(head.keyId.copyOf(), head.salt.copyOf(), head.noncePrefix.copyOf()).hashCode(),
-        )
-        assertNotEquals<Any>(head, "a head")
-        // Equal by every byte of every part: a head differing in any one part is another file's.
-        val other = ByteArray(32) { 99 }
-        assertNotEquals(head, FileHead.of(other.copyOf(8), head.salt, head.noncePrefix))
-        assertNotEquals(head, FileHead.of(head.keyId, other, head.noncePrefix))
-        assertNotEquals(head, FileHead.of(head.keyId, head.salt, other.copyOf(7)))
+        val decoded = assertIs<HeadRead.Read>(EncryptedFileFormat.decodeHead(bytes + byteArrayOf(1, 2))).head
+        assertContentEquals(head.keyId, decoded.keyId)
+        assertContentEquals(head.salt, decoded.salt)
+        assertContentEquals(head.noncePrefix, decoded.noncePrefix)
     }
 
     @Test

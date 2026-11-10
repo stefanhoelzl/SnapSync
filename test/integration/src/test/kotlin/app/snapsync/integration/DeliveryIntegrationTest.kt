@@ -166,6 +166,26 @@ class DeliveryIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "delivery", requirement = "Photos travel without the app being opened")
+    fun on_android_a_plain_events_photo_is_uploaded_straight_from_the_library() = behaviour {
+        // Android's uploader reads a photo from the library itself: a plain event's photo is handed over as the library
+        // item, never staged as a file first.
+        given {
+            creatingPlain()
+            androidProcess()
+            appUploadsOnly()
+            joinedEvent()
+            photos("A")
+        }
+
+        whenever { os.foreground() }
+        then { event<WorldEvent.SessionTransferCreated>() }
+
+        whenever { uploadSession.complete() }
+        then { event<WorldEvent.BytesStored> { it.asset == "A" } }
+    }
+
+    @Test
     @Verifies(
         spec = "delivery",
         requirement = "Losing photo access stops new uploads but lets in-flight ones finish",
