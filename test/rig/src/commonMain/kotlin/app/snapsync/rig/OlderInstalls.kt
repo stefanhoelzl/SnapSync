@@ -122,7 +122,8 @@ internal class OlderInstalls(private val world: MockWorld) {
                 now.ledger.of("ledgerRow").forEach { row ->
                     db.insert(
                         "ledgerRow",
-                        row - "eventId" + ("destinationPath" to row["destinationPath"]?.let(::withNoEvent)),
+                        row - "eventId" - DISCOVERY_FACTS +
+                            ("destinationPath" to row["destinationPath"]?.let(::withNoEvent)),
                     )
                 }
                 now.ledger.of("manifestVersion").singleOrNull()?.let {
@@ -264,7 +265,10 @@ internal class OlderInstalls(private val world: MockWorld) {
                     "eventRef",
                 ).associate { (it["sourceDeviceId"] to it["sourceAssetId"]) to it["eventId"] }
                 now.downloads.of("downloadAsset").forEach { row ->
-                    db.insert("downloadAsset", row + ("eventId" to tags[row["sourceDeviceId"] to row["sourceAssetId"]]))
+                    db.insert(
+                        "downloadAsset",
+                        row - DELIVERY_FACTS + ("eventId" to tags[row["sourceDeviceId"] to row["sourceAssetId"]]),
+                    )
                 }
                 now.downloads.of("downloadResource").forEach { db.insert("downloadResource", it - "eventId") }
                 inFlight += startedWithNoEvent()
@@ -402,6 +406,12 @@ internal class OlderInstalls(private val world: MockWorld) {
 
         /** The manifest record's columns 18.sqm added. */
         val MANIFEST_FACTS = setOf("declaration", "assets")
+
+        /** What 20.sqm's upload rows keep for the delivery record — no older build wrote it, so an update starts without. */
+        val DISCOVERY_FACTS = setOf("foundAt", "foundBy")
+
+        /** What 13.sqm's received photos keep for the delivery record — no older build wrote it either. */
+        val DELIVERY_FACTS = setOf("downloadedAt", "addedAt", "addedBy", "deliveryReported")
 
         const val CONFIG_FILE = "eventconfig.json"
         const val MANIFEST_FILE = "device-manifest/last-uploaded.json"

@@ -1,5 +1,6 @@
 package app.snapsync.data.receiving
 
+import app.snapsync.data.backend.EntryPointLabel
 import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.read
 import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.then
 import app.snapsync.data.receiving.ImportStatements.importable
@@ -9,6 +10,7 @@ import app.snapsync.data.receiving.ImportedReleases.Companion.importedAsset
 import app.snapsync.data.receiving.RowStatements.stagedRows
 import app.snapsync.data.receiving.RowStatements.valid
 import app.snapsync.data.receiving.db.DownloadStoreQueries
+import app.snapsync.data.time.WallClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.receiving.AssetRef
 import app.snapsync.domain.receiving.ImportedAsset
@@ -27,7 +29,7 @@ private val log = Log("ImportQueue")
  * what its import came to. The only place a [StagedDownload] comes from; an [ImportedAsset] is minted by
  * [importedAsset].
  */
-class ImportQueue(private val store: DownloadStore) {
+class ImportQueue(private val store: DownloadStore, private val clock: WallClock) {
 
     /**
      * A resource's bytes are staged at [at]: record it, and answer whether a row took it. A staging no row takes — the
@@ -36,12 +38,15 @@ class ImportQueue(private val store: DownloadStore) {
      */
     suspend fun staged(ref: AssetRef, resourceKey: String, at: StagedPath): DownloadRead<StageRecord> = store.locked {
         store.read { q ->
-            markedStaged(
-                q,
-                ref,
-                resourceKey,
-                at,
-            )
+            // When its bytes were downloaded, for the delivery record: the last resource staged writes it last. A
+            // staging no row takes names an asset with no row either, so the stamp changes nothing there.
+            markedStaged(q, ref, resourceKey, at).also {
+                q.markAssetDownloaded(
+                    TimestampText.format(clock.now()),
+                    valid(ref.sourceDeviceId),
+                    valid(ref.sourceAssetId),
+                )
+            }
         }.then { DownloadRead.Ok(discarded(StageRecord.of(it), at)) }
     }
 
@@ -79,9 +84,13 @@ class ImportQueue(private val store: DownloadStore) {
      * import can have run for it. It is also the safety net for an importer that skipped its in-block marker write.
      */
     suspend fun imported(claim: StagedDownload, created: AssetId): DownloadRead<ImportedAsset> = store.locked {
+        // The entry point that added it, for the delivery record — read here: the store's statements do not suspend.
+        val addedBy = EntryPointLabel.current()
         store.read { q ->
             q.markImported(
                 valid(created),
+                TimestampText.format(clock.now()),
+                addedBy,
                 valid(claim.ref.sourceDeviceId),
                 valid(claim.ref.sourceAssetId),
             )

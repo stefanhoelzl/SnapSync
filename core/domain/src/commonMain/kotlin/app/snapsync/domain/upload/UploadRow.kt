@@ -2,6 +2,7 @@ package app.snapsync.domain.upload
 
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.RecordedAsset
+import app.snapsync.domain.time.Timestamp
 import kotlin.jvm.JvmInline
 
 /** Only the upload ledger's read mints an [UploadRow]: a row is what the ledger holds, never what a caller says. */
@@ -11,11 +12,24 @@ import kotlin.jvm.JvmInline
 annotation class MintsUploadRow
 
 /**
+ * When a walk first recorded a resource, and the entry point that ran it ([by], its trigger's label) — the delivery
+ * record's `discovered` (decision record `changes/delivery-record`, D2). A row recorded before the ledger kept it
+ * has none.
+ */
+class Discovery(val at: Timestamp, val by: String?)
+
+/**
  * What the device manifest says of a resource beside its key: when its photo was captured, its content type and its
  * original file name — written when the walk first recorded it, never by a later transition. A row the join-time load
  * seeded from a stored-file listing starts [bare]: the listing names no capture date, and the next walk fills it.
+ * [discovered] is when that first record was made, for the delivery record only: the manifest never reads it.
  */
-class RowDetail(val captured: CaptureDate, val contentType: String, val originalFilename: String) {
+class RowDetail(
+    val captured: CaptureDate,
+    val contentType: String,
+    val originalFilename: String,
+    val discovered: Discovery? = null,
+) {
     /** Whether this detail still waits for the walk to fill it — a seeded row's. */
     val bare: Boolean get() = captured == CaptureDate.Undated
 }

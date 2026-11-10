@@ -22,6 +22,7 @@ import app.snapsync.composition.process.ProcessGraph
 import app.snapsync.data.crypto.DownloadOpening
 import app.snapsync.data.foreground.AppForeground
 import app.snapsync.data.gallery.GrantRead
+import app.snapsync.data.receiving.DeliveredPhotos
 import app.snapsync.data.receiving.DownloadDatabaseFile
 import app.snapsync.data.receiving.DownloadStore
 import app.snapsync.data.receiving.DownloadTransfers
@@ -65,10 +66,11 @@ class ReceivingGraph(
     /** The download store's file — also what another process's commit to it is announced on. */
     val file: DownloadDatabaseFile = DownloadDatabaseFile(ports.databases)
     private val staging: StagingArea = StagingArea(process.files)
-    private val transfers: DownloadTransfers = DownloadTransfers(ports.download, services.mobileData, backend.exchange)
+    private val transfers: DownloadTransfers =
+        DownloadTransfers(ports.download, services.mobileData, backend.exchange, services.wallClock)
     private val store: DownloadStore = DownloadStore(file, staging, transfers)
     private val plans: ReceivingPlans = ReceivingPlans(store)
-    private val queue: ImportQueue = ImportQueue(store)
+    private val queue: ImportQueue = ImportQueue(store, services.wallClock)
     private val releases: ImportedReleases = ImportedReleases(store)
     private val recognitionRecords: RecognitionRecords = RecognitionRecords(store)
     private val cleanup: ReceivingCleanup = ReceivingCleanup(store)
@@ -114,6 +116,7 @@ class ReceivingGraph(
     val report: ReportReceivedPosition = ReportReceivedPosition(
         ReceivedReporting(backend.gateway, services.deviceIdentity),
         ReportedReceived(),
+        DeliveredPhotos(store),
         services.wallClock,
         services.membership,
     )

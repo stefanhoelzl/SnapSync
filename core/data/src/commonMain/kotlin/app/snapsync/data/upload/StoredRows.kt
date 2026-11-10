@@ -3,6 +3,7 @@ package app.snapsync.data.upload
 import app.snapsync.data.store.Stored
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.upload.DestinationPath
+import app.snapsync.domain.upload.Discovery
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.MintsUploadRow
 import app.snapsync.domain.upload.RowDetail
@@ -40,8 +41,11 @@ internal class StoredRows {
         contentType: String,
         originalFilename: String,
         destinationPath: String?,
+        foundAt: String?,
+        foundBy: String?,
     ): Mapped {
-        val detail = RowDetail(TimestampText.captureDate(creationDate), contentType, originalFilename)
+        val discovered = foundAt?.let(TimestampText::parseOrNull)?.let { Discovery(it, foundBy) }
+        val detail = RowDetail(TimestampText.captureDate(creationDate), contentType, originalFilename, discovered)
         return Mapped(key, UploadKeyText.parse(key)?.let { row(it, state, detail, destinationPath) })
     }
 

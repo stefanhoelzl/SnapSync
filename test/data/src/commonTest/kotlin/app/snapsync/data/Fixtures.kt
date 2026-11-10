@@ -271,3 +271,7 @@ internal class BrokenChainKey : DeviceIntegrity {
     override suspend fun prove(challenge: String, handle: String?): ProveResult =
         ProveResult.Ok(Proof("android-key", ProofFormat.ANDROID_KEY, byteArrayOf(0x30)))
 }
+
+/** The wall clock a walk's record stamps its finds with in a test that does not read them: a fixed instant. */
+internal val walkClock: app.snapsync.data.time.WallClock =
+    app.snapsync.data.time.WallClock(fixedClock(Instant.parse("2026-07-14T12:00:00Z")))

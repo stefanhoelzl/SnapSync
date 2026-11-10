@@ -43,6 +43,26 @@ class DeliveryContextIntegrationTest {
         then { read(listOf("background=1")) { "low_power" !in it } }
     }
 
+    @Test
+    @Verifies(spec = "privacy-security", requirement = "The service records who reads an event's photo list")
+    fun the_received_report_tells_when_each_photo_was_downloaded_and_added_and_by_which_entry_point() = behaviour {
+        given {
+            joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END)
+            receivedFrom(DEV_F, "FQ")
+            laterInThePocket(AFTER_THE_END)
+        }
+
+        whenever { os.foreground() }
+        then {
+            event<WorldEvent.BackendReceived> { received ->
+                received.operation == "reportReceived" && received.body.orEmpty().let { body ->
+                    "\"delivered\":[{" in body && "\"asset\":\"FQ\"" in body &&
+                        "\"downloaded\":\"" in body && "\"added\":\"" in body && "\"by\":\"" in body
+                }
+            }
+        }
+    }
+
     /** A union read whose context holds every one of [facts], and passes [also] on the whole header. */
     private fun Expectations.read(facts: List<String>, also: (String) -> Boolean = { true }) {
         event<WorldEvent.BackendReceived> { received ->
@@ -53,6 +73,11 @@ class DeliveryContextIntegrationTest {
 
     private companion object {
         const val CONTEXT = "x-snapsync-context"
+
+        /** A short event, and a moment past it: a received report is due once the event has ended. */
+        const val SHORT_START = "2026-05-25T00:00:00"
+        const val SHORT_END = "2026-06-02T00:00:00"
+        const val AFTER_THE_END = "2026-06-04T12:00:00Z"
 
         /** What the composed app on the mock world says once the device turned restricted and Android-like. */
         val EXPECTED = listOf("access=full", "network=restricted", "low_power=1", "background=0")

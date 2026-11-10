@@ -53,6 +53,9 @@ class MigrationPinTest {
         // Not merged yet: `downloadAsset.state` re-typed as the domain's `DownloadState` (phase 4.5, receiving).
         "download/app/snapsync/data/receiving/db/12.sqm" to
             "47e8499f844dd16ff921abba6c1e5c4d8d80aaa6eab75b82ee208367960ff96f",
+        // Not merged yet: a received photo keeps its delivery facts until reported (change `delivery-record`).
+        "download/app/snapsync/data/receiving/db/13.sqm" to
+            "5a53cdea66de2fa74a907584bb9264a54caf177fe804416a78308272cd001df0",
         "ledger/app/snapsync/data/store/db/11.sqm" to
             "bc378a8aecf83363863d1742286af7021f0c4d3ba591d09c194e010963763548",
         "ledger/app/snapsync/data/store/db/12.sqm" to
@@ -76,6 +79,9 @@ class MigrationPinTest {
         // Phase 4.4c (sharing: manifest): the manifest record keeps what it declared and how many photos as columns.
         "ledger/app/snapsync/data/store/db/19.sqm" to
             "154b83c49f5c6269175515fd1c2aa1f93bac11e5da49d3bff54784025118f3e3",
+        // Not merged yet: an upload row keeps when and by which entry point it was found (change `delivery-record`).
+        "ledger/app/snapsync/data/store/db/20.sqm" to
+            "93223c34752f3b5770555b5e2fc2554c5dcb37d5e740b247a0e8ccffe8520951",
     )
 
     @Test

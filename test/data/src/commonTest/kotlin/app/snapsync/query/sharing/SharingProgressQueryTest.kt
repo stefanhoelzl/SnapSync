@@ -12,6 +12,7 @@ import app.snapsync.data.upload.RowTransitions
 import app.snapsync.data.upload.UploadProgress
 import app.snapsync.data.upload.UploadRowsReset
 import app.snapsync.data.upload.WalkRecord
+import app.snapsync.data.walkClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
@@ -45,7 +46,7 @@ class SharingProgressQueryTest {
     private val r = Receiver()
     private val foreground = AppForeground(ClockMock().port())
     private val admitted = AdmittedPhotos()
-    private val walk = WalkRecord(r.device.shared)
+    private val walk = WalkRecord(r.device.shared, walkClock)
     private val reset = UploadRowsReset(r.device.shared)
     private val moves = RowTransitions(r.device.shared)
 
@@ -143,7 +144,7 @@ class SharingProgressQueryTest {
 
         // The other process writes through its own view of the database: nothing in this one announces it.
         val elsewhere = sharedOver(r.device.databases)
-        handedOver(WalkRecord(elsewhere), RowTransitions(elsewhere), "B")
+        handedOver(WalkRecord(elsewhere, walkClock), RowTransitions(elsewhere), "B")
         runCurrent()
         assertEquals(read(shared = 1, total = 2, handedOver = 0), query.state.value, "not yet told")
 

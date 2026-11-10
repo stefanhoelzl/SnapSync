@@ -72,12 +72,12 @@ class UploadGraph(
     names: FileNameCipher,
 ) {
     val rows: OwnUploadRows = OwnUploadRows(records)
-    val walkRecord: WalkRecord = WalkRecord(records)
+    val walkRecord: WalkRecord = WalkRecord(records, clock)
     val transitions: RowTransitions = RowTransitions(records)
     val record: JobRecord = JobRecord(transitions)
     val recent: RecentWalk = RecentWalk()
     val resources: OwnPhotoResources = OwnPhotoResources(photos)
-    val requests: UploadRequests = UploadRequests(exchange, credentials, credential, identity, names)
+    val requests: UploadRequests = UploadRequests(exchange, credentials, credential, identity, names, clock)
     val sealing: UploadSealing = UploadSealing(membership, keys, identity, cipher)
     val gate: UploadGateRead =
         UploadGateRead(records, PassEntryRead(rows, membership, identity, keys), host, admission, received)

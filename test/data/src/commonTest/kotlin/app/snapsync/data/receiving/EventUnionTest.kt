@@ -24,8 +24,10 @@ import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.receiving.PushNotice
 import app.snapsync.domain.receiving.UnionReadPlan
 import app.snapsync.domain.receiving.UnionTrigger
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.ports.HttpResult
@@ -36,6 +38,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.time.Instant
 
 /**
  * The event's union over the backend (decision record `changes/incremental-union`): a whole read or a delta from a
@@ -95,6 +98,18 @@ class EventUnionTest {
             assertEquals("foreground", request.headers["SnapSync-Trigger"])
             assertEquals(false, request.url.contains("cursor="), "from the start")
         }
+
+    @Test
+    fun `a read a push caused names the position it announced and when the app acted on it`() = runTest {
+        answer = page("[]", cursor = "9")
+        val acted = Timestamp.of(Instant.parse("2026-07-14T12:00:01Z"))
+
+        union.read(member, UnionReadPlan.Since(4), UnionTrigger.PUSH, PushNotice(9, acted))
+
+        val request = transport.requests.single()
+        assertEquals("9", request.headers["x-snapsync-announced"])
+        assertEquals("2026-07-14T12:00:01Z", request.headers["x-snapsync-notified"])
+    }
 
     @Test
     fun `a delta reads from its position, and an unknown total or own count awaits nothing`() = runTest {

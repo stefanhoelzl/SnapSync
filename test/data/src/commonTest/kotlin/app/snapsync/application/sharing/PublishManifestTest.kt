@@ -20,6 +20,7 @@ import app.snapsync.data.sharing.ManifestRecord
 import app.snapsync.data.sharing.RecordRead
 import app.snapsync.data.upload.OwnUploadRows
 import app.snapsync.data.upload.WalkRecord
+import app.snapsync.data.walkClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
@@ -75,7 +76,7 @@ class PublishManifestTest {
     )
 
     init {
-        WalkRecord(shared).discover(
+        WalkRecord(shared, walkClock).discover(
             active().event.id,
             listOf(
                 FoundResource(

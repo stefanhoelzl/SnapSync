@@ -3,6 +3,7 @@ package app.snapsync.domain.receiving
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.time.Timestamp
 
 /**
  * A photo by its SOURCE identity — the device that shared it and that device's asset id: stable across syncs and
@@ -92,6 +93,12 @@ sealed interface UnionReadPlan {
 }
 
 /**
+ * The push a read answers, for the delivery record (decision record `changes/delivery-record`, D3): the union position
+ * it [announced], and when the app acted on it ([at]) — what the service compares with when it sent the push.
+ */
+data class PushNotice(val announced: Long, val at: Timestamp)
+
+/**
  * Why the app reads the union (decision record `changes/incremental-union`, D5–D6) — what it tells the backend, which
  * records it, and whether the read is [whole]. A push and a background wake read only what is new; every other reason
  * reads everything, because someone waits on the answer or a decision rests on it.
@@ -130,3 +137,10 @@ enum class UnionTrigger(val whole: Boolean) {
 object OthersDeclared {
     fun of(total: Long?, own: Int?): Long? = total?.let { all -> own?.let { (all - it).coerceAtLeast(0L) } }
 }
+
+/**
+ * One received photo's delivery facts, as the `received` report carries them to the service (decision record
+ * `changes/delivery-record`, D3): whose photo it is ([ref]), when its bytes were [downloaded] (none for a photo staged
+ * before this was kept), when it was [added] to the library, and the entry point that added it ([by]).
+ */
+class DeliveredPhoto(val ref: AssetRef, val downloaded: Timestamp?, val added: Timestamp, val by: String?)

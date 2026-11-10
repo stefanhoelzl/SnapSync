@@ -13,6 +13,7 @@ import app.snapsync.data.receiving.Store
 import app.snapsync.data.sharing.Library
 import app.snapsync.data.upload.OwnUploadRows
 import app.snapsync.data.upload.WalkRecord
+import app.snapsync.data.walkClock
 import app.snapsync.domain.album.AlbumAsk
 import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.album.AlbumEntry
@@ -179,7 +180,7 @@ class AlbumUseCasesTest {
 
     @Test
     fun `a gather places the own rows the one policy admits now, in order`() = runTest {
-        WalkRecord(sharedOver(device)).discover(
+        WalkRecord(sharedOver(device), walkClock).discover(
             event,
             listOf(
                 found("B", "2026-07-15T10:00:00Z"),
@@ -195,7 +196,7 @@ class AlbumUseCasesTest {
 
     @Test
     fun `a gather places no own photo where they stay put, and says so when the rows cannot be read`() = runTest {
-        WalkRecord(sharedOver(device)).discover(event, listOf(found("A", "2026-07-16T10:00:00Z")))
+        WalkRecord(sharedOver(device), walkClock).discover(event, listOf(found("A", "2026-07-16T10:00:00Z")))
         assertEquals(AlbumPhotosRead.Read(emptyList()), ownAlbumPhotos()(libraryOnly))
         assertEquals(AlbumPhotosRead.Read(emptyList()), ownAlbumPhotos(AlbumLibrary(LibraryAlbumKind.FOLDER))(saving))
 
@@ -291,8 +292,8 @@ class AlbumUseCasesTest {
     fun `what was received for the event is read in order, or that it cannot be`() = runTest {
         val store = Store()
         store.sql(
-            "INSERT INTO downloadAsset VALUES ('${ANNA.value}', 'Y', 'IMPORTED', '2026-07-15T10:00:00Z', 'LOCAL-B')",
-            "INSERT INTO downloadAsset VALUES ('${ANNA.value}', 'X', 'IMPORTED', '2026-07-15T10:00:00Z', 'LOCAL-A')",
+            "INSERT INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId) VALUES ('${ANNA.value}', 'Y', 'IMPORTED', '2026-07-15T10:00:00Z', 'LOCAL-B')",
+            "INSERT INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId) VALUES ('${ANNA.value}', 'X', 'IMPORTED', '2026-07-15T10:00:00Z', 'LOCAL-A')",
             "INSERT INTO eventRef VALUES ('${RECEIVED_EVENT.value}', '${ANNA.value}', 'X')",
             "INSERT INTO eventRef VALUES ('${RECEIVED_EVENT.value}', '${ANNA.value}', 'Y')",
         )

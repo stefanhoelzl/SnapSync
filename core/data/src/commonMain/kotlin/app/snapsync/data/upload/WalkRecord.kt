@@ -4,6 +4,7 @@ import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.StoreWrite
 import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.LedgerQueries
+import app.snapsync.data.time.WallClock
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.FoundResource
 import app.snapsync.domain.upload.LedgerState
@@ -20,17 +21,23 @@ import app.snapsync.ports.DbResult
  * `changes/archive/2026-09-22-both-uploaders-active`): [discover] inserts only where no row is, [backfill] fills only a
  * bare row, [withdraw] deletes by key.
  */
-class WalkRecord(private val db: SharedDatabase) {
+class WalkRecord(private val db: SharedDatabase, private val clock: WallClock) {
 
     /**
      * Record what a walk [found] for [event] as needing a job — only for keys with no row yet, all in one transaction,
-     * so a Live Photo's two resources land together or not at all.
+     * so a Live Photo's two resources land together or not at all. Each new row keeps when it was found and [by],
+     * the entry point that found it, for the delivery record.
      */
-    fun discover(event: EventId, found: List<FoundResource>): StoreWrite = written(
-        db.execute { database ->
-            database.ledgerQueries.transaction { found.forEach { database.ledgerQueries.discovered(event, it) } }
-        },
-    )
+    fun discover(event: EventId, found: List<FoundResource>, by: String? = null): StoreWrite {
+        val at = TimestampText.format(clock.now())
+        return written(
+            db.execute { database ->
+                database.ledgerQueries.transaction {
+                    found.forEach { database.ledgerQueries.discovered(event, it, at, by) }
+                }
+            },
+        )
+    }
 
     /** Fill the photo detail of [found]'s rows that are still bare; a row already filled is never rewritten. */
     fun backfill(event: EventId, found: List<FoundResource>): StoreWrite = written(
@@ -56,16 +63,19 @@ class WalkRecord(private val db: SharedDatabase) {
     }
 
     /** [found] recorded for [event] where its key has no row: the insert-if-absent statement. */
-    private fun LedgerQueries.discovered(event: EventId, found: FoundResource) = recordDiscovered(
-        event.value,
-        UploadKeyText.of(found.key),
-        Stored.Valid(found.key.asset),
-        LedgerState.DISCOVERED,
-        TimestampText.captureText(found.detail.captured),
-        ResourceRoleText.of(found.key.role),
-        found.detail.contentType,
-        found.detail.originalFilename,
-    )
+    private fun LedgerQueries.discovered(event: EventId, found: FoundResource, at: String, by: String?) =
+        recordDiscovered(
+            event.value,
+            UploadKeyText.of(found.key),
+            Stored.Valid(found.key.asset),
+            LedgerState.DISCOVERED,
+            TimestampText.captureText(found.detail.captured),
+            ResourceRoleText.of(found.key.role),
+            found.detail.contentType,
+            found.detail.originalFilename,
+            at,
+            by,
+        )
 
     /** [found]'s detail written over its row of [event] while that row is still bare. */
     private fun LedgerQueries.filled(event: EventId, found: FoundResource) = backfillManifestDetail(

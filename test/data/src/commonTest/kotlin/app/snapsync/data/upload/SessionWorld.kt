@@ -21,6 +21,7 @@ import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
 import app.snapsync.data.membership.sharedOver
 import app.snapsync.data.token
+import app.snapsync.data.walkClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
@@ -82,7 +83,7 @@ internal class SessionWorld(takesResources: Boolean = false) {
     var network = TransferNetwork.ANY
 
     val reads = OwnUploadRows(shared)
-    val walk = WalkRecord(shared)
+    val walk = WalkRecord(shared, walkClock)
     val transitions = RowTransitions(shared)
     val record = JobRecord(transitions)
     val staged = StagedFiles(files)
@@ -100,6 +101,7 @@ internal class SessionWorld(takesResources: Boolean = false) {
         app.snapsync.data.trust.DropOnlyCredential(held.store),
         identity,
         names,
+        app.snapsync.data.walkClock,
     )
 
     /** How the names the joined event serves are read — this device's listing reads through it. */

@@ -2,6 +2,7 @@ package app.snapsync.data.upload
 
 import app.snapsync.data.membership.sharedOver
 import app.snapsync.data.store.StoreWrite
+import app.snapsync.data.walkClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
@@ -37,7 +38,7 @@ class RowsResetAndProgressTest {
     private val reads = OwnUploadRows(shared)
     private val reset = UploadRowsReset(shared)
     private val progress = UploadProgress(shared)
-    private val walk = WalkRecord(shared)
+    private val walk = WalkRecord(shared, walkClock)
     private val moves = RowTransitions(shared)
     private val event = testEventId("E1")
     private val other = testEventId("E2")

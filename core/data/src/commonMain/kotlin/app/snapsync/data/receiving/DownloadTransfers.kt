@@ -1,10 +1,12 @@
 package app.snapsync.data.receiving
 
 import app.snapsync.data.backend.BackendExchange
+import app.snapsync.data.backend.EntryPointLabel
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.refOf
 import app.snapsync.data.receiving.MarkerStatements.clear
 import app.snapsync.data.receiving.RowStatements.pending
+import app.snapsync.data.time.WallClock
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.receiving.AssetRef
 import app.snapsync.domain.receiving.FetchVerdict
@@ -12,10 +14,12 @@ import app.snapsync.domain.receiving.StagedPath
 import app.snapsync.domain.receiving.StagingFolder
 import app.snapsync.domain.receiving.TransferSlots
 import app.snapsync.format.ResourceRoleText
+import app.snapsync.format.TimestampText
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.ports.Download
 import app.snapsync.ports.StartResult
+import app.snapsync.wire.api.Routes
 
 /**
  * What a transfer's opaque tag says — the one field the platform keeps across a relaunch, so a relaunched process that
@@ -76,8 +80,11 @@ class DownloadTransfers(
     private val network: MobileDataStore,
     /** The version every request declares — the download redirect's too (`downloadResource`). */
     private val exchange: BackendExchange,
+    /** When a download is queued, for the delivery record. */
+    private val clock: WallClock,
 ) {
     private val queued = LinkedHashMap<String, PendingResource>()
+    private val queuedBy = Routes.DownloadResource.HEADER_X_SNAPSYNC_QUEUED_BY
     private val running = LinkedHashSet<String>()
 
     /** Queue [pending], keeping a queued one's place with its fresher address, and start what the window holds. */
@@ -122,7 +129,15 @@ class DownloadTransfers(
     }
 
     private suspend fun start(next: PendingResource): StartResult =
-        download.start(next.url, exchange.transferHeaders(), next.tag.text, network.transferNetwork())
+        download.start(next.url, exchange.transferHeaders() + queueing(), next.tag.text, network.transferNetwork())
+
+    /**
+     * The delivery record's facts of a download's start (decision record `changes/delivery-record`, D2): when it is
+     * handed to the transfer service and the entry point that did so — the session fixes the headers now.
+     */
+    private suspend fun queueing(): Map<String, String> =
+        mapOf(Routes.DownloadResource.HEADER_X_SNAPSYNC_QUEUED to TimestampText.format(clock.now())) +
+            EntryPointLabel.current()?.let { mapOf(queuedBy to it) }.orEmpty()
 
     private suspend fun started(next: PendingResource, result: StartResult) = when (result) {
         StartResult.Started -> running.add(next.tag.text).let { }

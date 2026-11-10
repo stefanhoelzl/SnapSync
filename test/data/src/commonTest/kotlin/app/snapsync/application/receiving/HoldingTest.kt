@@ -5,6 +5,7 @@ import app.snapsync.application.membership.DEVICE_ID
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.membership.OTHER
 import app.snapsync.data.membership.active
+import app.snapsync.data.receiving.DeliveredPhotos
 import app.snapsync.data.receiving.ReceivedReporting
 import app.snapsync.data.receiving.ReportedReceived
 import app.snapsync.domain.receiving.HeldPosition
@@ -37,6 +38,7 @@ class HoldingTest {
     private fun reportOver(receiver: Receiver = r) = ReportReceivedPosition(
         ReceivedReporting(receiver.device.gateway, receiver.device.identity),
         ReportedReceived(),
+        DeliveredPhotos(receiver.store),
         receiver.device.wallClock,
         receiver.device.membership,
     )
@@ -124,6 +126,18 @@ class HoldingTest {
 
         report(membership, HeldPosition.Lacks)
         assertEquals(2, reports(), "already told: it receives")
+    }
+
+    @Test
+    fun `untold delivery facts that cannot be read leave the report as it was, and say so`() = runTest {
+        val report = reportOver()
+        r.unreadable()
+
+        val lines = linesOf("ReportReceivedPosition") { report(membership, HeldPosition.Holds(3)) }
+
+        assertEquals(1, reports())
+        assertFalse(r.device.transport.requests.last().body.orEmpty().contains("delivered"))
+        assertTrue("the received photos' delivery facts were not read" in lines.messages, "${lines.messages}")
     }
 
     @Test

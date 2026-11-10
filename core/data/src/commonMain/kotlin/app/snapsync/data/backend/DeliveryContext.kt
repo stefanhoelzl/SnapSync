@@ -7,9 +7,11 @@ import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
 import app.snapsync.domain.delivery.ConditionFacts
 import app.snapsync.domain.delivery.DeliveryFacts
+import app.snapsync.inbound.Trigger
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
 import app.snapsync.ports.DeviceConditions
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
@@ -94,4 +96,13 @@ class ConditionsContext(
         last = ConditionFacts.of(withTimeoutOrNull(timeout) { conditions.read() }, last)
         return last
     }
+}
+
+/**
+ * The entry point running the current work, as the delivery record names why the app acted (`discovered_by`,
+ * `queued_by`): the label of the [Trigger] the work carries in its coroutine context — the same one every `Log` line is
+ * labelled with. `null` off an entry point's run.
+ */
+object EntryPointLabel {
+    suspend fun current(): String? = currentCoroutineContext()[Trigger]?.label
 }

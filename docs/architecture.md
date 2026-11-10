@@ -1165,6 +1165,19 @@ will read these keys later (that change's D1), so **a key, once shipped, keeps i
 | manifest that took | `assets` `state` (`sharing` `settled`) · `withdrawn` once per servable photo it withdrew | route |
 | create | `event` `encrypted` `window_days` `open_days` `backdated` (created after its end) | route |
 
+**Where the app's facts come from** (`:core:data`):
+- **The context** — `DeliveryContext` (`data/backend`), its words the domain's `DeliveryFacts`/`ConditionFacts`: added by
+  `BackendExchange` to every request and, through `transferHeaders()`, to every OS-performed transfer. The app reads every
+  part; the upload extension its build, device id and mobile-data choice. The device's conditions are read at most once a
+  minute: a read may hop onto the main thread.
+- **Why the app acted** — `EntryPointLabel`: the label of the `Trigger` the work carries, the one every `Log` line shows.
+- **Found** — `ledgerRow.foundAt`/`foundBy` (ledger `20.sqm`), stamped by `WalkRecord.discover`, insert-only; sent by
+  `UploadRequests` with the capture date and the moment the transfer is handed over (`queued`).
+- **A push** — `PlanReceiving` hands `EventUnion` a `PushNotice` (the announced position, and when the app acted).
+- **Received** — `downloadAsset.downloadedAt`/`addedAt`/`addedBy` (downloads `13.sqm`), stamped by `ImportQueue`; told by
+  `ReportReceivedPosition` through `DeliveredPhotos`, at most `DELIVERED_MAX` per report, marked once a report is recorded.
+  Untold facts make a report due even at an unchanged position (`ReportDue`), so they do not wait for the next photo.
+
 The device context leads the fields on the line, before what the route adds. A join and a leave add nothing: their
 method and URL say who joined or left which event, and how. A **restart** — a byte upload that sends a photo from
 byte 0 again (the PhotoKit extension; Android in a plain event) — is told when reading: a `fresh` attempt for a path
