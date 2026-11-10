@@ -17,7 +17,8 @@
 import type { Db } from "../db.ts";
 import { libsqlDb } from "../db-libsql.ts";
 import { ERROR_TAGS, type ErrorTag, formatLine } from "../request-log.ts";
-import { fromRow, type StoredRecord } from "../request-log-store.ts";
+import { APP_VERSION_FIELD, fromRow, type StoredRecord } from "../request-log-store.ts";
+import { compareVersions } from "../version.ts";
 
 const USAGE = `deno task logs [filters] [--stats <by>] [--json] [--limit <n>] [--db <file>] | --live
 
@@ -26,7 +27,9 @@ filters (AND):
   --status <502|5xx|4xx|2xx>          --method <GET>    --path <substring>    --route <pattern>
   --event <id>   --device <id>        (matched in the URL and the fields)
   --reqid <id>   --v <app version>    --error <tag>     --errors (any)        --slow <ms>
+  --field <key=value>                 (a recorded field: device=<id> network=cellular low_power=true …)
 stats:  --stats <route|hour|day|error|status|version>
+        --devices   (each device once, at the app version it last declared — the MIN_APP_VERSION check)
 tags:   ${ERROR_TAGS.join(" ")}`;
 
 /** What to read. */
@@ -41,6 +44,8 @@ export type Query = {
   device?: string;
   reqid?: string;
   version?: string;
+  /** A recorded field and the value it must hold (one of, for a field recorded several times). */
+  field?: { key: string; value: string | number };
   error?: ErrorTag;
   errors: boolean;
   slow?: number;
@@ -58,9 +63,11 @@ export type Options = {
   db?: string;
   live: boolean;
   help: boolean;
+  /** Count devices by their last declared app version instead of listing records. */
+  devices: boolean;
 };
 
-const FLAGS = new Set(["--errors", "--json", "--live", "--help"]);
+const FLAGS = new Set(["--errors", "--json", "--live", "--help", "--devices"]);
 
 /** `2h` → that long before `now`; anything else is a date or an instant. */
 export function instant(value: string, now: number): string {
@@ -89,6 +96,7 @@ function pairs(args: readonly string[]): Map<string, string> {
       "device",
       "reqid",
       "v",
+      "field",
       "error",
       "slow",
       "stats",
@@ -137,6 +145,7 @@ export function parseOptions(args: readonly string[], now: number): Options {
       device: p.get("--device"),
       reqid: p.get("--reqid"),
       version: p.get("--v"),
+      field: fieldOf(p.get("--field")),
       error: error as ErrorTag | undefined,
       errors: p.has("--errors"),
       slow: slow === undefined ? undefined : Number(slow),
@@ -147,7 +156,30 @@ export function parseOptions(args: readonly string[], now: number): Options {
     db: p.get("--db"),
     live: p.has("--live"),
     help: p.has("--help"),
+    devices: p.has("--devices"),
   };
+}
+
+/**
+ * `--field key=value`, its value as the row holds it: a yes/no as SQLite reads a JSON boolean (1/0), a number as
+ * a number, anything else as text.
+ */
+function fieldOf(raw: string | undefined): Query["field"] {
+  if (raw === undefined) return undefined;
+  const at = raw.indexOf("=");
+  const key = raw.slice(0, at);
+  if (at < 1 || !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(key)) {
+    throw new Error(`--field takes key=value: ${raw}`);
+  }
+  const text = raw.slice(at + 1);
+  const value = text === "true"
+    ? 1
+    : text === "false"
+    ? 0
+    : /^-?\d+(\.\d+)?$/.test(text)
+    ? Number(text)
+    : text;
+  return { key, value };
 }
 
 /** The query's SQL filter. `--route` is applied after the read, on the route derived from each URL. */
@@ -171,7 +203,15 @@ export function whereOf(q: Query): { sql: string; args: unknown[] } {
     if (id !== undefined) add("(instr(url, ?) > 0 OR instr(fields, ?) > 0)", id, id);
   }
   if (q.reqid !== undefined) add("reqid = ?", q.reqid);
-  if (q.version !== undefined) add("version = ?", q.version);
+  if (q.version !== undefined) add(`json_extract(fields, '$.${APP_VERSION_FIELD}') = ?`, q.version);
+  // `json_each` over a scalar yields that one value, over an array each of a field recorded several times.
+  if (q.field !== undefined) {
+    add(
+      "EXISTS (SELECT 1 FROM json_each(request_log.fields, ?) WHERE value = ?)",
+      `$."${q.field.key}"`,
+      q.field.value,
+    );
+  }
   if (q.error !== undefined) add("instr(' ' || errors || ' ', ?) > 0", ` ${q.error} `);
   if (q.errors) add("errors IS NOT NULL");
   if (q.slow !== undefined) add("ms >= ?", q.slow);
@@ -246,6 +286,70 @@ function keysOf(r: StoredRecord, by: StatsBy): string[] {
     case "version":
       return [r.version ?? "-"];
   }
+}
+
+/**
+ * The device a record came from: the context's `device`, else the union read's verified `reader`, else the device
+ * a device-scoped URL names (`…/devices/<id>…`) — a build older than the delivery context sends none of the first.
+ * `undefined` for a browser, or a request that names no device.
+ */
+export function deviceOf(r: StoredRecord): string | undefined {
+  const named = [r.fields.device, r.fields.reader].find((v) =>
+    typeof v === "string" && UUID.test(v)
+  );
+  if (typeof named === "string") return named.toLowerCase();
+  const parts = new URL(r.url).pathname.split("/");
+  const at = parts.indexOf("devices");
+  return at >= 0 && UUID.test(parts[at + 1] ?? "") ? parts[at + 1].toLowerCase() : undefined;
+}
+
+/** One app version and how many devices last declared it in the window. */
+export type DevicesRow = { version: string; ios: number; android: number; unknown: number };
+
+/**
+ * Every device seen in `records` (oldest first), counted once at the app version it LAST declared, per platform:
+ * what raising `MIN_APP_VERSION` would lock out (`PENDING_CLEANUPS.md`) — the request log's answer, since the device
+ * row keeps no version (decision record `changes/delivery-record`, D9). The platform is the attestation's
+ * (`platformOf`, from the device rows): an older build sends no context to tell it by, and the device a log record
+ * names may already be collected (`unknown`). Newest version first; `-` for a device that declared none.
+ */
+export function devicesByVersion(
+  records: readonly StoredRecord[],
+  platformOf: ReadonlyMap<string, string>,
+): DevicesRow[] {
+  const latest = new Map<string, string>();
+  for (const r of records) {
+    const device = deviceOf(r);
+    if (device !== undefined) latest.set(device, r.version ?? "-");
+  }
+  const rows = new Map<string, DevicesRow>();
+  for (const [device, version] of latest) {
+    const row = rows.get(version) ?? { version, ios: 0, android: 0, unknown: 0 };
+    const platform = platformOf.get(device);
+    if (platform === "ios" || platform === "android") row[platform]++;
+    else row.unknown++;
+    rows.set(version, row);
+  }
+  return [...rows.values()].sort((a, b) =>
+    a.version === "-" ? 1 : b.version === "-" ? -1 : compareVersions(b.version, a.version)
+  );
+}
+
+/** Every device row's attested platform, by lowercased device id — what {@link devicesByVersion} splits by. */
+export async function devicePlatforms(db: Db): Promise<Map<string, string>> {
+  const { rows } = await db.execute(`SELECT device_id, attest_platform FROM devices`);
+  return new Map(rows.map((r) => [String(r.device_id).toLowerCase(), String(r.attest_platform)]));
+}
+
+/** {@link devicesByVersion} as an aligned table. */
+export function formatDevices(rows: readonly DevicesRow[]): string {
+  const cells = [
+    ["version", "ios", "android", "unknown"],
+    ...rows.map((r) => [r.version, String(r.ios), String(r.android), String(r.unknown)]),
+  ];
+  return cells.map(([v, ...n]) => `${v.padEnd(10)}${n.map((c) => c.padStart(9)).join("")}`).join(
+    "\n",
+  );
 }
 
 /** Group `records` by `by`; time groups in time order, every other by count, most first. */
@@ -400,6 +504,11 @@ async function main(args: string[]): Promise<void> {
     return await live(key);
   }
   const db = await openStore(o.db);
+  if (o.devices) {
+    const records = await readRecords(db, o.query);
+    console.log(formatDevices(devicesByVersion(records, await devicePlatforms(db))));
+    return console.error(`logs: ${records.length} request(s) since ${o.query.since}`);
+  }
   if (o.stats !== undefined) {
     const records = await readRecords(db, o.query);
     console.log(formatStats(stats(records, o.stats), o.stats));

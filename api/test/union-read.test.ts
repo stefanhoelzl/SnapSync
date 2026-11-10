@@ -6,7 +6,7 @@
 //
 // Paths are literal per version, like every version test file.
 
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertMatch } from "@std/assert";
 import type { Db } from "../src/db.ts";
 import { eventBytePath } from "../src/storage.ts";
 import { completeEvent } from "../src/db.ts";
@@ -200,71 +200,62 @@ Deno.test("cursor → a malformed cursor is 400", async () => {
 
 // ── Who reads, and why (D5; capability `privacy-security`) ────────────────────────────────────────
 
-async function fetches(db: Db) {
-  return await rows(
-    db,
-    `SELECT device_id, trigger, cursor_from, cursor_to, served FROM union_log WHERE kind = 'fetch'
-      ORDER BY seq`,
-  );
-}
-
 // @Verifies(spec = "privacy-security", requirement = "The service records who reads an event's photo list", scenario = "A member's app is woken for a new photo")
-// The api's part: it records which phone read the list and the reason the app gave (`push`, a wake for a new photo).
-// The app's part, that a woken read gives that reason, is `UnionReaderIntegrationTest`'s.
+// The api's part: it records which phone read the list and the reason the app gave (`push`, a wake for a new photo),
+// in the request log — the delivery record (decision record `changes/delivery-record`). The app's part, that a woken
+// read gives that reason, is `UnionReaderIntegrationTest`'s.
 Deno.test("reads → a verified token names the reader and its trigger; a delta records where it started", async () => {
   const { db } = await eventWith(["A"]);
   const lines: string[] = [];
   const read = app2(db, { ...await as(D2), "SnapSync-Trigger": "push" }, lines);
   await (await read(V2_UNION)).text();
   await (await read(`${V2_UNION}?cursor=0`)).text();
-  assert(lines[0].endsWith(" served=1 trigger=push"), lines[0]);
-  const log = await fetches(db);
-  assertEquals(log.length, 2);
-  assertEquals(log[0].device_id, D2);
-  assertEquals(log[0].trigger, "push");
-  assertEquals(log[0].cursor_from, null, "a full read starts nowhere");
-  assertEquals(log[0].served, 1);
-  assertEquals(log[1].cursor_from, 0);
+  assertMatch(
+    lines[0],
+    new RegExp(` reader=${D2} served=1 trigger=push to=\\d+$`),
+    "a full read starts nowhere",
+  );
+  assertMatch(lines[1], new RegExp(` reader=${D2} served=\\d+ trigger=push from=0 to=\\d+$`));
+  assertEquals(await rows(db, `SELECT kind FROM union_log WHERE kind <> 'gained'`), []);
   db.close();
 });
 
 Deno.test("reads → a tokenless read is recorded anonymously; an unknown trigger is recorded as unknown", async () => {
   const { db } = await eventWith(["A"]);
-  assertEquals((await app2(db, { "SnapSync-Trigger": "x" })(V2_UNION)).status, 200);
-  const log = await fetches(db);
-  assertEquals(log.length, 1);
-  assertEquals(log[0].device_id, null);
-  assertEquals(log[0].trigger, null);
+  const lines: string[] = [];
+  const res = await app2(db, { "SnapSync-Trigger": "x" }, lines)(V2_UNION);
+  assertEquals(res.status, 200);
+  await res.text();
+  assertMatch(lines[0], / reader=- served=1 trigger=- to=\d+$/);
+  db.close();
+});
+
+Deno.test("reads → a read a push caused records when the push arrived and the position it announced", async () => {
+  const { db } = await eventWith(["A"]);
+  const lines: string[] = [];
+  const read = app2(db, {
+    ...await as(D2),
+    "SnapSync-Trigger": "push",
+    "x-snapsync-notified": "2026-07-14T11:59:58Z",
+    "x-snapsync-announced": "1",
+  }, lines);
+  await (await read(V2_UNION)).text();
+  assert(lines[0].endsWith(" notified=2026-07-14T11:59:58Z announced=1"), lines[0]);
+  const odd = app2(db, { "x-snapsync-notified": "yesterday", "x-snapsync-announced": "-1" }, lines);
+  const res = await odd(V2_UNION);
+  assertEquals(res.status, 200, "an unreadable fact is dropped, never refused");
+  await res.text();
+  assert(!lines[1].includes("notified=") && !lines[1].includes("announced="), lines[1]);
   db.close();
 });
 
 Deno.test("reads → a token that does not verify is 401, so the app re-attests", async () => {
   const { db } = await eventWith(["A"]);
-  const res = await app2(db, { authorization: "Bearer not-a-token" })(V2_UNION);
-  assertEquals(res.status, 401);
-  assertEquals(await fetches(db), []);
-  db.close();
-});
-
-Deno.test("reads → a failing log write never fails the read", async () => {
-  const { db } = await eventWith(["A"]);
-  const failingLog: Db = {
-    execute: (sql, args) =>
-      /INSERT INTO union_log/.test(sql)
-        ? Promise.reject(new Error("log down"))
-        : db.execute(sql, args),
-    batch: (s) => db.batch(s),
-    transaction: (fn) => db.transaction(fn),
-  };
   const lines: string[] = [];
-  const res = await app2(failingLog, {}, lines)(V2_UNION);
-  assertEquals(res.status, 200);
-  assertEquals((await res.json() as Asset[]).length, 1);
-  assert(
-    lines[0].includes(' read-log="union: could not log the read of ') &&
-      lines[0].includes("log down"),
-    lines[0],
-  );
+  const res = await app2(db, { authorization: "Bearer not-a-token" }, lines)(V2_UNION);
+  assertEquals(res.status, 401);
+  await res.body?.cancel();
+  assert(!lines[0].includes(" served="), lines[0]);
   db.close();
 });
 
@@ -273,8 +264,9 @@ Deno.test("reads → a failing log write never fails the read", async () => {
 // whom another member read the list.
 Deno.test("reads → no read an app can make answers with another member's read", async () => {
   const { db } = await eventWith(["A"]);
-  await (await app2(db, { ...await as(D2), "SnapSync-Trigger": "push" })(V2_UNION)).text();
-  assertEquals((await fetches(db)).length, 1, "the other member's read is recorded");
+  const lines: string[] = [];
+  await (await app2(db, { ...await as(D2), "SnapSync-Trigger": "push" }, lines)(V2_UNION)).text();
+  assert(lines[0].includes(` reader=${D2} `), "the other member's read is recorded");
   const read = app2(db, { ...await as(D), "SnapSync-Trigger": "foreground" });
   const gets = OPERATIONS.filter((op) => op.method === "GET");
   assert(gets.some((op) => op.id === "eventFiles"), "the photo list is among them");

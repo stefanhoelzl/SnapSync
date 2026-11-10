@@ -55,55 +55,59 @@ import { s3Client } from "../s3.ts";
 import {
   collectableDevices,
   completeEvent,
-  countDevices,
   type Db,
   deleteDevice,
   deleteEvent,
-  deviceVersions,
   eventsWithCounts,
   liveEventIds,
 } from "../db.ts";
 import { canonicalFromMs, validateUUID } from "../validators.ts";
 import { sweepVerdict } from "../lifecycle.ts";
-import { compareVersions } from "../version.ts";
 import type { Config } from "../config.ts";
+import { newReqid } from "../request-log.ts";
+import { insertRequestRecord } from "../request-log-store.ts";
 import {
   noSender,
+  type ReportOutcome,
   type ReportSender,
-  type RequestLogSummary,
   runRequestLogPhase,
   senderFor,
 } from "./request-log-report.ts";
 
-/** A count of storage objects plus their total size in bytes (summed from each entry's `Length`). */
-export type Tally = { count: number; bytes: number };
+/**
+ * What a run's caller needs to know beyond its log: only whether the day's 5xx report left, since a report
+ * that did not fails the run. The run keeps no summary — what it completed and deleted is in the request log,
+ * one record per event (`SWEEP`; decision record `changes/delivery-record`, D9), and its progress in its log.
+ */
+export type SweepOutcome = ReportOutcome;
+
+/** The request-log method of the record the sweep leaves for each event it completes or deletes. */
+export const SWEEP_METHOD = "SWEEP";
 
 /**
- * What one sweep run did — rendered by {@link formatSummary} into the GitHub Actions job log. Entity
- * tiers, each split deleted/kept: EVENTS, DEVICES (a device's record, attestation included), FILES (the
- * byte objects in the event folders), and DIRS (the `files/<eventId>/` folders). Files carry both a
- * `count` and a real `bytes` total so the log shows how much storage was actually reclaimed, not just how
- * many objects.
- *
- * Beside the tiers, `versions` counts the KEPT devices by app version and platform — what raising
- * `minAppVersion` would lock out.
- *
- * The devices tier counts DEVICE ROWS. It used to note "a device counted once regardless of how many of
- * its global config/attestation records exist"; a device now has exactly one record, so there is nothing
- * left to disambiguate.
+ * The delivery record of what the sweep did to one event — written in the same transaction as the change, so the
+ * record and the change commit together (`docs/architecture.md`, "The delivery record").
  */
-export type SweepSummary = {
-  events: { deleted: number; completed: number; kept: number };
-  devices: { deleted: number; kept: number };
-  /** The kept devices counted by app version and platform — see {@link versionTable}. */
-  versions: VersionRow[];
-  files: { deleted: Tally; kept: Tally };
-  dirs: { deleted: number; kept: number };
-  errors: number;
-  dryRun: boolean;
-  /** The kept request log: aged out, the day counted, its 5xx reported. Absent when it could not be read. */
-  requests?: RequestLogSummary;
-};
+async function recordOutcome(
+  tx: Db,
+  eventId: string,
+  outcome: "completed" | "deleted",
+  at: number,
+) {
+  await insertRequestRecord(tx, {
+    at: new Date(at),
+    reqid: newReqid(),
+    method: SWEEP_METHOD,
+    url: `sweep:/events/${eventId}`,
+    status: 200,
+    ms: 0,
+    version: undefined,
+    bytesIn: undefined,
+    bytesOut: 0,
+    fields: { event: eventId, outcome },
+    errors: [],
+  });
+}
 
 export type SweepDeps = {
   /** Upstream fetch to Bunny storage (global fetch in production; a fake in tests). */
@@ -133,7 +137,6 @@ export type SweepDeps = {
 async function abortOpenUploads(
   { fetch: f, config, dryRun, log = console.log }: SweepDeps,
   lives: (eventId: string) => boolean,
-  summary: SweepSummary,
 ): Promise<void> {
   const aws = new AwsClient({
     accessKeyId: config.zone,
@@ -154,28 +157,18 @@ async function abortOpenUploads(
       }
     }
   } catch (e) {
-    summary.errors++;
     log(`open uploads could not be aborted (continuing): ${e}`);
   }
 }
 
 /**
  * Run the two-phase sweep. THROWS only on a SYSTEMIC failure (cannot list the top-level `files/`
- * directory — an auth failure surfaces here). Per-event failures are caught, counted in `summary.errors`,
- * and never abort the run (deletes are idempotent).
+ * directory — an auth failure surfaces here). Per-event failures are logged and never abort the run (deletes
+ * are idempotent, and the next night retries them).
  */
-export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
+export async function runSweep(deps: SweepDeps): Promise<SweepOutcome> {
   const { fetch: f, config, db, now, dryRun } = deps;
   const log = deps.log ?? console.log;
-  const summary: SweepSummary = {
-    events: { deleted: 0, completed: 0, kept: 0 },
-    devices: { deleted: 0, kept: 0 },
-    versions: [],
-    files: { deleted: { count: 0, bytes: 0 }, kept: { count: 0, bytes: 0 } },
-    dirs: { deleted: 0, kept: 0 },
-    errors: 0,
-    dryRun,
-  };
 
   // ── EVENT PHASE ─────────────────────────────────────────────────────────────────────────────────
   // One read gives every event and its membership counts — the whole input to the staleness decision.
@@ -187,10 +180,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
     for (const counts of await eventsWithCounts(tx, canonicalFromMs(at))) {
       const { event, total, active } = counts;
       const verdict = sweepVerdict(event, counts, at);
-      if (verdict === "keep") {
-        summary.events.kept++;
-        continue;
-      }
+      if (verdict === "keep") continue;
       // A completed event keeps its row but no longer lives: the byte phase below deletes its folder
       // exactly like a deleted one's (in a dry run nothing was deleted, and the id set stands in for that).
       stale.push(event.eventId);
@@ -201,14 +191,13 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
           // No notification, for the same reason as a delete below: a device still joined learns the
           // event completed from its own next read, and shows it as over.
           await completeEvent(tx, event.eventId, canonicalFromMs(now()));
+          await recordOutcome(tx, event.eventId, "completed", now());
           log(`completed event ${event.eventId} (${active}/${total} active)`);
         }
-        summary.events.completed++;
         continue;
       }
       if (dryRun) {
         log(`[dry-run] would delete event ${event.eventId} (${total} membership(s))`);
-        summary.events.deleted++;
         continue;
       }
       // No notification is sent: the notify channel carries a semantic-free "something changed, go sync"
@@ -217,7 +206,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
       // and burns a scarce wake syncing against a corpse. Members discover the deletion on their own next
       // foreground details fetch, the only context where acting on it is safe.
       await deleteEvent(tx, event.eventId);
-      summary.events.deleted++;
+      await recordOutcome(tx, event.eventId, "deleted", now());
       log(`deleted stale event ${event.eventId}`);
     }
   });
@@ -240,30 +229,19 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   const top = await listDir(f, config, `files/`);
   const live = await db.transaction((tx) => liveEventIds(tx));
   const lives = (eventId: string) => live.has(eventId) && !staleIds.has(eventId);
-  await abortOpenUploads(deps, lives, summary);
+  await abortOpenUploads(deps, lives);
   for (const entry of top.filter((e) => e.IsDirectory)) {
     const eventId = entry.ObjectName;
     if (!validateUUID(eventId)) continue; // `devices`, and anything this sweep did not write
-    const keep = lives(eventId);
+    if (lives(eventId)) continue;
     try {
-      const files = (await listDir(f, config, eventDir(eventId))).filter((e) => !e.IsDirectory);
-      const tally = keep ? summary.files.kept : summary.files.deleted;
-      tally.count += files.length;
-      tally.bytes += files.reduce((n, e) => n + e.Length, 0);
-      if (keep) {
-        summary.dirs.kept++;
-        continue;
-      }
       if (dryRun) {
-        log(`[dry-run] would delete ${eventDir(eventId)} (${files.length} file(s))`);
+        log(`[dry-run] would delete ${eventDir(eventId)}`);
       } else {
         await deleteObject(f, config, eventDir(eventId));
-        log(`deleted ${eventDir(eventId)} (${files.length} file(s))`);
+        log(`deleted ${eventDir(eventId)}`);
       }
-      summary.dirs.deleted++;
     } catch (e) {
-      summary.dirs.kept++;
-      summary.errors++;
       log(`event ${eventId} byte folder deletion failed (continuing): ${e}`);
     }
   }
@@ -276,44 +254,25 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   // ONE PREDICATE, NOT A ROSTER WALK. The device roster this used to iterate existed to find devices whose
   // attestation OBJECT needed collecting even though they held no row; the object is a column now, so
   // there is nothing left for a roster to find.
-  const totalDevices = await countDevices(db);
-  const collectable = await collectableDevices(db, new Date(now()).toISOString(), staleIds);
-  // The devices counted deleted — collected, or in a dry run would be — so the version table counts the
-  // same kept set as the devices tier.
-  const collected = new Set<string>();
-  for (const deviceId of collectable) {
+  for (const deviceId of await collectableDevices(db, new Date(now()).toISOString(), staleIds)) {
     try {
       if (dryRun) {
         log(`[dry-run] would collect the device record for ${deviceId}`);
-        summary.devices.deleted++;
-        collected.add(deviceId);
         continue;
       }
       await deleteDevice(db, deviceId);
-      summary.devices.deleted++;
-      collected.add(deviceId);
+      log(`collected the device record for ${deviceId}`);
     } catch (err) {
-      summary.errors++;
       log(`device ${deviceId} record collection failed (continuing): ${err}`);
     }
   }
-  summary.devices.kept = totalDevices - summary.devices.deleted;
-  // Diagnostics only: a failed read loses the table, never the run.
-  try {
-    summary.versions = versionTable(
-      (await deviceVersions(db)).filter((d) => !collected.has(d.deviceId)),
-    );
-  } catch (err) {
-    summary.errors++;
-    log(`device version read failed (continuing): ${err}`);
-  }
 
   // ── REQUEST-LOG PHASE (`request-log-report.ts`) ────────────────────────────────────────────────────
-  // Last, and independent of the phases above: a store that cannot be read here loses the request rows
-  // of the summary and counts an error, never the run. A report that did not leave is set on the summary,
-  // and the entry point fails the run on it.
+  // Last, and independent of the phases above: a store that cannot be read here loses this night's report,
+  // never the run's deletions. A report that did not leave is the outcome, and the entry point fails the run
+  // on it.
   try {
-    summary.requests = await runRequestLogPhase({
+    return await runRequestLogPhase({
       db,
       now,
       dryRun,
@@ -322,158 +281,9 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
       log,
     });
   } catch (err) {
-    summary.errors++;
     log(`request log phase failed (continuing): ${err}`);
+    return {};
   }
-
-  return summary;
-}
-
-/**
- * One row of the version table: how many kept devices last declared `version`, per platform. `version` is `null` for a device that never declared one since
- * the column existed — a v1-only build, or one not seen since.
- */
-export type VersionRow = { version: string | null; ios: number; android: number };
-
-/**
- * Count devices by version and platform: newest version first, the versionless row last. What raising
- * `minAppVersion` would lock out is read off the rows below the new minimum.
- */
-export function versionTable(
-  devices: readonly { appVersion: string | null; platform: string }[],
-): VersionRow[] {
-  const rows = new Map<string | null, VersionRow>();
-  for (const d of devices) {
-    const row = rows.get(d.appVersion) ?? { version: d.appVersion, ios: 0, android: 0 };
-    if (d.platform === "android") row.android++;
-    else row.ios++;
-    rows.set(d.appVersion, row);
-  }
-  return [...rows.values()].sort((a, b) =>
-    a.version === null ? 1 : b.version === null ? -1 : compareVersions(b.version, a.version)
-  );
-}
-
-/** The version table's rows as label + per-platform counts, closed by a total row. */
-function versionLines(
-  rows: readonly VersionRow[],
-): { label: string; ios: number; android: number }[] {
-  const total = rows.reduce((t, r) => ({ ios: t.ios + r.ios, android: t.android + r.android }), {
-    ios: 0,
-    android: 0,
-  });
-  return [
-    ...rows.map((r) => ({ label: r.version ?? "unknown", ios: r.ios, android: r.android })),
-    { label: "total", ...total },
-  ];
-}
-
-/** Render a byte count as a human-readable size (`1.2 MB`); IEC-style, `< 1024` stays `N B`. */
-export function humanBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  const units = ["KB", "MB", "GB", "TB", "PB"];
-  let v = n / 1024;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(1)} ${units[i]}`;
-}
-
-/**
- * Render a {@link SweepSummary} as an aligned, human-readable block for the job log — events, devices,
- * files and dirs each on one line, deleted vs kept, with files showing both object count and reclaimed
- * size.
- */
-export function formatSummary(s: SweepSummary): string {
-  const file = (t: Tally) => `${t.count} (${humanBytes(t.bytes)})`;
-  return [
-    `sweep summary${s.dryRun ? " (dry-run)" : ""}:`,
-    `  events    ${s.events.deleted} deleted   ${s.events.completed} completed   ${s.events.kept} kept`,
-    `  devices   ${s.devices.deleted} deleted   ${s.devices.kept} kept`,
-    `  files     ${file(s.files.deleted)} deleted   ${file(s.files.kept)} kept`,
-    `  dirs      ${s.dirs.deleted} deleted   ${s.dirs.kept} kept`,
-    `  errors    ${s.errors}`,
-    `  app versions (kept devices)`,
-    `    ${"version".padEnd(10)}${"ios".padStart(6)}${"android".padStart(9)}`,
-    ...versionLines(s.versions).map((l) =>
-      `    ${l.label.padEnd(10)}${String(l.ios).padStart(6)}${String(l.android).padStart(9)}`
-    ),
-    ...requestLines(s.requests),
-  ].join("\n");
-}
-
-/** The request log's lines of {@link formatSummary}; none when the phase did not run. */
-function requestLines(r: RequestLogSummary | undefined): string[] {
-  if (!r) return [];
-  const c = r.counts;
-  return [
-    `  requests ${r.day}`,
-    `    ${c.total} total   ${c.clientErrors} 4xx   ${c.serverErrors} 5xx   ${c.withErrors} with errors`,
-    `    5xx report: ${reportState(r)}`,
-    `    log: ${r.deleted} rows aged out   ${r.size.rows} rows kept (~${humanBytes(r.size.bytes)})`,
-  ];
-}
-
-/** What became of the day's 5xx report, in words. */
-function reportState(r: RequestLogSummary): string {
-  if (r.sendFailed !== undefined) return `NOT SENT — ${r.sendFailed}`;
-  if (r.counts.serverErrors === 0) return "none (no 5xx)";
-  return `${r.reported} rows${r.omitted > 0 ? `, ${r.omitted} omitted by the budget` : ""}`;
-}
-
-/**
- * Render a {@link SweepSummary} as GitHub-flavoured Markdown for the Actions job **Summary** panel
- * (`$GITHUB_STEP_SUMMARY`) — a table so the tiers render, not a collapsed paragraph. Same numbers as
- * {@link formatSummary}; only the framing differs.
- */
-export function markdownSummary(s: SweepSummary): string {
-  const file = (t: Tally) => `${t.count} (${humanBytes(t.bytes)})`;
-  return [
-    `## Nightly cleanup sweep${s.dryRun ? " (dry-run — nothing deleted)" : ""}`,
-    ``,
-    `| tier | deleted | completed | kept |`,
-    `| --- | --- | --- | --- |`,
-    `| events | ${s.events.deleted} | ${s.events.completed} | ${s.events.kept} |`,
-    `| devices | ${s.devices.deleted} | — | ${s.devices.kept} |`,
-    `| files | ${file(s.files.deleted)} | — | ${file(s.files.kept)} |`,
-    `| dirs | ${s.dirs.deleted} | — | ${s.dirs.kept} |`,
-    ``,
-    `**errors:** ${s.errors}`,
-    ``,
-    `### App versions (kept devices)`,
-    ``,
-    `| version | ios | android |`,
-    `| --- | --- | --- |`,
-    ...versionLines(s.versions).map((l) =>
-      l.label === "total"
-        ? `| **total** | **${l.ios}** | **${l.android}** |`
-        : `| ${l.label} | ${l.ios} | ${l.android} |`
-    ),
-    ``,
-    ...requestMarkdown(s.requests),
-  ].join("\n");
-}
-
-/** The request log's section of {@link markdownSummary}; none when the phase did not run. */
-function requestMarkdown(r: RequestLogSummary | undefined): string[] {
-  if (!r) return [];
-  const c = r.counts;
-  return [
-    `### Requests on ${r.day}`,
-    ``,
-    `| total | 4xx | 5xx | with errors |`,
-    `| --- | --- | --- | --- |`,
-    `| ${c.total} | ${c.clientErrors} | ${c.serverErrors} | ${c.withErrors} |`,
-    ``,
-    `**5xx report:** ${reportState(r)}`,
-    ``,
-    `**request log:** ${r.deleted} rows aged out, ${r.size.rows} kept (~${
-      humanBytes(r.size.bytes)
-    })`,
-    ``,
-  ];
 }
 
 // ── Entry point (GitHub Actions) ────────────────────────────────────────────────────────────────────
@@ -485,7 +295,7 @@ if (import.meta.main) {
     const day = Deno.args.find((a) => a.startsWith("--date="))?.slice("--date=".length) ||
       undefined;
 
-    const summary = await runSweep({
+    const outcome = await runSweep({
       fetch: (url, init) => fetch(url, init),
       config,
       db: libsqlDb(config.databaseUrl, config.databaseToken),
@@ -496,16 +306,9 @@ if (import.meta.main) {
       // The DSN is the deployment's (rendered when the resolve step had SENTRY_DSN), as the edge's is.
       sendReport: senderFor(DEPLOYMENT.sentryDsn, BUILD_SHA),
     });
-    console.log(formatSummary(summary));
-    // On a GitHub Actions runner, also render the summary to the job's Summary panel (a Markdown table).
-    // The env var is absent locally, so this is a no-op off-CI and needs no write permission there.
-    const stepSummaryPath = Deno.env.get("GITHUB_STEP_SUMMARY");
-    if (stepSummaryPath) {
-      await Deno.writeTextFile(stepSummaryPath, markdownSummary(summary), { append: true });
-    }
-    // The 5xx report is the alert: one that did not leave fails the run, after the summary is out.
-    if (summary.requests?.sendFailed !== undefined) {
-      console.error(`sweep: the 5xx report did not leave — ${summary.requests.sendFailed}`);
+    // The 5xx report is the alert: one that did not leave fails the run.
+    if (outcome.sendFailed !== undefined) {
+      console.error(`sweep: the 5xx report did not leave — ${outcome.sendFailed}`);
       Deno.exit(1);
     }
   } catch (e) {

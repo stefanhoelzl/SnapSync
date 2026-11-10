@@ -10,7 +10,6 @@ import {
   fromRow,
   insertRequestRecord,
   requestCounts,
-  requestLogSize,
   serverErrorRecords,
   storeSink,
 } from "../src/request-log-store.ts";
@@ -49,12 +48,17 @@ Deno.test("storeSink → the line first, then one row holding the record's facts
   const [row] = await rows(db, "SELECT * FROM request_log");
   assertEquals(
     row.fields,
-    '{"completed":1,"recipients":[3,2],"fanout":"notify: Error: timed out"}',
+    '{"completed":1,"recipients":[3,2],"fanout":"notify: Error: timed out","app_version":"0.14"}',
   );
   assertEquals(row.errors, "fanout");
-  assertEquals(row.version, "0.14");
+  assert(!("version" in row), "the version is a field, not a column");
   const back = fromRow(row);
-  assertEquals(back.fields.recipients, [3, 2]);
+  assertEquals(back.version, "0.14");
+  assertEquals(back.fields, {
+    completed: 1,
+    recipients: [3, 2],
+    fanout: "notify: Error: timed out",
+  });
   assertEquals(back.errors, ["fanout"]);
   db.close();
 });
@@ -137,7 +141,10 @@ Deno.test("createApp → with the store sink, every request is one row", async (
     logSink: storeSink(db, () => {}),
   });
   await (await app.request(`/api/v2/events`, { method: "POST", body: "{}", headers: V2 })).text();
-  const got = await rows(db, "SELECT method, url, status, version, bytes_in FROM request_log");
+  const got = await rows(
+    db,
+    "SELECT method, url, status, json_extract(fields, '$.app_version') AS version, bytes_in FROM request_log",
+  );
   assertEquals(got, [{
     method: "POST",
     url: "http://localhost/api/v2/events",
@@ -198,9 +205,7 @@ Deno.test("the sweep's reads → a window's counts, its 5xx newest first, the ag
   });
   assertEquals((await serverErrorRecords(db, from, to)).map((r) => r.reqid), ["day004", "day003"]);
 
-  assertEquals((await requestLogSize(db)).rows, 7);
   assertEquals(await deleteRequestLogBefore(db, "2026-09-07T00:00:00.000Z"), 1);
-  assertEquals((await requestLogSize(db)).rows, 6);
-  assert((await requestLogSize(db)).bytes > 0);
+  assertEquals((await rows(db, "SELECT reqid FROM request_log")).length, 6);
   db.close();
 });

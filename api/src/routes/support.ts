@@ -16,7 +16,6 @@ import {
   type EventRow,
   pushTokensForEvent,
   readEvent,
-  recordAppVersion,
   sharedByEveryone,
   unionPosition,
 } from "../db.ts";
@@ -26,7 +25,6 @@ import { type Fault, refuse, rethrowRefusal } from "../refusal.ts";
 import type { RequestLog } from "../request-log.ts";
 import { type FetchLike, storageKey } from "../storage.ts";
 import { canonicalFromMs } from "../validators.ts";
-import { recordableVersion, splitVersion } from "../version.ts";
 
 /** What a route factory is built over: `createApp`'s dependencies, resolved once. */
 export type RouteDeps = {
@@ -343,39 +341,6 @@ export function closedRefusal(): never {
 export function enrollRefusal(outcome: EnrollOutcome): void {
   if (outcome === "no-such-event") refuse(404, "event not found");
   if (outcome === "closed") closedRefusal();
-}
-
-/**
- * The app version a request declared, as a device row keeps it — or `null` off v2 (only v2 runs the version
- * gate that parses it) or when it is not {@link recordableVersion}.
- */
-export function declaredAppVersion(url: string, header: string | undefined): string | null {
-  if (splitVersion(new URL(url).pathname).version !== 2) return null;
-  return recordableVersion(header);
-}
-
-/**
- * Keep the app version a request declared (`declared`, from {@link declaredAppVersion}) on `deviceId`'s row.
- * Answers the failure to record, or `undefined`.
- *
- * Best-effort: the record of a version never costs the request it rode in on. Called by the join, the
- * manifest publish and a union read that carries a verified token — never by every gated route, because
- * each statement is an Edge subrequest and the byte route's fan-out already spends most of the 50
- * (`docs/deployment.md`).
- */
-export async function noteAppVersion(
-  db: Db,
-  deviceId: string,
-  declared: string | null,
-  what: string,
-): Promise<string | undefined> {
-  if (declared === null) return undefined;
-  try {
-    await recordAppVersion(db, deviceId, declared);
-    return undefined;
-  } catch (e) {
-    return `${what}: could not record app version ${declared} for ${deviceId} (best-effort): ${e}`;
-  }
 }
 
 // The fan-out's own bound. Generous next to the work (one push per recipient, at most

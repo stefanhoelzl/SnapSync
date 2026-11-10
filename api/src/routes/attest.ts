@@ -14,14 +14,7 @@ import {
 import { verifyMintProof, verifyRenewal } from "../attest-proofs.ts";
 import { putAttestation, readAttestation, touchTokenExpiry } from "../db.ts";
 import type { Handlers } from "../gen/wire.ts";
-import { APP_VERSION_HEADER } from "../version.ts";
-import {
-  declaredAppVersion,
-  NO_CACHE,
-  type RouteDeps,
-  tryUpstream,
-  upstream502,
-} from "./support.ts";
+import { NO_CACHE, type RouteDeps, tryUpstream, upstream502 } from "./support.ts";
 
 // The token ISSUERS. A stale challenge is `409 stale challenge`, never `401`:
 // `401` means "your credential is rejected" and a stale challenge rejects no credential — it is what let a
@@ -95,7 +88,6 @@ export function attestHandlers(
             },
             new Date(now()).toISOString(),
             tokenExpiryIso(config, now()),
-            declaredAppVersion(c.req.url, c.req.header(APP_VERSION_HEADER)),
           ),
       );
 

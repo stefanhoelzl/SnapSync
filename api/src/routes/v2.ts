@@ -8,6 +8,7 @@ import {
   type EventRow,
   eventsCompletedBy,
   gainedStatements,
+  hasSharedAll,
   isMember,
   landUploadStatement,
   type ManifestAssetEntry,
@@ -20,6 +21,7 @@ import {
   recordReceived,
   recordResourceStatement,
   stampLanded,
+  unionPosition,
   uploadMembership,
 } from "../db.ts";
 import type { HonoRequest } from "hono";
@@ -28,7 +30,6 @@ import { deleteObject, eventBytePath, storageKey } from "../storage.ts";
 import { s3Client } from "../s3.ts";
 import { type Fault, refuse } from "../refusal.ts";
 import type { RequestLog } from "../request-log.ts";
-import { APP_VERSION_HEADER } from "../version.ts";
 import { admitFilename, uploadOf } from "./encrypted-upload.ts";
 import {
   ALREADY_LANDED,
@@ -40,11 +41,9 @@ import {
 } from "./resumable-upload.ts";
 import {
   closedRefusal,
-  declaredAppVersion,
   enrollRefusal,
   gateEvent,
   NO_CACHE,
-  noteAppVersion,
   notifyMembers,
   type NotifyOutcome,
   orUpstream502,
@@ -56,6 +55,51 @@ import {
 
 /** What storing one resource did beyond storing it: what it completed, whom it woke, what failed on the way. */
 type StoreOutcome = { completed: number; woken: NotifyOutcome[]; errors: Fault[] };
+
+/** A byte upload's delivery-fact headers and the field each is recorded as (`docs/architecture.md`). */
+const UPLOAD_FACTS = [
+  ["taken", "x-snapsync-taken"],
+  ["discovered", "x-snapsync-discovered"],
+  ["discovered_by", "x-snapsync-discovered-by"],
+  ["queued", "x-snapsync-queued"],
+  ["queued_by", "x-snapsync-queued-by"],
+] as const;
+
+/**
+ * The delivery record's facts of one byte upload (decision record `changes/delivery-record`, D2/D5): what kind of
+ * attempt it is — `resume` with a range, else `fresh` (a restart is told when reading) — where it starts, the
+ * file's size, its media, the phone's stage times, and `backlog` when the photo was taken before this device
+ * joined (its capture range reached back before the join).
+ */
+function recordUploadFacts(
+  log: RequestLog,
+  params: { "content-range"?: string } & { [H in typeof UPLOAD_FACTS[number][1]]?: string },
+  contentType: string,
+  contentLength: string | undefined,
+  joinedAt: string,
+): void {
+  const range = params["content-range"] === undefined
+    ? null
+    : /^bytes (\d+)-\d+\/(\d+)$/.exec(params["content-range"]);
+  log.field("kind", range ? "resume" : "fresh");
+  log.field("from", range ? Number(range[1]) : 0);
+  const size = range ? Number(range[2]) : Number(contentLength);
+  if (Number.isFinite(size)) log.field("size", size);
+  log.field(
+    "media",
+    contentType.startsWith("image/")
+      ? "photo"
+      : contentType.startsWith("video/")
+      ? "video"
+      : "other",
+  );
+  for (const [field, header] of UPLOAD_FACTS) {
+    const value = params[header];
+    if (value !== undefined) log.field(field, value);
+  }
+  const taken = params["x-snapsync-taken"];
+  if (taken !== undefined && Date.parse(taken) < Date.parse(joinedAt)) log.field("backlog", true);
+}
 
 /** Put a byte route's outcome on the request's line. */
 function recordStore(log: RequestLog, outcome: StoreOutcome): void {
@@ -124,7 +168,6 @@ export function v2Handlers(
     final: boolean,
     changes: { gained: string[]; removed: string[] },
   ): Promise<boolean> {
-    const nowMs = now();
     const results = await tryUpstream(
       `v2 manifest: publish failed for ${event.eventId}/${deviceId}`,
       () =>
@@ -132,7 +175,7 @@ export function v2Handlers(
           publishStatements(event.eventId, deviceId, assets, {
             version,
             final,
-            log: { ...changes, at: new Date(nowMs).toISOString() },
+            gained: changes.gained,
           }),
         ),
     );
@@ -205,7 +248,7 @@ export function v2Handlers(
     // `changes/incremental-union`, D4): a gain logged for bytes never recorded would announce what no read
     // can serve, and a record whose gain was lost would leave the asset out of every delta.
     const landedAt = new Date(now()).toISOString();
-    const gained = gainedStatements(completed, deviceId, assetId, landedAt);
+    const gained = gainedStatements(completed, deviceId, assetId);
     const results = await tryUpstream(
       `${route}: could not record ${path}`,
       () => db.batch(recordStatements({ ...target, landedAt }, landing, gained)),
@@ -290,13 +333,32 @@ export function v2Handlers(
       );
       const state = membership?.state;
       if (state !== "sharing" && state !== "settled") return c.text("not a member", 403);
+      const contentType = c.req.header("content-type") ?? "application/octet-stream";
+      recordUploadFacts(
+        c.var.log,
+        params,
+        contentType,
+        c.req.header("content-length"),
+        membership!.joinedAt,
+      );
       const stored = await storeResource(
         "v2 upload",
         { eventId, deviceId, ...identity, keyId: membership?.keyId ?? null },
         c.req,
-        c.req.header("content-type") ?? "application/octet-stream",
+        contentType,
       );
       recordStore(c.var.log, stored);
+      // The landing that completes a settled device's last declared photo: it has shared everything.
+      if (stored.completed > 0 && state === "settled") {
+        try {
+          if (await hasSharedAll(db, eventId, deviceId)) c.var.log.field("uploaded_all", true);
+        } catch (e) {
+          c.var.log.error(
+            "delivery-fact",
+            `v2 upload: shared-all lookup failed for ${eventId}/${deviceId}: ${e}`,
+          );
+        }
+      }
       return c.body(null, 201);
     },
 
@@ -331,7 +393,12 @@ export function v2Handlers(
         `v2 upload state: read failed for ${path}`,
         () => uploadStatus(storeDeps, target, params["x-snapsync-sha256"]),
       );
-      if (status === "landed") return c.body(null, 204);
+      // The delivery record: where the retry is told to start — what a drop kept (`offset`), or that it landed.
+      if (status === "landed") {
+        c.var.log.field("landed", true);
+        return c.body(null, 204);
+      }
+      c.var.log.field("offset", status);
       if (status === 0) return c.text("nothing stored", 404);
       c.header(UPLOAD_OFFSET_HEADER, `${status}`);
       return c.body(null, 200);
@@ -405,9 +472,6 @@ export function v2Handlers(
     async joinEvent(c, { params }) {
       const { eventId } = params;
       const deviceId = ownDevice(c.get("tokenDeviceId"), params.deviceId);
-      const declared = declaredAppVersion(c.req.url, c.req.header(APP_VERSION_HEADER));
-      const notRecorded = await noteAppVersion(db, deviceId, declared, "v2 join");
-      if (notRecorded) c.var.log.error("app-version", notRecorded);
       enrollRefusal(
         await tryUpstream(
           `v2 join: enrollment failed for ${eventId}/${deviceId}`,
@@ -424,9 +488,6 @@ export function v2Handlers(
     async publishManifest(c, { params, body }) {
       const { eventId } = params;
       const deviceId = ownDevice(c.get("tokenDeviceId"), params.deviceId);
-      const declared = declaredAppVersion(c.req.url, c.req.header(APP_VERSION_HEADER));
-      const notRecorded = await noteAppVersion(db, deviceId, declared, "v2 manifest");
-      if (notRecorded) c.var.log.error("app-version", notRecorded);
       const { assets, version, final } = body;
       const event = await gateEvent(db, eventId, "v2 manifest");
       // A manifest from a NON-MEMBER is refused rather than silently joining — the inverse of v1, where
@@ -480,6 +541,12 @@ export function v2Handlers(
       if (!won) {
         c.var.log.field("refused", "older-version");
         c.var.log.field("version", version ?? "-");
+      } else {
+        // The delivery record of a publish that took: how many photos the device declares, whether it declared its
+        // share settled, and which servable photos it withdrew.
+        c.var.log.field("assets", assets.length);
+        c.var.log.field("state", final ? "settled" : "sharing");
+        for (const assetId of changes.removed) c.var.log.field("withdrawn", assetId);
       }
       // AFTER THE COMMIT, never inside it: a recipient woken before the write is visible would read the
       // union and find the very state the notification announced to be missing. Best-effort — the response
@@ -500,7 +567,12 @@ export function v2Handlers(
     // (`receivesNothing`), which alone is the received half of done; any report without it says the device receives.
     // Only a member still IN the event reports; any other device is told it is not one, like a manifest from a
     // non-member.
-    async reportReceived(c, { params, body: { position, receivesNothing } }) {
+    //
+    // The report is also where a receiver's delivery facts arrive (decision record `changes/delivery-record`, D3):
+    // when each photo it received since its last report was downloaded and added to its library, and why — a list
+    // in the body, because as headers of a read they could outgrow a proxy's limit and refuse the read itself. One
+    // entry per photo under `delivered`; and `caught_up` when the position reaches the event's union head.
+    async reportReceived(c, { params, body: { position, receivesNothing, delivered } }) {
       const { eventId } = params;
       const deviceId = ownDevice(c.get("tokenDeviceId"), params.deviceId);
       await gateEvent(db, eventId, "v2 received");
@@ -509,6 +581,16 @@ export function v2Handlers(
         () => recordReceived(db, eventId, deviceId, position, receivesNothing === true),
       );
       if (!member) return c.text("not a member", 409);
+      c.var.log.field("position", position);
+      for (const entry of delivered ?? []) c.var.log.field("delivered", entry);
+      try {
+        if (position >= await unionPosition(db, eventId)) c.var.log.field("caught_up", true);
+      } catch (e) {
+        c.var.log.error(
+          "delivery-fact",
+          `v2 received: union head read failed for ${eventId}: ${e}`,
+        );
+      }
       return c.body(null, 200);
     },
   };

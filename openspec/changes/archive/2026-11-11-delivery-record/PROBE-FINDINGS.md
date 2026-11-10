@@ -4,7 +4,7 @@
 
 Measured against the **production** bunny Database from a workstation via `secrets-env` (full-access token), with
 throwaway probes that create and drop run-id-tagged scratch tables (`_probe_dropcol_<run>`, `_probe_strict_<run>`;
-no production row or table touched, none left behind). The scratch table mirrored what migration 0017 meets: a
+no production row or table touched, none left behind). The scratch table mirrored what migration 0018 meets: a
 `STRICT` table with an `AUTOINCREMENT` key, a foreign key with `ON DELETE CASCADE`, an index, a nullable and a
 `NOT NULL` column.
 
@@ -20,7 +20,7 @@ no production row or table touched, none left behind). The scratch table mirrore
    scratch tables left                              0
 ```
 
-**Settles:** migration 0017 can drop columns in place (design D10); no table rebuild is needed, and a drop leaves the
+**Settles:** migration 0018 can drop columns in place (design D10); no table rebuild is needed, and a drop leaves the
 table's `STRICT` enforcement, its sequence and its foreign keys as they were. (A first run reported STRICT "not
 enforced" for `42.5` into a TEXT column — SQLite's STRICT converts a value losslessly convertible to the column's
 type, so that check proved nothing; the re-run above uses a value that cannot convert.)

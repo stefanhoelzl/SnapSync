@@ -10,15 +10,19 @@ import { discoverMigrations, MIGRATIONS_DIR, replay } from "../src/dev/replay.ts
 const KEY_ID = "0123456789abcdef";
 const ENVELOPE = "AQ" + "A".repeat(40);
 
-/** A store replayed up to, and not including, 0017 — the shape the deployed store has before this change. */
-async function storeBefore0017() {
+/** The migrations whose names [keep] admits, alone in a directory: a later migration never runs in a test of an earlier one. */
+async function migrations(keep: (name: string) => boolean): Promise<string> {
   const dir = await Deno.makeTempDir();
   for (const m of discoverMigrations(MIGRATIONS_DIR)) {
-    if (m.name >= "0017") break;
-    await Deno.copyFile(m.path, join(dir, m.name));
+    if (keep(m.name)) await Deno.copyFile(m.path, join(dir, m.name));
   }
+  return dir;
+}
+
+/** A store replayed up to, and not including, 0017 — the shape the deployed store has before this change. */
+async function storeBefore0017() {
   const db = sqliteDb(":memory:");
-  await replay(db, dir);
+  await replay(db, await migrations((name) => name < "0017"));
   return db;
 }
 
@@ -51,7 +55,9 @@ Deno.test("0017 keeps every plain and legacy encrypted event, and what reference
   );
   await db.execute(`INSERT INTO union_log (event_id, kind, at) VALUES ('plain', 'gained', 'x')`);
 
-  assertEquals(await replay(db), ["0017_sealed_event_meta.sql"]);
+  assertEquals(await replay(db, await migrations((name) => name < "0018")), [
+    "0017_sealed_event_meta.sql",
+  ]);
 
   const { rows } = await db.execute(`SELECT id, name, key_id, sealed_meta FROM events ORDER BY id`);
   assertEquals(rows.map((r) => [r.id, r.name, r.key_id, r.sealed_meta]), [

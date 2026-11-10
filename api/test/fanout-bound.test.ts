@@ -33,9 +33,8 @@ async function seedMembers(db: Db, count: number): Promise<string[]> {
     await joinEvent(db, E, id);
     await enrolDevice(db, id);
     await db.execute(
-      `UPDATE devices SET push_kind = 'apns', push_token = ?, push_env = 'sandbox',
-                          push_updated_at = '2026-07-14T00:00:00Z'
-        WHERE device_id = ?`,
+      `UPDATE devices SET push_kind = 'apns', push_token = ?, push_env = 'sandbox'
+                          WHERE device_id = ?`,
       [id, id],
     );
   }

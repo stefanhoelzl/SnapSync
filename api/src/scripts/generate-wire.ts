@@ -46,6 +46,7 @@ const TRANSLATED = new Set([
   "minLength",
   "maxLength",
   "minItems",
+  "maxItems",
   "minimum",
   "maximum",
   "minProperties",
@@ -210,6 +211,7 @@ function number(schema: Node, start: string): string {
 function array(schema: Node, where: string): string {
   let out = `z.array(${zodOf(schema.items as Node, `${where}/items`)})`;
   if (typeof schema.minItems === "number") out += `.min(${schema.minItems})`;
+  if (typeof schema.maxItems === "number") out += `.max(${schema.maxItems})`;
   return out;
 }
 

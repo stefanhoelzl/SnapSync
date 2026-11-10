@@ -63,7 +63,7 @@ async function land(db: Db, d: string, asset: string, role: string) {
 /** A gain in the union log; answers its position. */
 async function gain(db: Db, d: string, asset: string): Promise<number> {
   await db.execute(
-    `INSERT INTO union_log (event_id, kind, device_id, asset_id, at) VALUES (?, 'gained', ?, ?, 'at')`,
+    `INSERT INTO union_log (event_id, kind, device_id, asset_id) VALUES (?, 'gained', ?, ?)`,
     [E, d, asset],
   );
   const { rows } = await db.execute(`SELECT MAX(seq) AS s FROM union_log`);

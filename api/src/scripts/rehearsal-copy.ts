@@ -41,11 +41,9 @@ export const VERBATIM: Readonly<Record<string, ReadonlySet<string>>> = {
   devices: new Set([
     "created_at",
     "attest_env",
-    "attested_at",
     "attest_token_expires_at",
     "push_kind",
     "push_env",
-    "push_updated_at",
   ]),
   events: new Set([
     "created_at",
@@ -59,6 +57,8 @@ export const VERBATIM: Readonly<Record<string, ReadonlySet<string>>> = {
   memberships: new Set(["state", "joined_at"]),
   event_assets: new Set(["creation_date", "roles"]),
   resources: new Set(["role", "content_type"]),
+  // Migration 0018 deletes by it.
+  union_log: new Set(["kind"]),
 };
 
 /**

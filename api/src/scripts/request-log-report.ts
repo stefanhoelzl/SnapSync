@@ -1,6 +1,7 @@
 // The nightly sweep's REQUEST-LOG phase (`docs/deployment.md`, "Nightly cleanup"; migration 0012): the
-// kept request log is aged out, the previous UTC day is counted for the run's summary, and that day's 5xx
-// rows are reported to the error tracker — the Bugsink project the apps and the edge already report to.
+// kept request log is aged out, and the previous UTC day's 5xx rows are reported to the error tracker — the
+// Bugsink project the apps and the edge already report to. The run keeps no summary of its own: what the
+// operator learns from the request log, it reads there (decision record `changes/delivery-record`, D9).
 //
 // ANY 5xx IS REPORTED. A day's report carries every 5xx row as its console line, newest first, cut at a byte
 // budget so the event stays well under Bugsink's 1 MiB event cap (docs/deployment.md, "Crash reports and the diagnostic dump": an
@@ -23,7 +24,6 @@ import {
   REQUEST_LOG_RETENTION_DAYS,
   type RequestCounts,
   requestCounts,
-  requestLogSize,
   serverErrorRecords,
   type StoredRecord,
 } from "../request-log-store.ts";
@@ -58,19 +58,8 @@ export type ServerErrorReport = {
 /** Sends a report; throws when it did not leave. */
 export type ReportSender = (report: ServerErrorReport) => Promise<void>;
 
-/** What the phase did — the request-log rows of the run's summary. */
-export type RequestLogSummary = {
-  day: string;
-  counts: RequestCounts;
-  /** Rows older than the retention limit: deleted, or in a dry run would be. */
-  deleted: number;
-  size: { rows: number; bytes: number };
-  /** The day's 5xx rows the report carried (0 when the day had none). */
-  reported: number;
-  omitted: number;
-  /** Why the report did not leave — set only when sending failed, which fails the run. */
-  sendFailed?: string;
-};
+/** What became of the day's report: why it did not leave, set only when sending failed — which fails the run. */
+export type ReportOutcome = { sendFailed?: string };
 
 /** The UTC day before `now`, `YYYY-MM-DD`. */
 export function previousUtcDay(now: number): string {
@@ -124,7 +113,7 @@ export type RequestLogPhaseDeps = {
 };
 
 /** Age the table out, count the day, report its 5xx. Throws only when the store cannot be read. */
-export async function runRequestLogPhase(deps: RequestLogPhaseDeps): Promise<RequestLogSummary> {
+export async function runRequestLogPhase(deps: RequestLogPhaseDeps): Promise<ReportOutcome> {
   const { db, now, dryRun, log } = deps;
   const day = deps.day ?? previousUtcDay(now());
   const { from, to } = dayWindow(day);
@@ -141,28 +130,21 @@ export async function runRequestLogPhase(deps: RequestLogPhaseDeps): Promise<Req
 
   const counts = await requestCounts(db, from, to);
   const report = serverErrorReport(day, counts, await serverErrorRecords(db, from, to));
-  const summary: RequestLogSummary = {
-    day,
-    counts,
-    deleted,
-    size: await requestLogSize(db),
-    reported: report?.lines.length ?? 0,
-    omitted: report?.omitted ?? 0,
-  };
-  if (report === null) return summary;
+  if (report === null) return {};
   if (dryRun) {
     log(`[dry-run] would report ${counts.serverErrors} 5xx of ${day}:`);
     for (const line of report.lines) log(`  ${line}`);
-    return summary;
+    return {};
   }
   try {
     await deps.send(report);
     log(`reported ${counts.serverErrors} 5xx of ${day} (${report.omitted} omitted by the budget)`);
+    return {};
   } catch (e) {
-    summary.sendFailed = e instanceof Error ? e.message : String(e);
-    log(`the 5xx report of ${day} did not leave: ${summary.sendFailed}`);
+    const sendFailed = e instanceof Error ? e.message : String(e);
+    log(`the 5xx report of ${day} did not leave: ${sendFailed}`);
+    return { sendFailed };
   }
-  return summary;
 }
 
 /** How long the sweep waits for its one report to leave. */

@@ -17,12 +17,22 @@ import {
 /** How long a row is kept. The nightly sweep deletes older ones. */
 export const REQUEST_LOG_RETENTION_DAYS = 30;
 
-const COLUMNS = "at, reqid, method, url, status, ms, version, bytes_in, bytes_out, fields, errors";
+const COLUMNS = "at, reqid, method, url, status, ms, bytes_in, bytes_out, fields, errors";
+
+/**
+ * The declared app version's key in a row's `fields` (decision record `changes/delivery-record`, D2): every fact
+ * the request log keeps beyond the request's own shape is a field, so later generated columns read one place. The
+ * record keeps `version` as a property of its own because the console line prints it in its fixed head (`v=`).
+ */
+export const APP_VERSION_FIELD = "app_version";
 
 /** Keep one record. */
 export async function insertRequestRecord(db: Db, r: RequestRecord): Promise<void> {
+  const fields = r.version === undefined
+    ? r.fields
+    : { ...r.fields, [APP_VERSION_FIELD]: r.version };
   await db.execute(
-    `INSERT INTO request_log (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO request_log (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       r.at.toISOString(),
       r.reqid,
@@ -30,10 +40,9 @@ export async function insertRequestRecord(db: Db, r: RequestRecord): Promise<voi
       r.url,
       r.status,
       r.ms,
-      r.version ?? null,
       r.bytesIn ?? null,
       r.bytesOut,
-      JSON.stringify(r.fields),
+      JSON.stringify(fields),
       r.errors.length > 0 ? r.errors.join(" ") : null,
     ],
   );
@@ -65,6 +74,7 @@ export type StoredRecord = RequestRecord & { id: number };
 /** A row as {@link insertRequestRecord} wrote it. */
 export function fromRow(row: Row): StoredRecord {
   const errors = typeof row.errors === "string" ? row.errors.split(" ") : [];
+  const { [APP_VERSION_FIELD]: kept, ...fields } = JSON.parse(String(row.fields)) as Fields;
   return {
     id: Number(row.id),
     at: new Date(String(row.at)),
@@ -73,10 +83,10 @@ export function fromRow(row: Row): StoredRecord {
     url: String(row.url),
     status: Number(row.status),
     ms: Number(row.ms),
-    version: row.version === null ? undefined : String(row.version),
+    version: kept === undefined ? undefined : String(kept),
     bytesIn: row.bytes_in === null ? undefined : Number(row.bytes_in),
     bytesOut: Number(row.bytes_out),
-    fields: JSON.parse(String(row.fields)) as Fields,
+    fields,
     errors: errors.filter((t): t is ErrorTag => (ERROR_TAGS as readonly string[]).includes(t)),
   };
 }
@@ -125,15 +135,4 @@ export async function serverErrorRecords(
     [from, to],
   );
   return rows.map(fromRow);
-}
-
-/** How big the table is: its rows, and the bytes its values hold (an estimate: no page overhead). */
-export async function requestLogSize(db: Db): Promise<{ rows: number; bytes: number }> {
-  const { rows } = await db.execute(
-    `SELECT count(*) AS n,
-            coalesce(sum(length(at) + length(reqid) + length(method) + length(url) + length(fields)
-                         + coalesce(length(version), 0) + coalesce(length(errors), 0) + 32), 0) AS bytes
-       FROM request_log`,
-  );
-  return { rows: Number(rows[0]?.n ?? 0), bytes: Number(rows[0]?.bytes ?? 0) };
 }

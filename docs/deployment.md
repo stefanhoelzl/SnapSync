@@ -267,6 +267,10 @@ bundle that disagreed with the schema", never "certainly".
 - Only a **migrating** deploy rolls back automatically. There is **no rebuild fallback**: a missing
   archive fails loudly and names the commit. If a **non**-migrating deploy goes red, the live bundle stays
   live and a human fixes forward.
+- ⚠️ **Migration 0018's deploy cannot be rolled back automatically without a forward fix** (decision record
+  `changes/delivery-record`, D10): the bundle before it still writes `union_log.at` with every landing (uploads
+  answer `502`), `devices.attested_at` with every attestation and `push_updated_at` with every push registration —
+  all columns 0018 drops. If that deploy goes red and rolls back, roll forward to a 0018-or-newer bundle at once.
 - ⚠️ **A bundle older than migration 0015 running on the migrated store** (that migration's deploy rolled
   back, or any later rollback past it) records each photo it receives without `resources.landed_at`, which
   the newer bundle reads as "still uploading": out of every union, while the phone holds a `201` and never
@@ -391,6 +395,9 @@ log"). `deno task logs` (in `api/`, `src/scripts/logs.ts`) reads it with the rea
 secrets-env -- deno task logs                              # the last 24 h, oldest first, as console lines
 secrets-env -- deno task logs --status 5xx --since 7d      # --method --path --route --event --device --reqid --v --error <tag> --errors --slow <ms> --until
 secrets-env -- deno task logs --stats route                # or hour · day · error · status · version
+secrets-env -- deno task logs --field network=cellular     # any delivery-record field (`docs/architecture.md`)
+secrets-env -- deno task logs --devices --since 30d        # each device once, at its last app version, per platform
+secrets-env -- deno task logs --method SWEEP --since 7d    # what the nightly sweep completed and deleted
 secrets-env -- deno task logs --live                       # the console itself, streamed (the account key)
 deno task logs --db .localstore/api.db                     # a local rig's store
 ```
@@ -428,25 +435,25 @@ runtime has no scheduler and a whole-store walk would exceed 50 subrequests / 30
   landed just after the event completed, is healed by the next run. A device with no membership left
   loses its `devices` row **only after its last token has expired**. Deleting it earlier would push the
   device into a re-attestation loop every night.
+- **What it did** is in the request log, not in a summary: each event it completes or deletes leaves one record
+  in the same transaction (method `SWEEP`, `event=`, `outcome=completed|deleted`; `deno task logs --method SWEEP`),
+  and its progress is in the job's log. A dry run writes no record and says what it would do.
 - **Request-log phase** (`src/scripts/request-log-report.ts`): deletes `request_log` rows older than 30
-  days, counts the previous UTC day (`[00:00, 24:00)`; total, 4xx, 5xx, rows with faults) and the table's
-  size, and — when that day had **any 5xx** — sends one Bugsink report (project 1, `platform=api`, fixed
+  days and — when the previous UTC day (`[00:00, 24:00)`) had **any 5xx** — sends one Bugsink report (project 1, `platform=api`, fixed
   fingerprint `api-5xx-elevated` and fixed message `api: requests answered 5xx` — the day and its counts ride
   as the `day` tag and the extras — so a run of bad days is one issue that alerts on its first event and again
   after it is resolved). The report carries every 5xx row as its console line, newest first, cut at a
   512 KB budget (`omitted` counts the rest) to stay well under Bugsink's 1 MiB event cap. The DSN is the
-  deployment's: the resolve step is handed `SENTRY_DSN`. ⚠️ **A report that did not leave fails the run**,
-  after the summary is written — including a run with no DSN to send with. A dry run prints the report
-  instead.
+  deployment's: the resolve step is handed `SENTRY_DSN`. ⚠️ **A report that did not leave fails the run** —
+  including a run with no DSN to send with. A dry run prints the report instead.
 - **Storage it touches:** only the `files/<eventId>/` folders. Never `site/`, and never `files/devices/`:
   that holds the bytes written before migration 0010, still served through rows that point at them, and is
   deleted outright once they are copied into their events (`changes/per-event-storage-layout`).
-- **Failure mode:** best-effort per folder. A single failed delete is logged and counted. The run exits
-  non-zero only on a systemic failure (auth, or storage cannot be listed at all). The summary (events,
-  devices, files and dirs deleted and kept, byte sizes, error count) goes to the job's Summary panel,
-  followed by the kept devices counted by app version (rows, newest first, `unknown` for a row that never
-  declared one) and platform (`ios` / `android` columns), with a total row — read it before raising
-  `minAppVersion` — and the request-log phase's counts, report and table size.
+- **Failure mode:** best-effort per folder and per device. A single failed delete is logged, and the next night
+  retries it; nothing counts it (accepted: decision record `changes/delivery-record`, D9). The run exits non-zero
+  only on a systemic failure (auth, or storage cannot be listed at all) or a 5xx report that did not leave.
+- **Before raising `minAppVersion`:** `deno task logs --devices --since 30d` counts each device seen once, at the
+  app version it last declared, per platform (`PENDING_CLEANUPS.md`).
 - ⚠️ The old guard that refused to sweep an empty store is gone. If the database stops describing this
   zone, the sweep would delete every byte in it.
 

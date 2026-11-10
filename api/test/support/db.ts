@@ -34,9 +34,8 @@ export async function enrolDevice(
   tokenExpiresAt: string = LIVE_TOKEN,
 ): Promise<void> {
   await db.execute(
-    `INSERT INTO devices (device_id, created_at, attest_key, attest_env, attested_at,
-                          attest_token_expires_at)
-     VALUES (?, '2026-07-14T00:00:00Z', 'BASE64KEY', 'production', '2026-07-14T00:00:00Z', ?)
+    `INSERT INTO devices (device_id, created_at, attest_key, attest_env, attest_token_expires_at)
+     VALUES (?, '2026-07-14T00:00:00Z', 'BASE64KEY', 'production', ?)
      ON CONFLICT (device_id) DO UPDATE SET attest_token_expires_at = excluded.attest_token_expires_at`,
     [deviceId, tokenExpiresAt],
   );
