@@ -261,7 +261,7 @@ class AndroidWake(context: Context, private val log: Log = Log("wake")) : Wake {
 
         /**
          * The library-change job's two ids, used in turn. At the top of the id range: before API 34, WorkManager's
-         * jobs share this app's default namespace, numbered upward from 0.
+         * jobs share this app's default namespace, and [AndroidWorkConfiguration] keeps them below these.
          */
         val LIBRARY_JOBS = listOf(2_147_480_000, 2_147_480_001)
 
