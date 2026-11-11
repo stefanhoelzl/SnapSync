@@ -34,8 +34,8 @@ class PlayedEntries(
 
     override suspend fun continueLink(url: String) = withContext(lane) { driver.continueLink(url) }
 
-    override suspend fun silentPush(event: String?, awaitRelease: Boolean?): Released? =
-        receipted(awaitRelease) { done -> driver.silentPush(event, done) }
+    override suspend fun silentPush(event: String?, announced: Long?, awaitRelease: Boolean?): Released? =
+        receipted(awaitRelease) { done -> driver.silentPush(event, announced, done) }
 
     override suspend fun backgroundTask(identifier: String, awaitRelease: Boolean?): Released? =
         receipted(awaitRelease) { done -> driver.backgroundTask(identifier, done) }

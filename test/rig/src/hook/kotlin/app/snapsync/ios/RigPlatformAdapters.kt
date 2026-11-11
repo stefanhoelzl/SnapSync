@@ -208,8 +208,15 @@ private object IosEntryDriver : EntryDriver {
 
     override fun pushTokenFailure(description: String) = SnapSyncRoot.pushNotifications.deliverTokenFailure(description)
 
-    override fun silentPush(eventId: String?, done: () -> Unit) =
-        SnapSyncRoot.pushNotifications.deliverMessage(mapOf("eventId" to eventId), done)
+    // APNs hands the backend's `seq` over as a JSON number; the payload names it only when the caller does.
+    override fun silentPush(eventId: String?, announced: Long?, done: () -> Unit) =
+        SnapSyncRoot.pushNotifications.deliverMessage(
+            buildMap<Any?, Any?> {
+                put("eventId", eventId)
+                announced?.let { put("seq", it) }
+            },
+            done,
+        )
 
     override fun continueLink(url: String) =
         SnapSyncRoot.links.deliverUserActivity("onSceneContinueActivity", browsingWebActivity(url))

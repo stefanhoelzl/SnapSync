@@ -211,7 +211,7 @@ private class AndroidEntryDriver(
 
     override fun pushTokenFailure(description: String) = mocked("push")
 
-    override fun silentPush(eventId: String?, done: () -> Unit) = mocked("push")
+    override fun silentPush(eventId: String?, announced: Long?, done: () -> Unit) = mocked("push")
 
     // An App Link as the platform hands it to a running activity: a VIEW intent carrying the URL, fragment and all.
     override fun continueLink(url: String) =

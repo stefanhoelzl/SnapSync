@@ -576,9 +576,16 @@ The app root's entries are the **`os` typed service** (`OsLevers`; `rig os <meth
 $R --url $B os foreground                 # also: background, push-token --token <hex>, push-token-failure --description …
 $R --url $B os continue-link --url <link>
 $R --url $B os silent-push --event <id> --await-release            # → {"heldMs": …, "atRelease": {"stagedFiles": …, "uploadSessionHandbacks": …}}
+$R --url $B os silent-push --event <id> --announced <n>             # the push names union position <n>, as a deployed backend's does
 $R --url $B os background-task --identifier app.snapsync.upload.heartbeat --await-release
 $R --url $B os background-transfers --identifier app.snapsync.upload.session --await-release
 ```
+
+**A played push names a union position only when told one.** The real backend's wake carries `seq`, the position the
+event's union reached; a played push takes it from the mock backend's last wake, so over a REAL backend it names none
+— and the app then answers no push in its read (no `x-snapsync-announced`/`-notified`). `--announced <n>` names it:
+the union head (`deno task logs --path /received` shows the positions) makes the app read as for a real wake. On
+Android the played push needs `push=mock`; with `push=real` the push is FCM's own (`local-backend`).
 
 ⚠️ **`foreground` answers at once and does NOT wait** — and it is the delivery you will reach for most.
 The platform hands it no completion handler, so neither does the rig. **Wait on its `done`** (`rig world events`,

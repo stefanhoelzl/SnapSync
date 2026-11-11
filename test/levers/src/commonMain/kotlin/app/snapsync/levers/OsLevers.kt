@@ -38,8 +38,11 @@ interface OsLevers {
     /** A running app was handed [url] as a Universal Link. */
     suspend fun continueLink(url: String)
 
-    /** A silent push arrived naming [event] — omitted, a push naming none. */
-    suspend fun silentPush(event: String? = null, awaitRelease: Boolean? = null): Released?
+    /**
+     * A silent push arrived naming [event] — omitted, a push naming none — and announcing the union position [announced]:
+     * omitted, the position the host's mocked backend last announced for it, or none where the backend is real.
+     */
+    suspend fun silentPush(event: String? = null, announced: Long? = null, awaitRelease: Boolean? = null): Released?
 
     /** The operating system launched the scheduled background task [identifier] (the platform's own task identifier). */
     suspend fun backgroundTask(identifier: String, awaitRelease: Boolean? = null): Released?
