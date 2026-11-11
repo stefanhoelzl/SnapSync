@@ -179,6 +179,8 @@ dependencies {
     implementation(libs.orbit.core)
     implementation(libs.compose.runtime)
     implementation(libs.androidx.activity.compose)
+    // The process hands WorkManager its configuration (`SnapSyncApplication`, a `Configuration.Provider`).
+    implementation(libs.androidx.work.runtime)
     constraints {
         implementation(libs.androidx.fragment) {
             because("play-services-base pulls 1.1.0, which Play flags as deprecated")
