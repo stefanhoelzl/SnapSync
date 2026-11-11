@@ -1463,9 +1463,12 @@ components:
           $ref: "#/components/schemas/EntryPoint"
 
     EntryPoint:
-      description: The name of the app's entry point that ran a step — why the app acted. A delivery fact.
+      description: >-
+        The names of the app's entry points that ran a step — why the app acted. A delivery fact. Work several entry
+        points share names each, joined by `+` (`OnDownloadStaged+OnDownloadSessionEvents`), as the app's log lines do.
       type: string
-      pattern: "^[A-Za-z][A-Za-z0-9]{0,63}$"
+      maxLength: 256
+      pattern: "^[A-Za-z][A-Za-z0-9]*(\\+[A-Za-z][A-Za-z0-9]*)*$"
 
     Manifest:
       description: What a device shares in an event — a full snapshot, replacing the last.
