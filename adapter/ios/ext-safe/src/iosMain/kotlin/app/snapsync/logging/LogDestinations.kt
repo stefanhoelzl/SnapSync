@@ -58,7 +58,7 @@ fun appGroupDirectory(): String? =
 
 /** The app process's log destination: its own `Documents/`[DeviceLogText.APP_LOG]. */
 fun appLogDestination(): LogDestination =
-    LogDestination(documentsDirectory()?.let { "$it/$DeviceLogText.APP_LOG" }, fellBackToDocuments = false)
+    LogDestination(documentsDirectory()?.let { "$it/${DeviceLogText.APP_LOG}" }, fellBackToDocuments = false)
 
 /**
  * The extension process's log destination: [DeviceLogText.EXTENSION_LOG] in the App Group, falling back
@@ -69,8 +69,8 @@ fun appLogDestination(): LogDestination =
  */
 fun extensionLogDestination(): LogDestination {
     val group = appGroupDirectory()
-    if (group != null) return LogDestination("$group/$DeviceLogText.EXTENSION_LOG", fellBackToDocuments = false)
-    return LogDestination(documentsDirectory()?.let { "$it/$DeviceLogText.APP_LOG" }, fellBackToDocuments = true)
+    if (group != null) return LogDestination("$group/${DeviceLogText.EXTENSION_LOG}", fellBackToDocuments = false)
+    return LogDestination(documentsDirectory()?.let { "$it/${DeviceLogText.APP_LOG}" }, fellBackToDocuments = true)
 }
 
 /**
@@ -89,6 +89,6 @@ fun removeStaleExtensionDocumentsLog(destination: LogDestination) {
     val docs = documentsDirectory() ?: return
     val mgr = NSFileManager.defaultManager
     // Results dropped deliberately: this runs while the logger is being set up, and either file may be absent.
-    checkedObjC("removeItemAtPath") { mgr.removeItemAtPath("$docs/$DeviceLogText.APP_LOG", error = it) }
-    checkedObjC("removeItemAtPath") { mgr.removeItemAtPath("$docs/$DeviceLogText.APP_LOG.1", error = it) }
+    checkedObjC("removeItemAtPath") { mgr.removeItemAtPath("$docs/${DeviceLogText.APP_LOG}", error = it) }
+    checkedObjC("removeItemAtPath") { mgr.removeItemAtPath("$docs/${DeviceLogText.APP_LOG}.1", error = it) }
 }
