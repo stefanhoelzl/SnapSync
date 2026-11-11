@@ -606,7 +606,10 @@ Decision record: `changes/archive/2026-08-27-add-repo-wide-complexity-gates`.
   A source-scanning guard must tolerate the wrapped shape ktlint writes (one argument per line, a
   trailing comma), or it silently stops seeing what it scans.
 - Android Lint gates `build` through `:app:android:check` → `lintRelease`: the store variant and every
-  module it links (`checkDependencies`), any warning failing, no baseline. It is the nearest local
+  module it links (`checkDependencies`), any warning failing, no baseline. A multiplatform module's Android code
+  reaches it only because `snapsync.android` applies `com.android.lint`: the KMP library plugin publishes no lint
+  model of its own, and without one the gate read the app shell alone and missed an API above minSdk in an adapter
+  (SNAPSYNC-69). That module's own `lint` is off `check` — the app's run is the one gate. It is the nearest local
   equivalent of Google Play's release recommendations, which have no API — it does not reproduce them
   (Play's SDK Index judges transitive dependencies; lint only the declared ones).
 - Xcode treats warnings as errors in both iOS targets (`Config.xcconfig`), enforced where Xcode builds:
