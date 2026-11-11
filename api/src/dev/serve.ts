@@ -164,7 +164,7 @@ console.log(`
   or a simulator can follow one directly, and so can curl.
 
   every gated request needs a token, as deployed: curl without one is refused (401); attest
-  with a software Android key, which this deployment's `any` trust accepts.
+  with a software Android key, which this deployment's "any" trust accepts.
   a push registration from an un-attested caller (curl, or a SIMULATOR — App Attest does not exist
   there) is enrolled by the rig rather than refused.
 `);
