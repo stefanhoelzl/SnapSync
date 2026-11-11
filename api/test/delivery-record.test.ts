@@ -67,7 +67,7 @@ function world(db: Awaited<ReturnType<typeof store>>) {
 
 // ── the byte upload ───────────────────────────────────────────────────────────────────────────────
 
-Deno.test("upload → the attempt, its media and the phone's stage times; backlog when taken before the join", async () => {
+Deno.test("upload → the attempt, its media and the phone's stage times, each by the entry points that ran it; backlog when taken before the join", async () => {
   const db = await storeWithEvent();
   const w = world(db);
   await w.request(JOIN(D), { method: "PUT" });
@@ -80,7 +80,7 @@ Deno.test("upload → the attempt, its media and the phone's stage times; backlo
       "content-length": "1",
       "x-snapsync-taken": "2026-07-01T09:00:00Z",
       "x-snapsync-discovered": "2026-07-14T11:58:00Z",
-      "x-snapsync-discovered-by": "OnForeground",
+      "x-snapsync-discovered-by": "OnSelectionAnswerable+OnForeground",
       "x-snapsync-queued": "2026-07-14T11:58:01Z",
       "x-snapsync-queued-by": "OnForeground",
     },
@@ -88,7 +88,7 @@ Deno.test("upload → the attempt, its media and the phone's stage times; backlo
   assertEquals(res.status, 201);
   assertMatch(
     w.last(),
-    / kind=fresh from=0 size=1 media=photo taken=2026-07-01T09:00:00Z discovered=2026-07-14T11:58:00Z discovered_by=OnForeground queued=2026-07-14T11:58:01Z queued_by=OnForeground backlog=true completed=1 /,
+    / kind=fresh from=0 size=1 media=photo taken=2026-07-01T09:00:00Z discovered=2026-07-14T11:58:00Z discovered_by="OnSelectionAnswerable\+OnForeground" queued=2026-07-14T11:58:01Z queued_by=OnForeground backlog=true completed=1 /,
   );
   db.close();
 });
@@ -183,7 +183,7 @@ Deno.test("redirect → a photo that landed after the receiver joined is no back
 
 // ── the receiver's report ─────────────────────────────────────────────────────────────────────────
 
-Deno.test("received → each photo's download and library times, and caught up at the union head", async () => {
+Deno.test("received → each photo's download and library times, by the entry points that ran them, and caught up at the union head", async () => {
   const { db, w } = await shared();
   const head = Number((await rows(db, `SELECT MAX(seq) AS s FROM union_log`))[0].s);
   const entry = {
@@ -191,7 +191,7 @@ Deno.test("received → each photo's download and library times, and caught up a
     asset: "A",
     downloaded: "2026-07-14T12:00:20Z",
     added: "2026-07-14T12:00:21Z",
-    by: "OnDownloadSessionEvents",
+    by: "OnDownloadStaged+OnDownloadSessionEvents",
   };
   const res = await w.request(RECEIVED(D2), {
     method: "PUT",

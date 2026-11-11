@@ -101,7 +101,9 @@
   - Measured 2026-11-11 by the all-real journeys (one app, the second member played over HTTP), on the Android
     emulator and an iOS simulator: every upload stage with its triggers (`taken` `discovered[_by]` `queued[_by]`),
     the download's `queued[_by]`, the device context on every app request, and `union_log` holding `gained` rows
-    only. NOT yet seen live: the `delivered` entries (told only once the event has ended), the push echo
+    only. A back-dated (ended) event on the emulator then showed each received photo told once in the report's
+    `delivered`, with both times and its entry points — after `EntryPoint` was widened to `+`-joined names (D6), whose
+    absence had dropped the whole list. NOT yet seen live: the push echo
     (`notified` `announced`: no push on either host) and the extension's triggers.
 - [ ] 7.3 With the sync/archive (not before — `VerifiesGateTest` reads the main specs): re-point every
   `@Verifies` claim of "The service records who reads an event's photo list" to "The service records how photos

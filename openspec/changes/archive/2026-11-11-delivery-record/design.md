@@ -105,7 +105,10 @@ attempts that never reach the edge, and those the platform kills, are invisible.
 ### D6. Triggers are the app's entry points
 Each phone stage carries the name of the `EntryPoint` that ran it (`OnForeground`, `OnSilentPush`,
 `OnScheduledWake`, `OnUploadSessionEvents`, the upload extension's, …) — shared by iOS and Android, already the
-`Log` facade's trigger label. App state is not sent: the entry point already says it.
+`Log` facade's trigger label. App state is not sent: the entry point already says it. Work several
+entry points share (a single-flight sequence a second trigger joined) names each, joined by `+`
+(`OnDownloadStaged+OnDownloadSessionEvents`), exactly as its log lines do; a narrower pattern would drop such a
+stage, and drop a received report's whole `delivered` list with it (measured on the emulator, 2026-11-11).
 
 ### D7. The download redirect names its receiver by the context's device
 The route is ungated (a browser follows it too); the context header every app request carries names the device.
