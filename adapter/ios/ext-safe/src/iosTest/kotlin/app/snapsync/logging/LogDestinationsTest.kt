@@ -41,7 +41,9 @@ class LogDestinationsTest {
         val destination = appLogDestination()
 
         val path = assertNotNull(destination.path, "a process can always reach its own container")
-        assertTrue(path.endsWith("/Documents/$DeviceLogText.APP_LOG"), "unexpected app destination: $path")
+        // The literal name, not a template over the constant: a template slip here once passed beside the same slip
+        // in the code, and every iOS log went to a file nothing reads.
+        assertTrue(path.endsWith("/Documents/debug.log"), "unexpected app destination: $path")
         assertFalse(destination.fellBackToDocuments, "the app's own Documents is its home, not a fallback")
     }
 
