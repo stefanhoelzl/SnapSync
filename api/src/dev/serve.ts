@@ -163,7 +163,8 @@ console.log(`
   presigned downloads are minted at ${origin}/<zone>/... — this origin's own scheme, so a device
   or a simulator can follow one directly, and so can curl.
 
-  curl works with no authorization header; a request carrying a bad token still 401s.
+  every gated request needs a token, as deployed: curl without one is refused (401); attest
+  with a software Android key, which this deployment's `any` trust accepts.
   a push registration from an un-attested caller (curl, or a SIMULATOR — App Attest does not exist
   there) is enrolled by the rig rather than refused.
 `);

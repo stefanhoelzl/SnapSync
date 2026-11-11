@@ -103,8 +103,10 @@
     the download's `queued[_by]`, the device context on every app request, and `union_log` holding `gained` rows
     only. A back-dated (ended) event on the emulator then showed each received photo told once in the report's
     `delivered`, with both times and its entry points — after `EntryPoint` was widened to `+`-joined names (D6), whose
-    absence had dropped the whole list. NOT yet seen live: the push echo
-    (`notified` `announced`: no push on either host) and the extension's triggers.
+    absence had dropped the whole list. A real FCM push on the emulator (the api run with its key, `local-backend`)
+    then showed the push echo: the member's publish pushed once, and A read the union `trigger=push` with `announced`
+    and `notified`; a played push (`rig os silent-push --announced <n>`) shows the same over the real api. NOT yet seen
+    live: the upload extension's triggers and an iOS background session (device only).
 - [ ] 7.3 With the sync/archive (not before — `VerifiesGateTest` reads the main specs): re-point every
   `@Verifies` claim of "The service records who reads an event's photo list" to "The service records how photos
   are delivered", and claim its new scenarios; verify `./gradlew build`
