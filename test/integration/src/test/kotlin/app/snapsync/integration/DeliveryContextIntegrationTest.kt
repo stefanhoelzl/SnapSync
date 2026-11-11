@@ -16,7 +16,11 @@ import kotlin.time.Duration.Companion.minutes
 class DeliveryContextIntegrationTest {
 
     @Test
-    @Verifies(spec = "privacy-security", requirement = "The service records who reads an event's photo list")
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "The service records how photos are delivered",
+        scenario = "A photo travels from one member to another",
+    )
     fun a_read_carries_the_device_and_the_conditions_it_reads_now() = behaviour {
         given { joinedEvent() }
 
@@ -44,7 +48,11 @@ class DeliveryContextIntegrationTest {
     }
 
     @Test
-    @Verifies(spec = "privacy-security", requirement = "The service records who reads an event's photo list")
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "The service records how photos are delivered",
+        scenario = "A photo travels from one member to another",
+    )
     fun the_received_report_tells_when_each_photo_was_downloaded_and_added_and_by_which_entry_point() = behaviour {
         given {
             joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END)

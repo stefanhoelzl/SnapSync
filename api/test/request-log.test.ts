@@ -237,6 +237,7 @@ Deno.test("onError → an uncaught throw answers 500 as Hono did, recorded on th
   assertMatch(lines[0], / 500 \d+ms .* uncaught="TypeError: x is undefined" errors=uncaught$/);
 });
 
+// @Verifies(spec = "privacy-security", requirement = "The service records how photos are delivered", scenario = "The record holds nothing that identifies a person")
 Deno.test("the line never carries the caller's address or User-Agent", async () => {
   const { app, lines } = logged((a) => a.get("/x", (c) => c.text("ok")));
   await drain(

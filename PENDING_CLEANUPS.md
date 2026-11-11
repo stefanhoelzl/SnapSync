@@ -227,7 +227,7 @@ that release.
   service records how photos are delivered" (30 days → 12 months, and its scenario "The record outlives the event's
   photos"), with `REQUEST_LOG_RETENTION_DAYS`, the Privacy Policy's two mentions of 30 days in
   `site/src/pages/index.astro`, `docs/architecture.md` ("The request log") and `metadata/play/declarations.md`.
-- **Record:** `openspec/changes/delivery-record` (design, D11).
+- **Record:** `openspec/changes/archive/2026-11-11-delivery-record` (design, D11).
 
 ## At the promote that re-enables encrypted creation
 

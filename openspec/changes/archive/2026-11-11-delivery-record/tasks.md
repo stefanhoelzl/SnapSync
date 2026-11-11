@@ -109,6 +109,6 @@
     app's uploads through the real background URL session carried every stage header set at enqueue, and its
     downloads of the emulator member's photos carried `queued`/`queued_by` (`OnForeground`, `OnDownloadCompleted`).
     NOT seen live: the upload extension's triggers — registered, but iOS did not invoke it within 11 minutes.
-- [ ] 7.3 With the sync/archive (not before — `VerifiesGateTest` reads the main specs): re-point every
+- [x] 7.3 With the sync/archive (not before — `VerifiesGateTest` reads the main specs): re-point every
   `@Verifies` claim of "The service records who reads an event's photo list" to "The service records how photos
   are delivered", and claim its new scenarios; verify `./gradlew build`

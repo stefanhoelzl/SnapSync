@@ -227,6 +227,36 @@ Deno.test("event phase → an event past its deadline is deleted; one within it 
   d.close();
 });
 
+// @Verifies(spec = "privacy-security", requirement = "The service records how photos are delivered", scenario = "The record outlives the event's photos")
+// The sweep's half: deleting an event leaves the delivery record of its requests as it was — those rows age out on
+// their own 30 days, the request-log phase's (`request-log-report.test.ts`).
+Deno.test("event phase → deleting an event leaves the delivery record of its requests", async () => {
+  const d = await db();
+  const STALE = "aaaaaaaa-0000-4000-8000-000000000001";
+  await insertEvent(d, event(STALE, STALE_STARTS));
+  await member(d, STALE, D, []);
+  await d.execute(
+    `INSERT INTO request_log (at, reqid, method, url, status, ms, bytes_out, fields)
+       VALUES ('2026-07-01T12:00:00Z', 'upload', 'PUT', ?, 201, 5, 0, ?)`,
+    [
+      `/api/v2/events/${STALE}/files/devices/${D}/A/primary`,
+      JSON.stringify({ device: D, taken: "2026-06-10T11:00:00Z" }),
+    ],
+  );
+
+  await run(d, fake({}));
+  assertEquals(await eventIds(d), []);
+  const { rows } = await d.execute(`SELECT reqid FROM request_log WHERE method <> ?`, [
+    SWEEP_METHOD,
+  ]);
+  assertEquals(
+    rows.map((r) => String(r.reqid)),
+    ["upload"],
+    "the event's request is still on record",
+  );
+  d.close();
+});
+
 Deno.test("event phase → deleting an event CASCADES to its memberships, assets and resources", async () => {
   // The invariant the object store could not express. Resources are the event's own now (change
   // `per-event-storage-layout`), so their rows go with it — before the byte phase deletes the bytes.

@@ -171,7 +171,6 @@ Deno.test("union log → the position is 0 for an event with nothing gained", as
 
 // ── the record ends with the event's photos ───────────────────────────────────────────────────────
 
-// @Verifies(spec = "privacy-security", requirement = "The service records who reads an event's photo list", scenario = "The record ends with the event")
 Deno.test("union log → completing an event deletes its record", async () => {
   const m = await member();
   await m.publish([asset("A")]);

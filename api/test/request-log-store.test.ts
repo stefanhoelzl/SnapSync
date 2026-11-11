@@ -157,6 +157,7 @@ Deno.test("createApp → with the store sink, every request is one row", async (
 
 // @Verifies(spec = "invite-link", requirement = "The service keeps an encrypted event's name only encrypted", scenario = "Showing a preview leaves no name behind")
 // The page request's preview name reaches the page it renders and no row or line the service keeps.
+// @Verifies(spec = "privacy-security", requirement = "The service records how photos are delivered", scenario = "The record holds nothing that identifies a person")
 Deno.test("createApp → an invite's preview name is in neither the request's row nor its line", async () => {
   const db = await store();
   const lines: string[] = [];

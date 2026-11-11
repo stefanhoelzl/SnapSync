@@ -82,6 +82,7 @@ Deno.test("the report → none for a day without 5xx; otherwise every row newest
   assertEquals(cut.omitted, 1);
 });
 
+// @Verifies(spec = "privacy-security", requirement = "The service records how photos are delivered", scenario = "The record outlives the event's photos")
 Deno.test("the phase → ages rows out, counts the day before, reports its 5xx", async () => {
   const db = await seeded();
   const sent: ServerErrorReport[] = [];

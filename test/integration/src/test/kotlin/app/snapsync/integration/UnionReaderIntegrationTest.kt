@@ -9,13 +9,13 @@ import kotlin.test.Test
  * **Why the app reads the photo list, as the service receives it**: each read carries its reason on the request, and
  * the service records it for the operator. The app's part is the reason it sends; keeping the record is the api's.
  */
-@Verifies(spec = "privacy-security", requirement = "The service records who reads an event's photo list")
+@Verifies(spec = "privacy-security", requirement = "The service records how photos are delivered")
 class UnionReaderIntegrationTest {
 
     @Test
     @Verifies(
         spec = "privacy-security",
-        requirement = "The service records who reads an event's photo list",
+        requirement = "The service records how photos are delivered",
         scenario = "A member's app is woken for a new photo",
     )
     fun a_read_woken_by_a_new_photo_tells_the_service_so() = behaviour {
@@ -35,7 +35,7 @@ class UnionReaderIntegrationTest {
     @Test
     @Verifies(
         spec = "privacy-security",
-        requirement = "The service records who reads an event's photo list",
+        requirement = "The service records how photos are delivered",
         scenario = "A member's app is woken for a new photo",
     )
     fun a_cold_push_wake_recognising_the_received_photos_tells_the_service_it_was_woken_for_one() = behaviour {
@@ -59,7 +59,7 @@ class UnionReaderIntegrationTest {
     @Test
     @Verifies(
         spec = "privacy-security",
-        requirement = "The service records who reads an event's photo list",
+        requirement = "The service records how photos are delivered",
         scenario = "A member's app is woken for a new photo",
     )
     fun the_read_a_push_caused_names_the_position_it_announced_and_when_the_app_acted() = behaviour {
@@ -86,7 +86,7 @@ class UnionReaderIntegrationTest {
     @Test
     @Verifies(
         spec = "privacy-security",
-        requirement = "The service records who reads an event's photo list",
+        requirement = "The service records how photos are delivered",
         scenario = "A member's app is woken for a new photo",
     )
     fun the_read_a_push_caused_echoes_the_position_the_push_named() = behaviour {
