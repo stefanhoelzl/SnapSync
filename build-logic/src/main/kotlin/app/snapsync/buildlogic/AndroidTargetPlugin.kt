@@ -1,6 +1,7 @@
 package app.snapsync.buildlogic
 
 import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget
+import org.gradle.api.Named
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.VersionCatalogsExtension
@@ -31,6 +32,7 @@ class AndroidTargetPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         project.pluginManager.withPlugin("org.jetbrains.kotlin.multiplatform") {
             project.pluginManager.apply("com.android.kotlin.multiplatform.library")
+            enableLint(project)
             val versions = project.extensions.getByType(VersionCatalogsExtension::class.java).named("libs")
             fun version(name: String): String = versions.findVersion(name).get().requiredVersion
             val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
@@ -83,6 +85,23 @@ class AndroidTargetPlugin : Plugin<Project> {
                     dependsOn("${MANAGED_DEVICE}AndroidDeviceTest")
                 }
             }
+        }
+    }
+
+    /**
+     * Make this module's Android code visible to the app's lint gate (`:app:android`'s `lintRelease`, with
+     * `checkDependencies`). The KMP Android library plugin publishes no lint model of its own, so without
+     * `com.android.lint` the gate silently read the app's shell alone: an API above minSdk in an adapter shipped
+     * (`Stream.toList()`, API 34, failed every staging sweep on the A40's Android 11 — SNAPSYNC-69).
+     *
+     * The app's run stays the ONLY gate: the plugin also hangs this module's own `lint` on `check`, and that pass
+     * judges the module without the app's merged manifest (a permission the app declares reads as missing) while
+     * re-reading what `lintRelease` already gates.
+     */
+    private fun enableLint(project: Project) {
+        project.pluginManager.apply("com.android.lint")
+        project.tasks.named("check") {
+            setDependsOn(dependsOn.filterNot { it == "lint" || (it as? Named)?.name == "lint" })
         }
     }
 
