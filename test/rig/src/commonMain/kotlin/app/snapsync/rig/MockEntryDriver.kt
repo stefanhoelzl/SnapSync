@@ -45,12 +45,13 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
 
     /**
      * The push the backend sent for [eventId], as APNs delivers it: the event, and the union position the backend's last
-     * wake for it announced (decision record `changes/incremental-union`, D6) — none when it sent none, as for an event
-     * whose union never grew, or when the backend behind the port is not the mock.
+     * wake for it announced (decision record `changes/incremental-union`, D6) — or [announced], the position a caller
+     * names for a backend behind the port that is not the mock. None when neither names one, as for an event whose
+     * union never grew.
      */
-    override fun silentPush(eventId: String?, done: () -> Unit) {
+    override fun silentPush(eventId: String?, announced: Long?, done: () -> Unit) {
         os.launching("silent push")
-        val seq = device.backend.pushesHandedOver().lastOrNull { it.eventId == eventId }?.seq
+        val seq = announced ?: device.backend.pushesHandedOver().lastOrNull { it.eventId == eventId }?.seq
         val payload = buildMap<Any?, Any?> {
             put("eventId", eventId)
             seq?.let { put("seq", it) }
@@ -110,7 +111,8 @@ class ChosenEntryDriver(
 
     override fun pushTokenFailure(description: String) = by(MockedSystem.PUSH).pushTokenFailure(description)
 
-    override fun silentPush(eventId: String?, done: () -> Unit) = by(MockedSystem.PUSH).silentPush(eventId, done)
+    override fun silentPush(eventId: String?, announced: Long?, done: () -> Unit) =
+        by(MockedSystem.PUSH).silentPush(eventId, announced, done)
 
     override fun continueLink(url: String) = by(MockedSystem.LINKS).continueLink(url)
 

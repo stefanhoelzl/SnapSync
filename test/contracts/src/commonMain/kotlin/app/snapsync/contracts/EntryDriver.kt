@@ -21,8 +21,11 @@ interface EntryDriver {
     /** The push service could not issue a token. */
     fun pushTokenFailure(description: String)
 
-    /** A silent push naming [eventId] (or none) arrived. */
-    fun silentPush(eventId: String?, done: () -> Unit)
+    /**
+     * A silent push naming [eventId] (or none) arrived — announcing the union position [announced] when given, as a
+     * deployed backend's wake does. A mocked push service with no [announced] names its mock backend's last wake.
+     */
+    fun silentPush(eventId: String?, announced: Long?, done: () -> Unit)
 
     /** A running app was handed [url] as a Universal Link. */
     fun continueLink(url: String)

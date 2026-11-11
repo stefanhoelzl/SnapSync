@@ -83,11 +83,38 @@ class UnionReaderIntegrationTest {
         }
     }
 
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "The service records who reads an event's photo list",
+        scenario = "A member's app is woken for a new photo",
+    )
+    fun the_read_a_push_caused_echoes_the_position_the_push_named() = behaviour {
+        // A push naming its position by the caller — as a deployed backend's wake does, which no mock handed over.
+        val event = given {
+            joinedEvent().also {
+                pushToken(TOKEN)
+                backgroundLaunch()
+                fellowMember(DEV_F, "FA")
+            }
+        }
+
+        whenever { os.silentPush(event, announced = NAMED_POSITION) }
+        then {
+            event<WorldEvent.BackendReceived> {
+                it.operation == UNION_READ && it.header(ANNOUNCED) == "$NAMED_POSITION"
+            }
+        }
+    }
+
     private fun WorldEvent.BackendReceived.isUnionRead(whole: Boolean) =
         operation == UNION_READ && (url?.contains(DELTA_FROM) == false) == whole
 
     private companion object {
         const val TOKEN = "DEADBEEF"
+
+        /** A position no mocked wake announced: the one a caller names. */
+        const val NAMED_POSITION = 99L
         const val UNION_READ = "eventFiles"
 
         /** The query parameter a delta read of the list names its position with (`api/openapi.yaml`). */
