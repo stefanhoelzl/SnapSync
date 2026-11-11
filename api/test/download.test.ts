@@ -103,7 +103,7 @@ const EVENT = "3f2c0000-0000-4000-8000-00000000e91a";
 const NOW = Date.parse("2026-10-04T12:00:00Z"); // inside the Berlin event's window
 
 async function storeWith(
-  extra: { completedAt?: string; closedAt?: string; members?: [string, string][] } = {},
+  extra: { completedAt?: string; members?: [string, string][] } = {},
 ): Promise<Store> {
   const db = await emptyStore();
   await insertEvent(db, {
@@ -123,7 +123,6 @@ async function storeWith(
       [EVENT, device, state],
     );
   }
-  if (extra.closedAt) await db.execute(`UPDATE events SET closed_at = ?`, [extra.closedAt]);
   if (extra.completedAt) {
     await db.execute(`UPDATE events SET completed_at = ?`, [extra.completedAt]);
   }
@@ -176,8 +175,8 @@ Deno.test("event page: a desktop browser and an Android phone get the same page"
   db.close();
 });
 
-Deno.test("event page: a closed event still has its photos, so it renders as ended, not invalid", async () => {
-  const db = await storeWith({ closedAt: "2026-10-06T00:00:00Z", members: [["d1", "settled"]] });
+Deno.test("event page: an ended event still has its photos, so it renders as ended, not invalid", async () => {
+  const db = await storeWith({ members: [["d1", "settled"]] });
   const res = await eventApp(db, undefined, Date.parse("2026-10-06T12:00:00Z")).request(
     `/join/${EVENT}`,
   );

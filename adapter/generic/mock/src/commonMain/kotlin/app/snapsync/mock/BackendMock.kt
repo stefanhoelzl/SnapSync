@@ -382,11 +382,6 @@ internal class BackendState(
          * event created after its end. Write-once, like the real row.
          */
         val openUntil: Instant = endsAt,
-        /**
-         * Closed before events stopped closing (`PENDING_CLEANUPS.md`): no join, no rename, no change to a member's
-         * asset set. Nothing closes an event any more; only a state saved by an earlier mock carries `true`.
-         */
-        var closed: Boolean = false,
         /** Completed — the sweep's verdict: memberships and assets gone, the record kept. */
         var completed: Boolean = false,
         /** An ENCRYPTED event's key id (16 lowercase hex); `null` for a plain event. Write-once, like the real row. */
@@ -407,7 +402,7 @@ internal class BackendState(
 
     enum class JoinOutcome { ENROLLED, CLOSED, NO_SUCH_EVENT }
 
-    enum class PublishOutcome { APPLIED, OLDER, NOT_A_MEMBER, NO_SUCH_EVENT, CLOSED, COMPLETED }
+    enum class PublishOutcome { APPLIED, OLDER, NOT_A_MEMBER, NO_SUCH_EVENT, COMPLETED }
 
     val events = mutableMapOf<String, Event>()
     val memberships = mutableMapOf<Pair<String, String>, Membership>()
@@ -506,9 +501,8 @@ internal class BackendState(
 
     fun join(eventId: String, deviceId: String): JoinOutcome {
         val event = events[eventId] ?: return JoinOutcome.NO_SUCH_EVENT
-        // A completed event — or one closed before events stopped closing — admits nobody, a returning device
-        // included, as the real enrolment's existence test.
-        if (event.closed || event.completed) return JoinOutcome.CLOSED
+        // A completed event admits nobody, a returning device included, as the real enrolment's existence test.
+        if (event.completed) return JoinOutcome.CLOSED
         val existing = memberships[eventId to deviceId]
         if (existing != null) {
             // A rejoin clears the stored version, as the real enrolment does: a device whose counter restarted must
@@ -530,13 +524,6 @@ internal class BackendState(
         val event = events[eventId] ?: return PublishOutcome.NO_SUCH_EVENT
         if (event.completed) return PublishOutcome.COMPLETED
         val membership = memberships[eventId to deviceId] ?: return PublishOutcome.NOT_A_MEMBER
-        // An event closed before events stopped closing keeps its asset sets fixed: the set already declared is
-        // answered and changes nothing, any other is refused.
-        if (event.closed) {
-            val held = membership.manifest?.assets.orEmpty().associate { a -> a.assetId to a.resources.map { it.role }.toSet() }
-            val incomingSet = manifest.assets.associate { a -> a.assetId to a.resources.map { it.role }.toSet() }
-            return if (held == incomingSet) PublishOutcome.APPLIED else PublishOutcome.CLOSED
-        }
         val held = membership.manifestVersion
         val incoming = manifest.version
         // An older snapshot landing last is answered, and changes nothing: one at least as new is already there.
@@ -871,13 +858,13 @@ internal fun BackendState.finished(eventId: String): Boolean {
 }
 
 /**
- * The `closedAt` builds that predate open-until dates read (`PENDING_CLEANUPS.md`): set for an event closed before
- * events stopped closing, or a completed one, and otherwise once the open-until date has passed and everyone still
- * in the event has shared everything — as the real route derives it.
+ * The `closedAt` builds that predate open-until dates read (`PENDING_CLEANUPS.md`): set for a completed event, and
+ * otherwise once the open-until date has passed and everyone still in the event has shared everything — as the real
+ * route derives it.
  */
 internal fun BackendState.closedForOldBuilds(eventId: String): Boolean {
     val event = events[eventId] ?: return false
-    if (event.closed || event.completed) return true
+    if (event.completed) return true
     if (event.openUntil >= now() || memberships.keys.none { it.first == eventId }) return false
     return present(eventId).all { (key, m) -> sharedAll(eventId, key.second, m) }
 }

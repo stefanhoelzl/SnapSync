@@ -1,7 +1,6 @@
 package app.snapsync.integration
 
 import app.snapsync.control.behaviour.behaviour
-import app.snapsync.levers.BackendFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WriteKind
 import kotlin.test.Test
@@ -82,32 +81,6 @@ class ManifestVersionIntegrationTest {
             event<WorldEvent.DatabaseFaulted> { it.table == "uploadedManifest" }
             times(3) { event<WorldEvent.ManifestPublished>() }
         }
-    }
-
-    @Test
-    fun a_manifest_the_service_says_is_already_fixed_is_taken_as_published() = behaviour {
-        given {
-            extensionUploadsOnly()
-            joinedEvent()
-            photos("A")
-        }
-
-        whenever {
-            backend.fail(PUBLISH, BackendFault.CLOSED, times = 1)
-            cycle()
-        }
-        then {
-            event<WorldEvent.BackendReceived> { it.operation == PUBLISH }
-            never<WorldEvent.ManifestPublished>()
-            settled { true }
-        }
-
-        // Taken as published, as a publish is: the counter's cost republishes once, then an unchanged set skips.
-        whenever {
-            cycle()
-            cycle()
-        }
-        then { times(1) { event<WorldEvent.BackendReceived> { it.operation == PUBLISH } } }
     }
 
     private companion object {

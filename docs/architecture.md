@@ -990,8 +990,7 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   union; a join puts any state back to `sharing`.
 - **A resource belongs to one event** (migration 0010, `changes/per-event-storage-layout`): a child of
   its membership, so completion and a dropped event take it. Its `path` is where the bytes are —
-  `files/<eventId>/<sha256>` for every byte written since, `files/devices/<deviceId>/<key>` for one written
-  before — and every reader follows it; none composes a layout. A photo in two events is two resources and
+  `files/<eventId>/<sha256>` — and every reader follows it; none composes a layout. A photo in two events is two resources and
   two objects. The wire's `key` (`<assetId>-<role>.<ext>`, the union's) is derived from
   `asset_id`/`role`/`filename` (`objectNameFor`), so installed clients see the string they always did.
   It hangs off the membership, not `event_assets`: a publish deletes and re-inserts those, and a byte may
@@ -1028,7 +1027,6 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   DELETE; any such folder it finds, so a crash or a byte that landed after the completion is healed by the next
   run), and collects a `devices` row only once no token minted for it can still verify. Its delete decision,
   and the read of which events live, run in an interactive transaction (primary), not an ordinary read.
-  `files/devices/` (the bytes written before migration 0010) is never touched by it.
   Details are in `docs/deployment.md`.
 
 ### The request pipeline
@@ -1253,10 +1251,10 @@ nested in its reply (`CreateEventReply.InvalidName`), one defined once under `co
 that references it implements (`EventNotFound`, `Unauthorized`, `AppTooOld`, …). Each outcome belongs to one group by
 its status — `Success` (2xx–3xx), `ClientError` (4xx — a refused build is the client's), `ServerIssue` (5xx) — and
 every reply also answers `NoAnswer`: `Unreachable` (nothing came back) or `Malformed` (an answer outside the
-description: an undeclared status, a media type or text it does not name, a body that does not decode — and a body on
-a success that declares none: the backend sends those empty, so a body there came from something in its place, a Wi-Fi
-login page or a proxy, and is never a done write). One status may name several outcomes, by media type or by the body's
-text (an annotated enumeration, `oneOf` + `const`).
+description: an undeclared status, a text it does not name, a body that does not decode — and a body on a success that
+declares none: the backend sends those empty, so a body there came from something in its place, a Wi-Fi login page or a
+proxy, and is never a done write). A status declares one media type; it may name several outcomes by the body's text
+(an annotated enumeration, `oneOf` + `const`).
 
 **What a member is told of a failing service** is one reading of the reply, made once (`faultOf`, over
 `domain.service.ServiceFault`): `NoAnswer` — no answer, or one the app cannot read — is *cannot be reached*, a
@@ -1693,9 +1691,6 @@ files/<eventId>/<sha256>                          one object per resource of an 
                                                   one folder by the sweep
 files/<eventId>/<sha256>.tail-<claim>             what a dropped resumable upload received past its last
                                                   stored part; deleted once used, or with the folder
-files/devices/<deviceId>/<assetId>-<role>.<ext>   bytes written before migration 0010, still served
-                                                  through rows that point at them; written no more
-                                                  (`changes/per-event-storage-layout`, migration plan)
 site/index.html · site/join/index.html · site/_astro/*   the Astro build (mirror-deployed, public)
 ```
 

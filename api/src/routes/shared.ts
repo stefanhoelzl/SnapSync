@@ -228,8 +228,8 @@ export function sharedHandlers(
       // rewrite of a row the sweep is about to delete); a transport failure → 502, so a
       // transient fault is never mistaken for absence.
       const current = await gateEvent(db, eventId, "rename");
-      // A closed event does not change any more, its name included.
-      if (current.closedAt) closedRefusal();
+      // A completed event does not change any more, its name included.
+      if (current.completedAt) closedRefusal();
       const change = renamedTo(current, body);
 
       // ONE column. `renameEvent` writes the name and nothing else — see `db.ts`, where each statement

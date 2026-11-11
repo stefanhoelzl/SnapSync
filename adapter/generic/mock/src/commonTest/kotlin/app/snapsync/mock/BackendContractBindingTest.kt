@@ -52,7 +52,6 @@ class BackendContractBindingTest {
             BackendState.SERVER_FAILING,
             BackendState.IN_MAINTENANCE,
             BackendState.ENDED_FOR_GOOD,
-            BackendState.CLOSED_BEFORE_OPEN_UNTIL,
             BackendState.NO_BACKEND,
             BackendState.UNREADABLE_SUCCESS,
             BackendState.ATTESTABLE,
@@ -91,7 +90,6 @@ class BackendContractBindingTest {
         BackendState.NO_BACKEND -> BackendFault.UNREACHABLE
         BackendState.UNREADABLE_SUCCESS -> BackendFault.MALFORMED
         BackendState.ENDED_FOR_GOOD -> BackendFault.ENDED_FOR_GOOD
-        BackendState.CLOSED_BEFORE_OPEN_UNTIL -> BackendFault.CLOSED
         else -> null
     }
 

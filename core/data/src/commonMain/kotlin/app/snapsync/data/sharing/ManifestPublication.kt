@@ -35,8 +35,6 @@ class ManifestPublication(private val gateway: BackendGateway) {
             PublishManifestReply.Published -> PublishReply.Published
             // The service's positive word that the event's photos were deleted.
             is Closed -> PublishReply.Refused(PublishRefusal.EVENT_OVER)
-            // An event closed before events stopped closing keeps its set: re-sending could never change the answer.
-            is PublishManifestReply.SetFixed -> PublishReply.Refused(PublishRefusal.SET_FIXED)
             is ClientError -> PublishReply.Refused(PublishRefusal.NOT_TAKEN)
             is ServerIssue, is NoAnswer -> PublishReply.Unreachable(ServiceFaults.of(reply))
         }
@@ -100,9 +98,6 @@ sealed interface PublishReply {
 enum class PublishRefusal {
     /** The event's photos are deleted: re-sending can never change the answer. */
     EVENT_OVER,
-
-    /** The event closed before events stopped closing, and its set is fixed: re-sending can never change it either. */
-    SET_FIXED,
 
     /** Not taken now — not a member, a request the backend refused: the next publish tries again. */
     NOT_TAKEN,

@@ -155,7 +155,7 @@ enum class BackendFault {
     /** `410 closed` — an event that ended for good, as a backend that still closed events answered every write. */
     ENDED_FOR_GOOD,
 
-    /** `409 closed` — an event closed before events stopped closing, answering a member's changed asset set. */
+    /** `409` with a JSON `closed` body — a conflict in a shape the operation does not name, so a refusal it cannot read. */
     CLOSED,
 }
 

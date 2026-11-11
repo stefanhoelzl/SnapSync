@@ -192,14 +192,6 @@ class PublishManifestTest {
     }
 
     @Test
-    fun `a set fixed before events stopped closing is recorded as published, marking nothing`() = runTest {
-        transport.answer = { json(409, CLOSED) }
-        assertEquals(PublishOutcome.Published, publish(run(), policy(), look()))
-        assertEquals(ManifestVersion(1), held().version)
-        assertIs<Membership.Active>(assertIs<MembershipRead.Joined>(membership.read()).membership)
-    }
-
-    @Test
     fun `a refusal or no answer records nothing — the next pass sends it again`() = runTest {
         val answers = listOf(text(409, "not a member"), text(502, "upstream"), HttpResult.Unreachable("offline"))
         for (answer in answers) {

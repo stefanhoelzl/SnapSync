@@ -42,10 +42,7 @@
 // empty-store case and never the wrong-but-populated-store one. Nothing now stands between a store that
 // does not describe this zone and the deletion of every event folder in it.
 //
-// The sweep touches `files/<eventId>/` folders and nothing else in the zone. `files/devices/` holds the
-// bytes written before migration 0010; rows still point into it per event, so the old per-byte collection
-// of it is retired, and the folder is deleted outright once its bytes are copied into their events
-// (change `per-event-storage-layout`, migration plan). `site/` is the landing page's.
+// The sweep touches `files/<eventId>/` folders and nothing else in the zone. `site/` is the landing page's.
 
 import { BUILD_SHA, DEPLOYMENT, readSweepConfig } from "../config.ts";
 import { libsqlDb } from "../db-libsql.ts";
@@ -222,9 +219,6 @@ export async function runSweep(deps: SweepDeps): Promise<SweepOutcome> {
   // its first byte (a write needs a membership), so the later primary read sees it; the reverse order could
   // miss an event created in between, and a stale replica could miss one outright — either deletes a live
   // event's photos, the one failure this sweep must never have.
-  //
-  // `files/devices/` — the bytes written before migration 0010 — is not an event folder and is not touched
-  // here: its rows now point into it per event, and it is deleted outright once copied out.
   const staleIds = new Set(stale);
   const top = await listDir(f, config, `files/`);
   const live = await db.transaction((tx) => liveEventIds(tx));
@@ -232,7 +226,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepOutcome> {
   await abortOpenUploads(deps, lives);
   for (const entry of top.filter((e) => e.IsDirectory)) {
     const eventId = entry.ObjectName;
-    if (!validateUUID(eventId)) continue; // `devices`, and anything this sweep did not write
+    if (!validateUUID(eventId)) continue; // anything this sweep did not write
     if (lives(eventId)) continue;
     try {
       if (dryRun) {

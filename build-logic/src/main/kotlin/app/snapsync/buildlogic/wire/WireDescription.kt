@@ -140,24 +140,18 @@ private class WireResponses(private val api: OpenAPI) {
     }
 
     /**
-     * One response's outcome: by media type when it declares several; else the outcome its media type or the
-     * response names; else, for a text body that is an annotated enumeration, one outcome per alternative.
+     * One response's outcome: the outcome its media type or the response names; else, for a text body that is an
+     * annotated enumeration, one outcome per alternative. A response declares at most one media type.
      */
     private fun responseBranch(where: String, status: Int, response: ApiResponse, shared: Boolean): WireBranch {
         val headers = responseHeaders(response)
         val content = response.content.orEmpty()
+        if (content.size > 1) fail(where, "a response declares one media type")
         val group = WireDescription.groupOf(status)
         val (type, media) = content.entries.singleOrNull()?.toPair() ?: (null to null)
         val named = media?.extensions?.get("x-snapsync-outcome") as String?
             ?: response.extensions?.get("x-snapsync-outcome") as String?
         return when {
-            content.size > 1 -> WireBranch.ByMedia(
-                content.map { (t, m) ->
-                    val name = m.extensions?.get("x-snapsync-outcome") as String?
-                        ?: fail(where, "media type `$t` names no outcome")
-                    t to WireOutcome(name, group, shared, payload(where, t, m), headers)
-                },
-            )
             named != null -> WireBranch.Single(WireOutcome(named, group, shared, payload(where, type, media), headers))
             else -> WireBranch.ByText(
                 (media?.schema?.oneOf ?: fail(where, "names no outcome")).map { textMember(where, status, it) },
@@ -260,7 +254,6 @@ data class WireOutcome(
 /** How one status's answer becomes an outcome. */
 sealed interface WireBranch {
     data class Single(val outcome: WireOutcome) : WireBranch
-    data class ByMedia(val outcomes: List<Pair<String, WireOutcome>>) : WireBranch
     data class ByText(val outcomes: List<Pair<WireMatch, WireOutcome>>) : WireBranch
 }
 

@@ -244,12 +244,12 @@ function landed(alias: string): string {
 const ENROLL = `
   INSERT INTO memberships (event_id, device_id, state, joined_at)
   SELECT ?, ?, 'sharing', ?
-  WHERE EXISTS (SELECT 1 FROM events WHERE id = ? AND closed_at IS NULL)
+  WHERE EXISTS (SELECT 1 FROM events WHERE id = ? AND completed_at IS NULL)
   ON CONFLICT (event_id, device_id) DO UPDATE SET state = 'sharing', manifest_version = NULL`;
 
 /**
  * What an enrollment attempt resolved to — the three answers a route must tell apart. `closed` is a completed
- * event (its row carries `closed_at`), or one closed before events stopped closing.
+ * event (its row carries `completed_at`).
  */
 export type EnrollOutcome = "enrolled" | "closed" | "no-such-event";
 
@@ -379,10 +379,10 @@ export function publishStatements(
   let gate = ` AND EXISTS (SELECT 1 FROM memberships
                        WHERE event_id = ? AND device_id = ? AND manifest_version = ?)`;
   let gateArgs: unknown[] = [eventId, deviceId, opts.version];
-  // An event carrying a close stamp — completed, or closed before events stopped closing — has fixed asset sets.
-  // The route refuses a changed set before it gets here; this gate closes the race with a completion stamped
-  // between that check and this batch, so no statement below can rewrite such an event's assets.
-  gate += ` AND NOT EXISTS (SELECT 1 FROM events WHERE id = ? AND closed_at IS NOT NULL)`;
+  // A completed event has fixed asset sets. The route refuses a publish to one before it gets here; this gate
+  // closes the race with a completion stamped between that check and this batch, so no statement below can
+  // rewrite a completed event's assets.
+  gate += ` AND NOT EXISTS (SELECT 1 FROM events WHERE id = ? AND completed_at IS NOT NULL)`;
   gateArgs = [...gateArgs, eventId];
   out.push({
     sql: `DELETE FROM event_assets WHERE event_id = ? AND device_id = ?${gate}`,
@@ -419,27 +419,6 @@ export function publishStatements(
     args: [opts.final ? "settled" : "sharing", eventId, deviceId, ...gateArgs],
   });
   return out;
-}
-
-/**
- * The asset set a membership currently declares, as `assetId → sorted roles` — what a publish to an event
- * closed before events stopped closing is compared against: an identical set is a harmless no-op, a different
- * one is refused, as it was then (`PENDING_CLEANUPS.md`).
- */
-export async function declaredAssets(
-  db: Db,
-  eventId: string,
-  deviceId: string,
-): Promise<Map<string, string>> {
-  const { rows } = await db.execute(
-    `SELECT asset_id, roles FROM event_assets WHERE event_id = ? AND device_id = ?`,
-    [eventId, deviceId],
-  );
-  return new Map(
-    rows.map((
-      r,
-    ) => [String(r.asset_id), (JSON.parse(String(r.roles)) as string[]).sort().join(",")]),
-  );
 }
 
 /** Stamp the clock's landing anchor on every event a byte landing completed an asset of. */

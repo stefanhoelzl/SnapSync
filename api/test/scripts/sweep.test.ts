@@ -548,14 +548,9 @@ Deno.test("byte phase → a folder with NO event row is deleted: a crash, or a b
   d.close();
 });
 
-Deno.test("byte phase → files/devices/ and anything not named by an event id are never touched", async () => {
-  // `files/devices/` holds the bytes written before migration 0010; rows still point into it per event,
-  // and it is deleted outright once copied out — never by this sweep.
+Deno.test("byte phase → a folder not named by an event id is never touched", async () => {
   const d = await db();
-  const store = fake({
-    [`files/devices/${D}/a-primary.heic`]: { len: 1 },
-    [`files/not-an-event/x`]: { len: 1 },
-  });
+  const store = fake({ [`files/not-an-event/x`]: { len: 1 } });
   await run(d, store);
   assertEquals(store.deletes, []);
   d.close();

@@ -218,7 +218,7 @@ export async function streamPut(
 export async function presignDownloadUrl(
   aws: AwsClient,
   config: Config,
-  /** The stored `resources.path` — wherever the bytes were written, before or after migration 0010. */
+  /** The stored `resources.path`, where the bytes were written. */
   path: string,
   /** How long the link lives: the devices' 7 days unless a caller (the event page's read) asks for less. */
   expirySeconds: number = PRESIGN_EXPIRY_SECONDS,
@@ -327,7 +327,7 @@ export function publicEvent(event: EventRow, closedAt: string | null = event.clo
   };
 }
 
-/** Refuse a write to a closed (or completed) event. */
+/** Refuse a write to a completed event. */
 export function closedRefusal(): never {
   refuse(410, { error: "closed" });
 }
