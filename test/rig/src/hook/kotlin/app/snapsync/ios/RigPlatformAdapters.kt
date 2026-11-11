@@ -27,6 +27,7 @@ import app.snapsync.ios.upload.UploadExtensionRoot
 import app.snapsync.ios.urlsession.transferSessionBinding
 import app.snapsync.keychain.contract.deviceContracts
 import app.snapsync.logging.documentsDirectory
+import app.snapsync.rig.PlayedPushPayload
 import app.snapsync.rig.RigHooks
 import app.snapsync.rig.RigLaunch
 import app.snapsync.rig.RigServer
@@ -208,15 +209,8 @@ private object IosEntryDriver : EntryDriver {
 
     override fun pushTokenFailure(description: String) = SnapSyncRoot.pushNotifications.deliverTokenFailure(description)
 
-    // APNs hands the backend's `seq` over as a JSON number; the payload names it only when the caller does.
     override fun silentPush(eventId: String?, announced: Long?, done: () -> Unit) =
-        SnapSyncRoot.pushNotifications.deliverMessage(
-            buildMap<Any?, Any?> {
-                put("eventId", eventId)
-                announced?.let { put("seq", it) }
-            },
-            done,
-        )
+        SnapSyncRoot.pushNotifications.deliverMessage(PlayedPushPayload.of(eventId, announced), done)
 
     override fun continueLink(url: String) =
         SnapSyncRoot.links.deliverUserActivity("onSceneContinueActivity", browsingWebActivity(url))

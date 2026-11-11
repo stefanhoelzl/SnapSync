@@ -52,10 +52,7 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
     override fun silentPush(eventId: String?, announced: Long?, done: () -> Unit) {
         os.launching("silent push")
         val seq = announced ?: device.backend.pushesHandedOver().lastOrNull { it.eventId == eventId }?.seq
-        val payload = buildMap<Any?, Any?> {
-            put("eventId", eventId)
-            seq?.let { put("seq", it) }
-        }
+        val payload = PlayedPushPayload.of(eventId, seq)
         os.deliver(done) { device.pushService.deliverMessage(payload, it) }
     }
 
