@@ -20,6 +20,7 @@ import java.nio.file.NotDirectoryException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.util.stream.Collectors
 import java.nio.file.Files as Nio
 
 /**
@@ -142,7 +143,9 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
                 paths.filter { Nio.isRegularFile(it) }
                     .map { root.relativize(it).joinToString("/") }
                     .sorted()
-                    .toList(),
+                    // Never `.toList()`: on a `Stream` that is Java 16's member, API 34 — it shadows Kotlin's
+                    // extension and threw `NoSuchMethodError` on Android 11–13 (SNAPSYNC-69).
+                    .collect(Collectors.toList()),
             )
         }
     }
