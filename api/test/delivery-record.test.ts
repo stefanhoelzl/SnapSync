@@ -67,6 +67,7 @@ function world(db: Awaited<ReturnType<typeof store>>) {
 
 // ── the byte upload ───────────────────────────────────────────────────────────────────────────────
 
+// @Verifies(spec = "privacy-security", requirement = "The service records how photos are delivered", scenario = "A photo travels from one member to another")
 Deno.test("upload → the attempt, its media and the phone's stage times, each by the entry points that ran it; backlog when taken before the join", async () => {
   const db = await storeWithEvent();
   const w = world(db);
@@ -153,6 +154,7 @@ async function shared(joinedAt?: string) {
   return { db, w };
 }
 
+// @Verifies(spec = "privacy-security", requirement = "The service records how photos are delivered", scenario = "A photo travels from one member to another")
 Deno.test("redirect → the receiver's queueing, and backlog when the photo landed before it joined", async () => {
   const { db, w } = await shared("2026-07-14T13:00:00.000Z");
   const res = await w.request(REDIRECT("A"), {
@@ -183,6 +185,7 @@ Deno.test("redirect → a photo that landed after the receiver joined is no back
 
 // ── the receiver's report ─────────────────────────────────────────────────────────────────────────
 
+// @Verifies(spec = "privacy-security", requirement = "The service records how photos are delivered", scenario = "A photo travels from one member to another")
 Deno.test("received → each photo's download and library times, by the entry points that ran them, and caught up at the union head", async () => {
   const { db, w } = await shared();
   const head = Number((await rows(db, `SELECT MAX(seq) AS s FROM union_log`))[0].s);

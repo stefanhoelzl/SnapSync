@@ -200,7 +200,7 @@ Deno.test("cursor → a malformed cursor is 400", async () => {
 
 // ── Who reads, and why (D5; capability `privacy-security`) ────────────────────────────────────────
 
-// @Verifies(spec = "privacy-security", requirement = "The service records who reads an event's photo list", scenario = "A member's app is woken for a new photo")
+// @Verifies(spec = "privacy-security", requirement = "The service records how photos are delivered", scenario = "A member's app is woken for a new photo")
 // The api's part: it records which phone read the list and the reason the app gave (`push`, a wake for a new photo),
 // in the request log — the delivery record (decision record `changes/delivery-record`). The app's part, that a woken
 // read gives that reason, is `UnionReaderIntegrationTest`'s.
@@ -259,7 +259,7 @@ Deno.test("reads → a token that does not verify is 401, so the app re-attests"
   db.close();
 });
 
-// @Verifies(spec = "privacy-security", requirement = "The service records who reads an event's photo list", scenario = "Members do not see each other's reads")
+// @Verifies(spec = "privacy-security", requirement = "The service records how photos are delivered", scenario = "Members do not see each other's activity")
 // The record of reads is the operator's: no read a member's app can make of the service answers with when, why or by
 // whom another member read the list.
 Deno.test("reads → no read an app can make answers with another member's read", async () => {
