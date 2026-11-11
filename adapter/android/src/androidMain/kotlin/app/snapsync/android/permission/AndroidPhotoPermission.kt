@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.edit
 import app.snapsync.android.scene.ForegroundActivity
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
@@ -85,7 +86,7 @@ class AndroidPhotoPermission(
                 val granted = answers.filterValues { it }.keys.map { it.substringAfterLast('.') }
                 val now = run {
                     launcher?.unregister()
-                    record.edit().putBoolean(ASKED, true).apply()
+                    record.edit { putBoolean(ASKED, true) }
                     current()
                 }.also {
                     log.unlabelled.i(

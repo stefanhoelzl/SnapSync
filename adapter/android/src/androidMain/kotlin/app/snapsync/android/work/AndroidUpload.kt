@@ -3,6 +3,7 @@ package app.snapsync.android.work
 import android.content.Context
 import android.content.res.AssetFileDescriptor
 import android.net.Uri
+import androidx.core.content.edit
 import app.snapsync.android.gallery.MediaOriginals
 import app.snapsync.android.gallery.MediaStoreResource
 import app.snapsync.annotations.Never
@@ -163,7 +164,7 @@ class AndroidUpload(
             // A transfer still waiting for an unmetered network holds no slot: it sends nothing yet.
             if (live.values.count { !it.waitingForNetwork } >= maxLive) return CreateOutcome.LIMIT_EXCEEDED
             // The journal names the transfer, so a process that dies with it reports it at the next listen.
-            journal.edit().putBoolean(tag, true).commit()
+            journal.edit(commit = true) { putBoolean(tag, true) }
             val transfer = Live(tag, waitingForNetwork = target.network == TransferNetwork.UNRESTRICTED_ONLY)
             live[tag] = transfer
             if (live.size == 1) hold = time.begin("uploads", expiresAll)
@@ -198,7 +199,7 @@ class AndroidUpload(
         run {
             handlers.orNull("$tag's end")?.onFinished?.deliver(FinishedTransfer(tag, error))
         }.also { log.unlabelled.d("upload.didComplete", "tag" of tag, "error" of error) }
-        journal.edit().remove(tag).commit()
+        journal.edit(commit = true) { remove(tag) }
         synchronized(live) {
             live.remove(tag)
             if (live.isEmpty()) {

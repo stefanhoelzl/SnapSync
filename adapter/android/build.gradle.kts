@@ -44,6 +44,10 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             // The wakes, the background-time holds and the uploads run as WorkManager work.
             implementation(libs.androidx.work.runtime)
+            // The EXIF a received photo keeps, copied by `MotionPhotoBuilder`.
+            implementation(libs.androidx.exifinterface)
+            // The Kotlin forms of the platform calls (`SharedPreferences.edit {}`, `String.toUri()`).
+            implementation(libs.androidx.core.ktx)
             // The push service (`AndroidPushNotifications`): FCM, started by hand from the deployment's values.
             implementation(libs.firebase.messaging)
             // The Play Install Referrer: the invite a Play install from the event page carried.

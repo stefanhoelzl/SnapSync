@@ -22,15 +22,16 @@ class AndroidPreferences(private val prefs: SharedPreferences) : Preferences {
         PrefRead.Unavailable("${e::class.simpleName}: ${e.message}")
     }
 
-    override fun set(key: String, value: String): WriteOutcome = prefs.edit().putString(
-        key,
-        value,
-    ).committed("set $key")
+    override fun set(key: String, value: String): WriteOutcome = committed("set $key") { putString(key, value) }
 
-    override fun remove(key: String): WriteOutcome = prefs.edit().remove(key).committed("remove $key")
+    override fun remove(key: String): WriteOutcome = committed("remove $key") { remove(key) }
 
-    private fun SharedPreferences.Editor.committed(what: String): WriteOutcome =
-        if (commit()) WriteOutcome.Ok else WriteOutcome.Failed("$what: the preferences file was not written")
+    private fun committed(what: String, changes: SharedPreferences.Editor.() -> Unit): WriteOutcome =
+        if (Committed.write(prefs, changes)) {
+            WriteOutcome.Ok
+        } else {
+            WriteOutcome.Failed("$what: the preferences file was not written")
+        }
 
     private companion object {
         const val FILE = "app.snapsync.preferences"

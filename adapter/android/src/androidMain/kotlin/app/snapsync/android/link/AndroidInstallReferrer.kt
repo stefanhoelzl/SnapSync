@@ -3,6 +3,7 @@ package app.snapsync.android.link
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.RemoteException
+import app.snapsync.android.storage.Committed
 import app.snapsync.inbound.Log
 import com.android.installreferrer.api.InstallReferrerClient
 import com.android.installreferrer.api.InstallReferrerStateListener
@@ -63,7 +64,9 @@ class AndroidInstallReferrer internal constructor(
     }
 
     private fun markHandled() {
-        if (!record.edit().putBoolean(HANDLED, true).commit()) log.unlabelled.w("install referrer record not written")
+        if (!Committed.write(record) { putBoolean(HANDLED, true) }) {
+            log.unlabelled.w("install referrer record not written")
+        }
     }
 
     private companion object {

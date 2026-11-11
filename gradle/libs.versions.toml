@@ -63,6 +63,8 @@ android-targetSdk = "36"
 android-jvmTarget = "17"
 androidx-activity = "1.13.0"
 androidx-work = "2.12.0"
+androidx-exifinterface = "1.4.1"
+androidx-core = "1.18.0"
 firebase-messaging = "26.0.0"
 # A FLOOR, never a direct dependency: Firebase's play-services-base still pulls fragment 1.1.0, which Google Play flags
 # as deprecated by its own developer (SDK Index) — `:app:android` constrains the resolved graph to this.
@@ -135,6 +137,10 @@ androidx-activity-compose = { module = "androidx.activity:activity-compose", ver
 # The Android wakes, background-time holds and uploads (the WorkManager adapters in :adapter:android).
 androidx-work-runtime = { module = "androidx.work:work-runtime", version.ref = "androidx-work" }
 androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "androidx-work" }
+# The EXIF a received photo keeps (`MotionPhotoBuilder`): the maintained parser, not the platform's frozen one.
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "androidx-exifinterface" }
+# The Kotlin forms of the platform calls the Android adapters make (`SharedPreferences.edit {}`, `String.toUri()`).
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
 androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "androidx-fragment" }
 installreferrer = { module = "com.android.installreferrer:installreferrer", version.ref = "installreferrer" }
