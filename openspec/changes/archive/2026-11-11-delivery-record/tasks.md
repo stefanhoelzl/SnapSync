@@ -105,8 +105,10 @@
     `delivered`, with both times and its entry points — after `EntryPoint` was widened to `+`-joined names (D6), whose
     absence had dropped the whole list. A real FCM push on the emulator (the api run with its key, `local-backend`)
     then showed the push echo: the member's publish pushed once, and A read the union `trigger=push` with `announced`
-    and `notified`; a played push (`rig os silent-push --announced <n>`) shows the same over the real api. NOT yet seen
-    live: the upload extension's triggers and an iOS background session (device only).
+    and `notified`; a played push (`rig os silent-push --announced <n>`) shows the same over the real api. On the SE2 (iOS 27.0.1, a tunnel build) the
+    app's uploads through the real background URL session carried every stage header set at enqueue, and its
+    downloads of the emulator member's photos carried `queued`/`queued_by` (`OnForeground`, `OnDownloadCompleted`).
+    NOT seen live: the upload extension's triggers — registered, but iOS did not invoke it within 11 minutes.
 - [ ] 7.3 With the sync/archive (not before — `VerifiesGateTest` reads the main specs): re-point every
   `@Verifies` claim of "The service records who reads an event's photo list" to "The service records how photos
   are delivered", and claim its new scenarios; verify `./gradlew build`
