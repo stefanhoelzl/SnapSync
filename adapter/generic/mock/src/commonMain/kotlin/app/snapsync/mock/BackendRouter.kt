@@ -254,8 +254,8 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         }
         val eventId = call.param("eventId")
         val event = state.events[eventId] ?: return eventNotFound()
-        // A completed event — or one closed before events stopped closing — changes no more.
-        if (event.closed || event.completed) return closed()
+        // A completed event changes no more.
+        if (event.completed) return closed()
         // The row's shape decides what it takes, as the real route's: a plain event a name, a sealed one a record, a
         // legacy encrypted one either — and a record moves it to the sealed shape.
         when {
@@ -290,8 +290,6 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         return when (state.publish(call.param("eventId"), call.param("deviceId"), manifest)) {
             BackendState.PublishOutcome.NO_SUCH_EVENT -> eventNotFound()
             BackendState.PublishOutcome.NOT_A_MEMBER -> text(CONFLICT, "not a member")
-            BackendState.PublishOutcome.CLOSED ->
-                json(CONFLICT, ClosedError.serializer(), ClosedError(ClosedErrorError.CLOSED))
             BackendState.PublishOutcome.COMPLETED -> closed()
             BackendState.PublishOutcome.APPLIED, BackendState.PublishOutcome.OLDER -> empty(OK)
         }

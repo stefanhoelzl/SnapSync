@@ -9,49 +9,58 @@ alone.** A phone the version gate refuses keeps its event, and it updates later 
 capability `app-update-required`), so its old state must stay readable for as long as an event of that era can live.
 The request log's device count (`deno task logs --devices --since 30d`: each device once, at the app version it last
 declared, per platform) showing no device below the version is what proves no such phone remains: a phone in a live
-event is woken daily, so one silent for 30 days is the accepted gap (decision record `changes/delivery-record`, D9).
+event is woken daily, so one silent for 30 days is the accepted gap (decision record `openspec/changes/archive/2026-11-11-delivery-record`, D9).
 
 **An app shim's entry names what covers it**: `AppUpdateIntegrationTest` updates a device from every version the
 migration chain still builds, over the state `older-install.installedAt` writes (`test/rig/.../OlderInstalls.kt`,
 one layer per thing an older build wrote). Removing a shim removes its layer, and squashes the chain past the versions
 whose devices needed it, or those versions' cases fail — which is the point.
 
-## Once `MIN_APP_VERSION` ≥ 0.5
+## The floor raise: `MIN_APP_VERSION` → 0.7
+
+There is one floor raise, straight to 0.7, the next release. There is no separate raise to 0.5 or 0.6. 0.7 is the
+first release with the encryption additions that every build must have before encrypted creation comes back:
+photo names stored only sealed (`openspec/changes/archive/2026-11-09-seal-file-names`) and event names stored only
+sealed (`openspec/changes/archive/2026-11-09-seal-event-name`). Builds 0.5 and 0.6 read a sealed event's invite
+`/join/<id>?n=…#k=…` as damaged and cannot name a sealed event, just as 0.4 cannot read the keyed path form.
 
 **Unlock condition:**
-- 0.5 is live in both stores, and
-- `deno task logs --devices --since 30d` shows no device below 0.5.
+- 0.7 is live in both stores, and
+- `deno task logs --devices --since 30d` shows no device below 0.7. (2026-11-11: 4 devices on 0.4, 5 sending no
+  version, 5 on 0.5, 28 on 0.6, 6 on 0.7.)
 
-Before that, a 0.4 phone still talks to the backend. It may also update straight to the next build in the
+Before that, an older phone still talks to the backend. It may also update straight to a newer build in the
 middle of an event.
 
+**Everything under "≥ 0.5", "≥ 0.6", the Android library-change job and "≥ 0.7" below unlocks with this one raise.**
+
 **How to ship it:**
-- Use one OpenSpec change (proposed name: `require-0.5`). The token requirement changes `privacy-security`'s
+- Use one OpenSpec change (proposed name: `require-0.7`). The token requirement changes `privacy-security`'s
   closed list, and the share form changes the invite link.
 - The api half deploys when the PR merges. The app half ships with the next store release.
 
 ### The floor itself
 - **What:** `MIN_APP_VERSION` in `api/src/config.ts`.
 - **Deadline: before the release that re-enables encrypted creation** (below). That release creates encrypted
-  events, whose invite is the keyed path form `/join/<uuid>#k=…`. 0.4 reports that as a damaged invite, not as
-  "update required"; the floor turns it into the update screen. 0.6 creates plain events, so it does not need the
-  floor. Records: `openspec/changes/archive/2026-10-08-encrypt-events-by-default` (design, Migration Plan),
-  `openspec/changes/archive/2026-10-12-defer-encrypt-by-default`.
-- **Extra check before raising it:** no 0.4 device is a member of an open event, so nobody is cut off mid-event.
-  Run against the database and expect `0` (2026-10-12: `5`, in 2 open events — why 0.6 deferred encrypted
-  creation):
-  ```sql
-  SELECT count(*) FROM memberships m
-    JOIN events e ON e.id = m.event_id
-    JOIN devices d ON d.device_id = m.device_id
-   WHERE e.closed_at IS NULL AND e.completed_at IS NULL
-     AND m.state IN ('sharing', 'settled')
-     AND (d.app_version = '0.4' OR d.app_version IS NULL);
-  ```
+  events with sealed names. No build before 0.7 can open their invites: 0.4 reports a damaged invite, and 0.5 and
+  0.6 cannot read the sealed name. The floor turns each of these into the update screen instead. Records:
+  `openspec/changes/archive/2026-10-08-encrypt-events-by-default` (design, Migration Plan),
+  `openspec/changes/archive/2026-10-12-defer-encrypt-by-default`,
+  `openspec/changes/archive/2026-11-09-seal-event-name` (design D7).
+- **Extra check before raising it:** no member of an open event is below 0.7, so nobody is cut off mid-event. The
+  device row keeps no version, so this check reads the request log. Take the open-event members
+  (`memberships` with `state IN ('sharing', 'settled')` whose event has `closed_at IS NULL AND completed_at IS NULL`),
+  look up the version each one last declared in `deno task logs --devices --since 30d`, and treat a member that
+  sent no request as below 0.7. Expect none below 0.7. History: 2026-10-12, 5 devices on 0.4 in 2 open events, which
+  is why 0.6 deferred encrypted creation. 2026-11-11, 9 members in 3 open events, all on 0.6.
 - **Raise it together with** the `MARKETING_VERSION` floor in `iosApp/Configuration/Config.xcconfig`, otherwise
   `api/test/min-app-version-floor.test.ts` fails and dev builds get `426`.
 - **Also touches:** `api/test/config.test.ts` and the comment in `app/android/build.gradle.kts`.
 - **Raising it is also what allows editing `api/test/v2.test.ts`'s frozen tests** for the backend items below.
+
+## Once `MIN_APP_VERSION` ≥ 0.5
+
+What 0.4 still needs. It unlocks with the floor raise above.
 
 ### Anonymous event reads (api + app)
 - **What:** `GET`/`HEAD` `/api/v2/events/<id>` and `/api/v2/events/<id>/files` pass the token gate with no token.
@@ -95,9 +104,9 @@ middle of an event.
     re-upload, never a lost photo.
 - **Remove:**
   - Delete both routes.
-  - Fix the `db.ts` header and `api/src/dev/fallback.ts` (its `files/devices/<d>` matcher).
+  - Fix the `db.ts` header.
   - Update `docs/architecture.md`, and the api tests that use the old path (`v2`, `app`, `completion`,
-    `encrypted-upload`, `union-log`, `dev/fallback`, …).
+    `encrypted-upload`, `union-log`, …).
   - In the app:
     - `BackendMock`'s and `BackendRouter`'s event-less routes.
     - `OlderInstalls.kt`'s `startedByZeroFour`, the 0.4 upload in flight the update test's ledger.db v12 case lands
@@ -169,14 +178,13 @@ such membership is live.
 
 ## Re-enable encrypted creation
 
-**Unlock condition:** `MIN_APP_VERSION` is merged and deployed at **the app version that ships
-`seal-event-name`** — not 0.5 (decision record `openspec/changes/seal-event-name`, D7). An encrypted event created
-from then on carries its name only sealed and its shared invite a `?n=` preview name: 0.5 and 0.6 read
-`/join/<id>?n=…#k=…` as a damaged invite, and cannot name a sealed event. That floor also covers 0.5, so the 0.5 bump
-above is subsumed by it.
+**Unlock condition:** the floor raise to 0.7 (above) is merged and deployed (decision record
+`openspec/changes/archive/2026-11-09-seal-event-name`, D7). An encrypted event created from then on stores its name
+only sealed, and its shared invite carries a `?n=` preview name.
 
-**Order:** floor (at that version) merged → this re-enable merged → the privacy claim (next section) merged → promote
-that release.
+**Order:** floor raise to 0.7 merged → this re-enable merged → the privacy claim (next section) merged → promote
+that release. The floor can only reach 0.7 once every device runs 0.7, so encrypted creation comes back in a
+release after 0.7.
 
 ### Shipped builds create encrypted events again (app + site + spec)
 - **What:** 0.6 ships with encrypted creation switched off in production, so every invite it shares opens on 0.4
@@ -194,8 +202,8 @@ that release.
   - The Privacy Policy in `site/src/pages/index.astro` ("What we process, and why", "Photos you share") lost its
     encryption paragraph.
   - `docs/architecture.md` ("The encrypted file format"),
-    `.claude/skills/rig-channel/SKILL.md` (`device/encrypt-new-events`), the comment at `encrypt-new-events` in
-    `test/rig/.../MockLevers.kt`, and the KDoc of `EncryptedEventIntegrationTest`.
+    `.claude/skills/rig-channel/SKILL.md` (`device/encrypt-new-events`), and the KDoc of
+    `EncryptedEventIntegrationTest`.
 - **Why:** 0.4 cannot open an encrypted event's invite, and the floor could not rise before the 0.6 promote.
 - **Re-enable:** one OpenSpec change. It MODIFIES both `invite-link` requirements back: every event this version
   creates is encrypted, with the keyed path form as its QR code and shared link, and the scenario "A new event's
@@ -214,15 +222,15 @@ that release.
     > link a member shares also carries the name readable; our service reads it there only to show that page or
     > preview, and keeps it in no record or log. The event's QR code does not carry it.
   - Staged here, not published, until this release: before it no shipped build seals a name
-    (`openspec/changes/seal-event-name`, task 7.3; `openspec/changes/archive/2026-11-09-seal-file-names`).
+    (`openspec/changes/archive/2026-11-09-seal-event-name`, task 7.3; `openspec/changes/archive/2026-11-09-seal-file-names`).
 - **Record:** `openspec/changes/archive/2026-10-12-defer-encrypt-by-default` (design D1–D5), `openspec/changes/archive/2026-10-08-encrypt-events-by-default`,
-  `openspec/changes/seal-event-name` (design D7), `openspec/changes/archive/2026-11-09-seal-file-names` (design, Migration Plan).
+  `openspec/changes/archive/2026-11-09-seal-event-name` (design D7), `openspec/changes/archive/2026-11-09-seal-file-names` (design, Migration Plan).
 
 ### The delivery record's retention rises to 12 months (api + site + spec)
 - **What:** the request log — the delivery record — is kept 30 days (`REQUEST_LOG_RETENTION_DAYS` in
   `api/src/request-log-store.ts`). 12 months is decided, but waits for encrypted creation: while shipped builds create
   plain events, a device id in the record ties to photos the operator could read (decision record
-  `changes/delivery-record`, D11).
+  `openspec/changes/archive/2026-11-11-delivery-record`, D11).
 - **Raise it:** in the same release as the re-enable above, one OpenSpec change MODIFYING `privacy-security`'s "The
   service records how photos are delivered" (30 days → 12 months, and its scenario "The record outlives the event's
   photos"), with `REQUEST_LOG_RETENTION_DAYS`, the Privacy Policy's two mentions of 30 days in
@@ -244,10 +252,9 @@ that release.
 
 ## Once `MIN_APP_VERSION` ≥ 0.6
 
-**Unlock condition:** as for 0.5 above — 0.6 live in both stores, and `deno task logs --devices --since 30d` shows
-no device below it.
+What 0.5 still needs. It unlocks with the floor raise to 0.7 (above).
 
-0.6 is also the first release that carries the shared database's records (`13.sqm`), the first that stopped events
+0.6 is the first release that carries the shared database's records (`13.sqm`), the first that stopped events
 closing (`back-dated-events`: open-until dates; the app never leaves an event on its own), and the first built from
 `remove-event-device-cap` (`Event.capacity` optional), so every entry below unlocks here.
 
@@ -334,10 +341,9 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
   `capacity` from the test fixtures that stamp it (`api/test/support/harness.ts` `EVENT`, and every
   `INSERT INTO events` naming it). Regenerate `schema.sql`. Update `docs/architecture.md`'s events table.
 
-## Once no Android install predates the library-change job (the first release after 0.6)
+## Once no Android install predates the library-change job (0.7)
 
-**Unlock condition:** `MIN_APP_VERSION` ≥ the first release carrying `WakeJobService`, and
-`deno task logs --devices --since 30d` shows no Android device below it.
+0.7 is the first release with `WakeJobService`. This unlocks with the floor raise to 0.7 (above).
 
 ### The library-change wake an older build left on WorkManager (app)
 - **What:** `AndroidWake.forgetLegacyWatch` (`adapter/android/.../work/AndroidWake.kt`) cancels the unique WorkManager
@@ -352,11 +358,10 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
 - **Remove:** delete `forgetLegacyWatch` and its two calls, that test, and this entry. `WakeWorker` then reads only
   the heartbeat, and may drop the id it no longer gets.
 
-## Once `MIN_APP_VERSION` ≥ the release that re-enables encrypted creation
+## Once `MIN_APP_VERSION` ≥ 0.7
 
-**Unlock condition:** the floor is at or above the release that re-enables encrypted creation (above), which is the
-first to carry `seal-file-names` — every build in use then keys a photo from the name it holds, and names nothing in
-its manifest.
+0.7 is the first release with `seal-file-names`. This unlocks with the floor raise to 0.7 (above): from then on every
+build in use keys a photo by the name it holds, and puts no names in its manifest.
 
 ### The union's `key` and the manifest's `key`/`filename` (api + wire + mock)
 - **What:** fields only builds before `seal-file-names` read or send.
@@ -412,8 +417,8 @@ rename moves one to the sealed shape before then.
   it.
   - `api/migrations/0017_sealed_event_meta.sql`: the third arm of the `events` CHECK (`key_id` + `name`, no
     `sealed_meta`); and `api/src/routes/shared.ts`, `renamedTo`: a legacy row taking a readable `name`.
-  - `domain/data/.../event/ServedName.kt`, `nameRead`: a served `name` read as the name whatever the event's
-    encryption; `domain/data/.../event/EventRename.kt`, `currentRecord`: a fresh record made from a readable name.
+  - `core/data/.../crypto/MetaCipher.kt`, `nameRead`: a served `name` read as the name whatever the event's
+    encryption; `core/data/.../event/EventRename.kt`, `currentRecord`: a fresh record made from a readable name.
   - `adapter/generic/mock/.../BackendRouter.kt`, `change`: the legacy branch, as the real route's.
   - `api/src/routes/event-page.ts`, `shownName`: the row's own name winning for an encrypted event.
 - **Why:** those events' members must keep seeing and renaming them, and a build that predates sealed names (0.6)
@@ -422,49 +427,4 @@ rename moves one to the sealed shape before then.
   ⇔ `name`); refuse a readable `name` for any encrypted row in `renamedTo` and the mock's `change`; in `nameRead`, read
   a served `name` only for a plain event; drop `currentRecord`'s readable branch and `shownName`'s encrypted case; and
   the `legacy` cases of `api/test/sealed-event-name.test.ts`, `sealed-meta-migration.test.ts` and `EventDirectoryTest`.
-- **Record:** `openspec/changes/seal-event-name` (design D4).
-
-## Once every event closed before open-until dates is gone
-
-**Unlock condition:** no event row carries a `closed_at` written by the old close. The sweep drops every such row at
-its deadline, so this holds 30 days after the later of the rollout and the longest such event's end — check with
-`SELECT count(*) FROM events WHERE closed_at IS NOT NULL AND completed_at IS NULL` (expect `0`; a completed event
-also carries the stamp, and keeps it).
-
-### The old close's rules for legacy closed events (api)
-- **What:** an event closed before this change keeps refusing joins, renames and a changed asset set.
-  - `api/src/db.ts`: the `closed_at IS NULL` test in `ENROLL`, the close gate in `publishStatements`,
-    `declaredAssets`.
-  - `api/src/routes/v2.ts`: `declaresSameSet` and the `event.closedAt` branch of `publishManifest`;
-    `api/src/routes/shared.ts`: the `closedRefusal` in `changeEvent`.
-  - `api/test/completion.test.ts`: the `legacy closed →` tests.
-- **Why:** its members were promised that what they shared was fixed; reopening it would let a late change through.
-- **Remove:** the branches above, keeping the refusals a COMPLETED event still needs (`completedAt`); then
-  `ClosedError`'s `SetFixed` outcome on `publishManifest` and the app's handling of it.
-- **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D2/D5).
-
-### What stands in for the old close in the app and its mocks (app)
-- **What:** the mocks still know an event can have closed. (The app's old membership record's `closed` and the `closed` column of
-  ledger.db's `membership` row are gone since phase 4.2: migration `16.sqm` drops the column, and a membership that
-  carried it reads as open.)
-  - `adapter/generic/mock/.../BackendMock.kt`: `BackendState.Event.closed`, which only a state saved by an earlier mock
-    carries, and its branches in `join`, `publish` and `BackendRouter.change`.
-  - `test/contracts/.../BackendContract.kt`: the wire-fixture state `CLOSED_BEFORE_OPEN_UNTIL` and its clause.
-- **Why:** a member joined to an event that closed before this release must not be shown it as open while the
-  backend still refuses its rename.
-- **Remove:** the mock's branches and the fixture state, with the api entry above.
-- **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D2/D5).
-
-## One-off ops
-
-### Bytes still in the old storage layout (api)
-- **What:** bytes written before migration 0010 live at `files/devices/<deviceId>/<assetId>-<role>.<ext>`, and
-  their `resources.path` rows point there.
-  - The nightly sweep skips that folder (`api/src/scripts/sweep.ts`).
-  - `docs/architecture.md` and `docs/deployment.md` describe it.
-- **Remove:**
-  1. A local copy script, run once: download each `files/devices/…` row, PUT it to `files/<e>/<sha256>`, and
-     rewrite its `path`.
-  2. At least 7 days later (the presign lifetime): delete `files/devices/`, the sweep's skip, and the docs'
-     mentions.
-- **Record:** `openspec/changes/archive/2026-10-06-per-event-storage-layout` (design, follow-ups).
+- **Record:** `openspec/changes/archive/2026-11-09-seal-event-name` (design D4).

@@ -5,7 +5,6 @@ import app.snapsync.wire.runtime.Wire.query
 import kotlinx.serialization.Serializable
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -28,14 +27,6 @@ class WireTest {
         val r = WireResponse(200, mapOf("SnapSync-Cursor" to "7"), "")
         assertEquals("7", r.header("snapsync-cursor"))
         assertNull(r.header("Retry-After"))
-    }
-
-    @Test
-    fun the_media_type_is_compared_without_its_parameters() {
-        val r = WireResponse(409, mapOf("content-type" to "text/plain; charset=UTF-8"), "not a member")
-        assertTrue(r.isMedia("text/plain"))
-        assertFalse(r.isMedia("application/json"))
-        assertFalse(WireResponse(409, emptyMap(), "").isMedia("text/plain"))
     }
 
     @Test

@@ -70,16 +70,10 @@ enum class BackendState {
     IN_MAINTENANCE,
 
     /**
-     * An event that ended for good — completed by the sweep, or closed before events stopped closing — whose every write
-     * is answered `410 closed`: a wire fixture, since the sweep has no route and nothing closes any more.
+     * An event that ended for good — completed by the sweep — whose every write is answered `410 closed`: a wire
+     * fixture, since the sweep has no route and nothing closes any more.
      */
     ENDED_FOR_GOOD,
-
-    /**
-     * An event closed before events stopped closing, whose member's changed asset set is answered `409 closed` — a wire
-     * fixture, since nothing closes an event any more (`PENDING_CLEANUPS.md`).
-     */
-    CLOSED_BEFORE_OPEN_UNTIL,
 
     /**
      * A backend that accepts the binding's attestations, and a key the binding can attest and sign with
@@ -123,7 +117,6 @@ object BackendContract : Contract<BackendState, EdgeSubject<BackendClient>>("Bac
         BackendState.SERVER_FAILING,
         BackendState.IN_MAINTENANCE,
         BackendState.ENDED_FOR_GOOD,
-        BackendState.CLOSED_BEFORE_OPEN_UNTIL,
         BackendState.ATTESTABLE,
         -> unseeded(state, setup)
         else -> seedEvent(state, clauseId, setup)

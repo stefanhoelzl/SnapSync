@@ -471,7 +471,6 @@ private class EventDto(
     val endsAtMillis: Long,
     /** Absent in a state saved before open-until dates: such an event is open until its end. */
     val openUntilMillis: Long? = null,
-    val closed: Boolean = false,
     val completed: Boolean = false,
     val keyId: String? = null,
     /** Absent in a state saved before names were sealed. */
@@ -574,7 +573,6 @@ private class BackendDto(
                 Instant.fromEpochMilliseconds(e.startsAtMillis),
                 Instant.fromEpochMilliseconds(e.endsAtMillis),
                 Instant.fromEpochMilliseconds(e.openUntilMillis ?: e.endsAtMillis),
-                e.closed,
                 e.completed,
                 e.keyId,
                 e.sealedMeta,
@@ -618,7 +616,6 @@ private class BackendDto(
                     e.startsAt.toEpochMilliseconds(),
                     e.endsAt.toEpochMilliseconds(),
                     e.openUntil.toEpochMilliseconds(),
-                    e.closed,
                     e.completed,
                     e.keyId,
                     e.sealedMeta,

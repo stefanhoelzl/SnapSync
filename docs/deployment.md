@@ -446,9 +446,8 @@ runtime has no scheduler and a whole-store walk would exceed 50 subrequests / 30
   512 KB budget (`omitted` counts the rest) to stay well under Bugsink's 1 MiB event cap. The DSN is the
   deployment's: the resolve step is handed `SENTRY_DSN`. ⚠️ **A report that did not leave fails the run** —
   including a run with no DSN to send with. A dry run prints the report instead.
-- **Storage it touches:** only the `files/<eventId>/` folders. Never `site/`, and never `files/devices/`:
-  that holds the bytes written before migration 0010, still served through rows that point at them, and is
-  deleted outright once they are copied into their events (`changes/per-event-storage-layout`).
+- **Storage it touches:** only the `files/<eventId>/` folders — a folder not named by an event id is skipped.
+  Never `site/`.
 - **Failure mode:** best-effort per folder and per device. A single failed delete is logged, and the next night
   retries it; nothing counts it (accepted: decision record `changes/delivery-record`, D9). The run exits non-zero
   only on a systemic failure (auth, or storage cannot be listed at all) or a 5xx report that did not leave.

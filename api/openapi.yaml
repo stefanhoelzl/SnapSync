@@ -409,16 +409,12 @@ paths:
         "404":
           $ref: "#/components/responses/EventNotFound"
         "409":
-          description: Refused for good — by media type, why.
+          description: Refused for good — not a member.
           content:
             text/plain:
               x-snapsync-outcome: NotAMember
               schema:
                 const: not a member
-            application/json:
-              x-snapsync-outcome: SetFixed
-              schema:
-                $ref: "#/components/schemas/ClosedError"
         "410":
           $ref: "#/components/responses/Closed"
         "426":
@@ -1117,7 +1113,7 @@ components:
           schema:
             const: event not found
     Closed:
-      description: The event has closed (or completed) and changes no more.
+      description: The event has completed and changes no more.
       x-snapsync-outcome: Closed
       content:
         application/json:

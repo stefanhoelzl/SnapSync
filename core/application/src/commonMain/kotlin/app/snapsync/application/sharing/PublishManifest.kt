@@ -102,7 +102,6 @@ class PublishManifest(
     ) =
         when (reason) {
             PublishRefusal.EVENT_OVER -> over(attempt, manifest, body)
-            PublishRefusal.SET_FIXED -> PublishOutcome.Published.also { recorded(attempt, manifest, body) }
             PublishRefusal.NOT_TAKEN -> notPublished("the backend refused the manifest", reason)
         }
 

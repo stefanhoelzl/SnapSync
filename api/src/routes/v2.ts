@@ -2,7 +2,6 @@
 // listing, the join, and the manifest sub-resource whose publish carries the fan-out.
 
 import {
-  declaredAssets,
   deviceResources,
   enroll,
   type EventRow,
@@ -127,27 +126,6 @@ export function v2Handlers(
   const { fetchImpl, config, db, now } = deps;
   const s3 = s3Client(fetchImpl, config, deps.aws);
   const storeDeps = { fetchImpl, config, db, s3 };
-  /**
-   * A publish to an event closed before events stopped closing (`PENDING_CLEANUPS.md`): the set it already
-   * declared is answered as published and changes nothing, so a device whose publish raced that close is not
-   * left retrying; any other set is refused `409 closed`, as it was then. Answers whether it is the set already
-   * declared.
-   */
-  async function declaresSameSet(
-    eventId: string,
-    deviceId: string,
-    assets: ManifestAssetEntry[],
-  ): Promise<boolean> {
-    const stored = await tryUpstream(
-      `v2 manifest: declared-set read failed for ${eventId}/${deviceId}`,
-      () => declaredAssets(db, eventId, deviceId),
-    );
-    return stored.size === assets.length &&
-      assets.every((a) =>
-        stored.get(a.assetId) === a.resources.map((r) => r.role).sort().join(",")
-      );
-  }
-
   /**
    * Apply a v2 publish as ONE batch (see `publishStatements`) and read its verdict: whether the version
    * comparison admitted it — the first statement's count.
@@ -500,15 +478,6 @@ export function v2Handlers(
         () => isMember(db, eventId, deviceId),
       );
       if (!member) return c.text("not a member", 409);
-      // An event closed before events stopped closing keeps its fixed asset sets (`PENDING_CLEANUPS.md`): a
-      // publish naming the set it already declared changes nothing and is answered as published, so a device
-      // whose publish raced that close is not left retrying; any other set is refused. `publishStatements`
-      // gates the batch on the stamp too, for a completion racing this check.
-      if (event.closedAt) {
-        return await declaresSameSet(eventId, deviceId, assets)
-          ? c.body(null, 200)
-          : c.json({ error: "closed" }, 409);
-      }
       // Does this publish make anything FETCHABLE that was not before? Asked before the replace, for the
       // same reason the byte route asks before its write. Under a manifest that declares intent most
       // publishes name assets whose bytes have not arrived, and waking members for those would announce a

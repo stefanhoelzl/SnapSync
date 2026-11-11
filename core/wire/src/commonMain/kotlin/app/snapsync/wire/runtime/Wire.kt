@@ -18,12 +18,6 @@ class WireResponse(val status: Int, headers: Map<String, String>, val body: Stri
     /** The header [name], or `null` — header names are case-insensitive (RFC 9110). */
     fun header(name: String): String? = headers[name.lowercase()]
 
-    /** Whether the answer is of media [type], parameters (`; charset=…`) aside. */
-    fun isMedia(type: String): Boolean {
-        val declared = header("Content-Type") ?: return false
-        return declared.substringBefore(';').trim().equals(type, ignoreCase = true)
-    }
-
     /** The body decoded by [strategy] — or, when it does not decode, [otherwise] of why. */
     inline fun <T> json(strategy: DeserializationStrategy<T>, otherwise: (detail: String) -> Nothing): T = try {
         WireJson.decodeFromString(strategy, body)

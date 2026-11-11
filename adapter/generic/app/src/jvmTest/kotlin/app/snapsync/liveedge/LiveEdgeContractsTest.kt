@@ -104,7 +104,6 @@ class LiveEdgeContractsTest {
             BackendState.SERVER_FAILING,
             BackendState.IN_MAINTENANCE,
             BackendState.ENDED_FOR_GOOD,
-            BackendState.CLOSED_BEFORE_OPEN_UNTIL,
         )
 
         override fun create(state: BackendState, clauseId: String, log: CallLog): Entered<EdgeSubject<BackendClient>> {
@@ -114,7 +113,6 @@ class LiveEdgeContractsTest {
                 BackendState.IN_MAINTENANCE ->
                     Triple(HTTP_UNAVAILABLE, mapOf(CONTENT_TYPE to TEXT, "Retry-After" to "60"), "maintenance")
                 BackendState.ENDED_FOR_GOOD -> Triple(HTTP_GONE, mapOf(CONTENT_TYPE to JSON), CLOSED_BODY)
-                BackendState.CLOSED_BEFORE_OPEN_UNTIL -> Triple(HTTP_CONFLICT, mapOf(CONTENT_TYPE to JSON), CLOSED_BODY)
                 else -> Triple(HTTP_OK, emptyMap(), "<html>a page from somewhere else</html>")
             }
             val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
@@ -154,7 +152,6 @@ class LiveEdgeContractsTest {
         const val HTTP_BAD_GATEWAY = 502
         const val HTTP_UNAVAILABLE = 503
         const val HTTP_GONE = 410
-        const val HTTP_CONFLICT = 409
         const val JSON = "application/json"
         const val CLOSED_BODY = "{\"error\":\"closed\"}"
         const val CONTENT_TYPE = "Content-Type"

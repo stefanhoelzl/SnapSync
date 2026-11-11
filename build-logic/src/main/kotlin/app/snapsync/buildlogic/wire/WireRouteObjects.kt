@@ -141,22 +141,7 @@ internal object WireRouteObjects {
 
     private fun branchCode(d: WireDescription, op: WireOperation, branch: WireBranch): CodeBlock = when (branch) {
         is WireBranch.Single -> construct(d, op, branch.outcome)
-        is WireBranch.ByMedia -> mediaBranch(d, op, branch)
         is WireBranch.ByText -> textBranch(d, op, branch)
-    }
-
-    /** One status, several media types: the answer's `Content-Type` picks the outcome. */
-    private fun mediaBranch(d: WireDescription, op: WireOperation, branch: WireBranch.ByMedia): CodeBlock {
-        val code = CodeBlock.builder().add("when {\n").indent()
-        branch.outcomes.forEach { (type, outcome) ->
-            code.add(
-                "r.isMedia(%S) -> %L\n",
-                type,
-                construct(d, op, outcome),
-            )
-        }
-        code.add("else -> %T(%P)\n", MALFORMED, "no declared media type for \${r.status}")
-        return code.unindent().add("}").build()
     }
 
     /** One status, several texts: the body's text picks the outcome — an annotated enumeration of it. */

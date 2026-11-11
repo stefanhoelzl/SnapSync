@@ -8,7 +8,6 @@ import app.snapsync.wire.api.LeaveEventReply
 import app.snapsync.wire.api.PublishManifestReply
 import app.snapsync.wire.api.ReportReceivedReply
 import app.snapsync.wire.api.Routes
-import app.snapsync.wire.models.ClosedErrorError
 import app.snapsync.wire.models.EventChange
 import app.snapsync.wire.models.MemberCounts
 import app.snapsync.wire.models.Received
@@ -159,7 +158,7 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.completionClau
         assertAnswer<EventNotFound>(s.received(0))
     }
 
-    // An event completed by the sweep — or closed before events stopped closing — refuses every write as closed. The
+    // An event completed by the sweep refuses every write as closed. The
     // sweep has no route and nothing closes any more, so a wire fixture plays the backend's answer.
     clause(
         "ENDED_FOR_GOOD_EVERY_WRITE_IS_CLOSED",
@@ -173,15 +172,6 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.completionClau
         assertAnswer<Closed>(s.join(), "closed, never full")
         assertAnswer<Closed>(s.port.send(Routes.ChangeEvent.request(s.seeded.eventId, EventChange("Renamed"))))
         assertAnswer<Closed>(s.publish(manifest(s.seeded.deviceId)))
-    }
-
-    clause(
-        "CLOSED_BEFORE_OPEN_UNTIL_A_CHANGED_SET_IS_REFUSED_AS_FIXED",
-        BackendState.CLOSED_BEFORE_OPEN_UNTIL,
-        covers = cells { backend(Routes.PublishManifest.ID, PublishManifestReply.SetFixed::class) },
-    ) { s ->
-        val refused = assertAnswer<PublishManifestReply.SetFixed>(s.publish(manifest(s.seeded.deviceId)))
-        assertEquals(ClosedErrorError.CLOSED, refused.closedError.error, "the refusal names the close")
     }
 }
 

@@ -83,7 +83,6 @@ internal val WireDescription.appOperations get() = operations.filter { !it.os &&
 internal fun WireOperation.outcomes(): List<WireOutcome> = responses.values.flatMap { b ->
     when (b) {
         is WireBranch.Single -> listOf(b.outcome)
-        is WireBranch.ByMedia -> b.outcomes.map { it.second }
         is WireBranch.ByText -> b.outcomes.map { it.second }
     }
 }

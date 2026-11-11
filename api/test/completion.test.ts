@@ -2,8 +2,7 @@
 // `changes/back-dated-events`): a device declares its manifest FINAL after the range has ended, which makes its
 // membership `settled`; NOTHING closes any more — no publish or leave stamps a close or wakes anyone for one, and
 // the event read derives the `closedAt` builds that predate open-until dates still wait for; a leave records `done`
-// or `left`; an event closed BEFORE events stopped closing keeps refusing joins, renames and any change to a
-// member's asset set; a COMPLETED event (the sweep's verdict) keeps its row and answers "completed". The sweep's
+// or `left`; a COMPLETED event (the sweep's verdict) keeps its row and answers "completed". The sweep's
 // own rules are in `scripts/sweep.test.ts`.
 import { assert, assertEquals } from "@std/assert";
 import {
@@ -227,55 +226,6 @@ Deno.test("ended → join, rejoin, rename and a changed asset set all still succ
   });
   assertEquals(retract.status, 200);
   assertEquals((await rows(db, `SELECT asset_id FROM event_assets`)).length, 0);
-  db.close();
-});
-
-/** An event closed before events stopped closing: the stamp the old close wrote (`PENDING_CLEANUPS.md`). */
-async function closedBeforeRollout(db: Store) {
-  await db.execute(`UPDATE events SET closed_at = ?`, ["2026-07-12T00:00:00Z"]);
-}
-
-Deno.test("legacy closed → join, rejoin and rename are refused 410; the name stays", async () => {
-  const db = await storeWithEvent(ENDED);
-  const { app } = await twoMembers(db);
-  await app.request(JOIN(D2), { method: "DELETE", headers: await as(D2) });
-  await app.request(MANIFEST(D), { method: "PUT", body: body([ASSET], { final: true }) });
-  await closedBeforeRollout(db);
-
-  const join = await app.request(JOIN(D3), { method: "PUT", headers: await as(D3) });
-  assertEquals(join.status, 410);
-  assertEquals(await join.json(), { error: "closed" });
-  // A device that left cannot come back into a closed event either.
-  assertEquals((await app.request(JOIN(D2), { method: "PUT", headers: await as(D2) })).status, 410);
-  const rename = await app.request(DETAILS, {
-    method: "PATCH",
-    body: JSON.stringify({ name: "Renamed" }),
-  });
-  assertEquals(rename.status, 410);
-  assertEquals((await rows(db, `SELECT name FROM events`))[0].name, "Party");
-  assertEquals((await (await app.request(DETAILS)).json()).closedAt, "2026-07-12T00:00:00Z");
-  db.close();
-});
-
-Deno.test("legacy closed → the same asset set is a 200 no-op; a changed one is refused 409 and changes nothing", async () => {
-  const db = await storeWithEvent(ENDED);
-  const { app } = await twoMembers(db);
-  await app.request(JOIN(D2), { method: "DELETE", headers: await as(D2) });
-  await app.request(MANIFEST(D), { method: "PUT", body: body([ASSET], { final: true }) });
-  await closedBeforeRollout(db);
-
-  const same = await app.request(MANIFEST(D), {
-    method: "PUT",
-    body: body([ASSET], { final: true, version: 9 }),
-  });
-  assertEquals(same.status, 200);
-  const retract = await app.request(MANIFEST(D), {
-    method: "PUT",
-    body: body([], { final: true }),
-  });
-  assertEquals(retract.status, 409);
-  assertEquals(await retract.json(), { error: "closed" });
-  assertEquals((await rows(db, `SELECT asset_id FROM event_assets`)).length, 1);
   db.close();
 });
 
