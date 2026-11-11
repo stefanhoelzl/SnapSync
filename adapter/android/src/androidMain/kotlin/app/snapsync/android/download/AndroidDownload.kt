@@ -5,8 +5,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.database.Cursor
-import android.net.Uri
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import app.snapsync.android.network.DataSaverStatus
+import app.snapsync.android.storage.Committed
 import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
@@ -134,7 +136,7 @@ class AndroidDownload(
     /** [transfer] kept in the parked store; false, logged, when the store did not take it. */
     private fun park(transfer: Parked): Boolean {
         val kept = synchronized(PARKED_LOCK) {
-            parked.edit().putString(UUID.randomUUID().toString(), transfer.encode()).commit()
+            Committed.write(parked) { putString(UUID.randomUUID().toString(), transfer.encode()) }
         }
         if (kept) {
             log.unlabelled.i(
@@ -164,7 +166,7 @@ class AndroidDownload(
                 handlers.orNull("a refused parked transfer")?.onCompleted
                     ?.deliver(CompletedDownload(transfer.tag, "DownloadManager refused the request"))
             }
-            parked.edit().remove(key).commit()
+            parked.edit(commit = true) { remove(key) }
         }
         if (held.isNotEmpty()) {
             log.unlabelled.i(
@@ -193,7 +195,7 @@ class AndroidDownload(
         restarts: Int,
         network: TransferNetwork,
     ): DownloadManager.Request =
-        DownloadManager.Request(Uri.parse(url))
+        DownloadManager.Request(url.toUri())
             .apply { headers.forEach { (name, value) -> addRequestHeader(name, value) } }
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
             .setDestinationInExternalFilesDir(appContext, DIRECTORY, UUID.randomUUID().toString())
@@ -215,7 +217,7 @@ class AndroidDownload(
         val cancelled = synchronized(lock) {
             val parkedTags = synchronized(PARKED_LOCK) {
                 parked.all.values.mapNotNull { (it as? String)?.let(Parked::decode)?.tag }
-                    .also { parked.edit().clear().commit() }
+                    .also { parked.edit(commit = true) { clear() } }
             }
             rows(
                 null,
@@ -362,7 +364,7 @@ class AndroidDownload(
             tag = tag,
             succeeded = status == DownloadManager.STATUS_SUCCESSFUL,
             reason = int(DownloadManager.COLUMN_REASON),
-            localPath = string(DownloadManager.COLUMN_LOCAL_URI)?.let { Uri.parse(it).path },
+            localPath = string(DownloadManager.COLUMN_LOCAL_URI)?.let { it.toUri().path },
             total = long(DownloadManager.COLUMN_TOTAL_SIZE_BYTES),
             received = long(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR),
             url = string(DownloadManager.COLUMN_URI),
