@@ -2,6 +2,7 @@ package app.snapsync.application.upload
 
 import app.snapsync.application.EntryPointCall
 import app.snapsync.data.backend.EntryPointLabel
+import app.snapsync.data.sharing.AdmittedPhotos
 import app.snapsync.data.store.StoreWrite
 import app.snapsync.data.upload.RecentWalk
 import app.snapsync.data.upload.WalkRecord
@@ -15,9 +16,15 @@ private val log = Log("RecordWalk")
  * **Record what a walk found** ([WalkOutcome]): the departed rows withdrawn first — a photo that left is never
  * listed by the pass that saw it go — then the bare rows' detail filled and the new resources recorded as needing a
  * job, each in one transaction. It creates no job: the rows it recorded are the next top-up's work, and what the walk
- * read is handed to that top-up ([RecentWalk]), so they are sent from the resources in hand.
+ * read is handed to that top-up ([RecentWalk]), so they are sent from the resources in hand. What it admitted is the
+ * status's total ([AdmittedPhotos]): a photo counts from the walk that first sees it — a library-change wake's, a
+ * push's — not only from the next opening's count. A walk that read nothing leaves the total as it was.
  */
-class RecordWalk(private val walk: WalkRecord, private val recent: RecentWalk) {
+class RecordWalk(
+    private val walk: WalkRecord,
+    private val recent: RecentWalk,
+    private val admitted: AdmittedPhotos,
+) {
     @EntryPointCall
     suspend operator fun invoke(event: EventId, walked: WalkOutcome): RecordedWalk {
         val diff = walked.diff
@@ -26,6 +33,7 @@ class RecordWalk(private val walk: WalkRecord, private val recent: RecentWalk) {
         logged("recorded", diff.fresh.size, walk.discover(event, diff.fresh, EntryPointLabel.current()))
         val added = diff.fresh.isNotEmpty()
         if (added) recent.put(walked.handles)
+        walked.admitted?.let(admitted::counted)
         return RecordedWalk(added)
     }
 

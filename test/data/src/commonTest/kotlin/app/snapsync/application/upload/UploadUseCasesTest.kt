@@ -86,7 +86,8 @@ class UploadUseCasesTest {
     private val resources = OwnPhotoResources(library.own)
     private val walk = WalkOwnPhotos(library.own, world.reads, resources)
     private val recent = app.snapsync.data.upload.RecentWalk()
-    private val record = RecordWalk(world.walk, recent)
+    private val admitted = app.snapsync.data.sharing.AdmittedPhotos()
+    private val record = RecordWalk(world.walk, recent, admitted)
     private val plan = PlanTopUp(world.reads)
     private val create = CreateJobs(world.reads, world.tier, resources, world.walk, recent)
 
@@ -169,6 +170,17 @@ class UploadUseCasesTest {
         assertIs<UploadRow.Discovered>(rowOf("EARLY"), "a row before the range is not the walk's to judge")
         assertIs<UploadRow.Discovered>(rowOf("BARE"), "a bare row is never withdrawn by a walk")
         assertNull(rowOf("GONE"))
+    }
+
+    @Test
+    fun `a recorded walk counts the total, and a walk that read nothing leaves it as it was`() = runTest {
+        world.joined()
+        record(world.event, walk(world.event, library.contribution()))
+        assertEquals(setOf(AssetId.parse("A1")!!), admitted.state.value, "the walk that first sees a photo counts it")
+
+        library.grant.value = LibraryGrant.DENIED
+        record(world.event, walk(world.event, library.contribution()))
+        assertEquals(setOf(AssetId.parse("A1")!!), admitted.state.value, "a walk that read nothing is no count")
     }
 
     @Test

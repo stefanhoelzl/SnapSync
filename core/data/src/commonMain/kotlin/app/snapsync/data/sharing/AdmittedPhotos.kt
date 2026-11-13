@@ -6,10 +6,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * The member's own photos the membership admits, as last counted — the total `N` the status counts against. Held in
- * memory for the app's process, and `null` until a count has been taken: never a placeholder zero, which the status
- * would read as "counted nothing" and settle on (`SNAPSYNC-14`, `SNAPSYNC-16`). A count that could not be taken leaves
- * it as it was, so what it holds is always the last count that was.
+ * The member's own photos the membership admits, as last counted — the total `N` the status counts against. Counted by
+ * the status's own count and by every walk of the member's photos, so a photo counts from the walk that first sees
+ * it — a wake's, while the app is in front — not from the next opening. Held in memory for the process, and `null`
+ * until a count has been taken: never a placeholder zero, which the status would read as "counted nothing" and settle
+ * on (`SNAPSYNC-14`, `SNAPSYNC-16`). A count that could not be taken leaves it as it was, so what it holds is always
+ * the last count that was.
  */
 class AdmittedPhotos {
     private val held = MutableStateFlow<Set<AssetId>?>(null)

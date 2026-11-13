@@ -419,6 +419,27 @@ class StatusLineIntegrationTest {
     // ---- what the counts include ----------------------------------------------------------------
 
     @Test
+    @Verifies(spec = "sync-status", requirement = "Progress counts only what this membership shares")
+    fun a_photo_the_library_change_wake_finds_while_the_app_is_in_front_is_counted() = behaviour {
+        // A photo counts from the moment it is taken, not from the next opening. On Android the camera finishes a photo
+        // after the opening has counted (MediaStore's pending row), so the library-change wake's walk is the first to
+        // see it: that walk must move the total, and the upload arrow with it.
+        given {
+            androidLibraryWake()
+            appUploadsOnly()
+            inFrontInSync()
+        }
+
+        whenever { library.add("NEW", date = Defaults.PHOTO_DATE) }
+        then {
+            screen<Layer.Joined> {
+                it.counts?.shared == DirectionCount.Progress(done = 0, total = 1) &&
+                    (it.health as? SyncHealth.Syncing)?.upload?.let { arrow -> arrow != Arrow.HIDDEN } == true
+            }
+        }
+    }
+
+    @Test
     @Verifies(
         spec = "sync-status",
         requirement = "Progress counts only what this membership shares",
