@@ -42,7 +42,7 @@
     <string name="status_sync_ongoing">Fotos sind unterwegs …</string>
     <string name="status_waiting_wifi">Warte auf WLAN …</string>
     <string name="status_waiting_photos">Warte auf Fotos …</string>
-    <string name="status_sync_pending">Fotos warten …</string>
+    <string name="status_sync_pending">Fotos in der Warteschlange …</string>
     <string name="network_blocked">Netzwerk für SnapSync blockiert – Einstellungen öffnen</string>
     <string name="network_offline">Du bist offline</string>
     <string name="cannot_verify_title">Dieses Gerät kann nicht verifiziert werden – das Teilen ist pausiert</string>

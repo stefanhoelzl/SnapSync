@@ -225,6 +225,19 @@ class StatusContainerHostNetworkTest {
     }
 
     @Test
+    fun `a photo going into the gallery pulses while photos wait for Wi-Fi`() = runTest {
+        // Its bytes are here already: the import needs no network, so the choice holds nothing of it back. The other
+        // download is still held, and says so — but a pulse outranks it, so the line reads "on their way".
+        val host = host(
+            FakeNetwork(NetworkAccess.Online(restricted = true)),
+            progress = SharingProgress(shared = 1, total = 1, handedOver = 0),
+            mobileData = false,
+            download = DownloadProgress(downloaded = 1, total = 3, inFlight = 1, importing = 1),
+        )
+        assertEquals(SyncHealth.Syncing(Arrow.HIDDEN, Arrow.PULSING, waitingForWifi = true), host.health())
+    }
+
+    @Test
     fun `only the others left outranks waiting for Wi-Fi`() = runTest {
         // Nothing of this phone's own is held for Wi-Fi: its photos are all shared, and all offered here have arrived.
         val host = host(

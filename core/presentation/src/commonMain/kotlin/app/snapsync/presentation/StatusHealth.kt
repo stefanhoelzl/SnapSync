@@ -230,10 +230,14 @@ object StatusHealth {
     /**
      * The others' declared photos still uploading on their phones count as left to receive (change
      * `count-declared-photos`): they raise the arrow, never its pulse — nothing of theirs runs here.
+     *
+     * A photo whose bytes are all here is still arriving until it is in the library: the import runs on this device,
+     * so it pulses — without it the line fell still, reading "Photos queued…", for the seconds between the last byte
+     * and the photo in the gallery. Bytes already here need no network, so Wi-Fi holds nothing of it back.
      */
     private fun downloadArrow(download: DownloadProgress, heldForWifi: Boolean): Arrow = arrowOf(
         shown = download.downloaded < download.total + download.awaited,
-        pulsing = download.inFlight > 0 && !heldForWifi,
+        pulsing = (download.inFlight > 0 && !heldForWifi) || download.importing > 0,
     )
 
     /** Only the others are left: nothing of this device's own runs, waits or is offered and not yet here. */

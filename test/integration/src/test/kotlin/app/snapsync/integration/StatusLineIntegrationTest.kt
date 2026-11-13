@@ -321,6 +321,50 @@ class StatusLineIntegrationTest {
     @Verifies(
         spec = "sync-status",
         requirement = "Direction arrows show the work left and the transfer running",
+        scenario = "Photos arriving",
+    )
+    fun a_photo_on_its_way_into_the_gallery_keeps_the_download_arrow_pulsing() = behaviour {
+        // The bytes are here before the photo is in the gallery: the import runs on this device, so the arrow pulses
+        // until the photo is in, and the line goes from "on their way" straight to up to date — never still in between,
+        // where it read "Photos queued…" as if the phone were waiting for more.
+        val stillDownload = { joined: Layer.Joined -> (joined.health as? SyncHealth.Syncing)?.download == Arrow.STATIC }
+        given { inFrontInSync() }
+
+        whenever {
+            publicBackend.foreignDevice(DEV_F, listOf("F1"))
+            readAgain()
+        }
+        then {
+            event<WorldEvent.DownloadStarted>()
+            screen<Layer.Joined> { it.health == SyncHealth.Syncing(upload = Arrow.HIDDEN, download = Arrow.PULSING) }
+            settled { true }
+        }
+
+        // Its bytes land and its import is held: still pulsing, as the screen above left it.
+        whenever {
+            library.suspendNextImport()
+            downloadSession.finish()
+        }
+        then {
+            event<WorldEvent.LibraryImportParked>()
+            neverScreen<Layer.Joined>(stillDownload)
+            settled { true }
+        }
+
+        whenever { library.resumeImport() }
+        then {
+            neverScreen<Layer.Joined>(stillDownload)
+            screen<Layer.Joined> {
+                it.health == SyncHealth.InSync && it.counts?.received == DirectionCount.Progress(done = 1, total = 1)
+            }
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Direction arrows show the work left and the transfer running",
         scenario = "The device's own waiting work comes first",
     )
     fun a_photo_waiting_here_reads_queued_before_waiting_for_others() = behaviour {

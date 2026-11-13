@@ -40,6 +40,7 @@ class ReceivingCounts(private val store: DownloadStore) {
                 it.imported.toInt(),
                 it.stillArriving.toInt(),
                 it.inFlight.toInt(),
+                it.importing.toInt(),
                 it.known.toInt(),
                 it.othersDeclared,
             )
@@ -53,6 +54,7 @@ class ReceivingCounts(private val store: DownloadStore) {
                 it.imported.toInt(),
                 it.stillArriving.toInt(),
                 it.inFlight.toInt(),
+                importing = 0,
                 known = 0,
                 othersDeclared = null,
             )
@@ -66,12 +68,15 @@ class HeldFacts(val foreign: Int, val settled: Int, val waiting: Boolean)
 /**
  * The download projection's counts, read together, so a status line can never publish a torn composite. [stillArriving]
  * excludes unimportable rows (design D8): counting work that can never finish pegs the line below completion forever.
- * [known] and [othersDeclared] are an event's only (change `count-declared-photos`).
+ * [inFlight] counts the photos with a transfer under way; [importing] those whose every file is staged and that are
+ * not yet settled in the library — here, on their way into it. [importing], [known] and [othersDeclared] are an
+ * event's only (change `count-declared-photos`).
  */
 class DownloadCounts(
     val imported: Int,
     val stillArriving: Int,
     val inFlight: Int,
+    val importing: Int,
     val known: Int,
     val othersDeclared: Long?,
 )
