@@ -10,6 +10,7 @@ import app.snapsync.data.receiving.ReceivedReporting
 import app.snapsync.data.receiving.ReportedReceived
 import app.snapsync.domain.receiving.HeldPosition
 import app.snapsync.domain.receiving.ReceivingVerdict
+import app.snapsync.domain.receiving.ReportScope
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.ports.HttpResult
 import kotlinx.coroutines.test.runTest
@@ -88,13 +89,39 @@ class HoldingTest {
     }
 
     @Test
-    fun `a position is worth telling only once the event has ended`() {
+    fun `a position is worth telling only once the event has ended`() = runTest {
         val report = reportOver()
-        assertTrue(report.due(membership, receives), "the device's clock is past the event's end")
+        assertEquals(ReportScope.HELD, report.due(membership, receives), "the device's clock is past the event's end")
 
-        r.device.clock.now = Instant.parse("2026-07-16T12:00:00Z")
-        assertFalse(report.due(membership, receives))
-        assertTrue(report.due(membership, ReceivingVerdict.SharesOnly), "a share-only membership tells it at once")
+        r.device.clock.now = DURING_THE_EVENT
+        assertEquals(ReportScope.NONE, report.due(membership, receives))
+        assertEquals(
+            ReportScope.HELD,
+            report.due(membership, ReceivingVerdict.SharesOnly),
+            "a share-only membership tells it at once",
+        )
+    }
+
+    @Test
+    fun `while the event runs, the photos added to the library are told at once, and only once`() = runTest {
+        val report = reportOver()
+        r.device.clock.now = DURING_THE_EVENT
+        r.sql(
+            "INSERT INTO eventRef (eventId, sourceDeviceId, sourceAssetId) " +
+                "VALUES ('${membership.event.id.value}', '$SENDER', 'A')",
+            "INSERT INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId, " +
+                "downloadedAt, addedAt, addedBy) VALUES ('$SENDER', 'A', 'IMPORTED', '2026-07-16T11:59:00Z', " +
+                "'LOCAL-A', '2026-07-16T11:59:30Z', '2026-07-16T11:59:31Z', 'OnSilentPush')",
+        )
+
+        assertEquals(ReportScope.FACTS, report.due(membership, receives))
+        report.facts(membership)
+
+        assertEquals(1, reports())
+        val body = r.device.transport.requests.last().body.orEmpty()
+        assertTrue("\"position\":0" in body, "it claims no position held: $body")
+        assertTrue("\"added\":\"2026-07-16T11:59:31Z\"" in body, body)
+        assertEquals(ReportScope.NONE, report.due(membership, receives), "told: nothing waits any more")
     }
 
     @Test
@@ -166,5 +193,10 @@ class HoldingTest {
         reportOver(unreadable)(membership, HeldPosition.Holds(3))
         assertEquals(0, reports(unreadable), "the membership cannot be read")
         assertNull(ReportedReceived().last(membership.event.id))
+    }
+
+    private companion object {
+        /** Before the fixture event's range ends — the fixture clock's own instant is past it. */
+        val DURING_THE_EVENT = Instant.parse("2026-07-16T12:00:00Z")
     }
 }

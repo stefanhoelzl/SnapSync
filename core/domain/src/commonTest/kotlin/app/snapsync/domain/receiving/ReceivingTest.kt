@@ -100,12 +100,27 @@ class ReceivingTest {
     }
 
     @Test
-    fun a_share_only_membership_reports_at_once_and_one_that_receives_after_the_end() {
+    fun a_share_only_membership_reports_at_once_and_one_that_receives_its_position_after_the_end() {
         val receives = ReceivingVerdict.of(active(), KeyPresence.NotNeeded)
-        assertEquals(true, ReceivedReport.dueFor(ReceivingVerdict.SharesOnly, ended = false))
-        assertEquals(false, ReceivedReport.dueFor(receives, ended = false))
-        assertEquals(true, ReceivedReport.dueFor(receives, ended = true))
-        assertEquals(true, ReceivedReport.dueFor(ReceivingVerdict.KeyLost, ended = true))
+        assertEquals(
+            ReportScope.HELD,
+            ReceivedReport.dueFor(ReceivingVerdict.SharesOnly, ended = false, untold = false),
+        )
+        assertEquals(ReportScope.NONE, ReceivedReport.dueFor(receives, ended = false, untold = false))
+        assertEquals(ReportScope.HELD, ReceivedReport.dueFor(receives, ended = true, untold = false))
+        assertEquals(ReportScope.HELD, ReceivedReport.dueFor(ReceivingVerdict.KeyLost, ended = true, untold = false))
+    }
+
+    @Test
+    fun a_membership_that_receives_tells_its_untold_delivery_facts_while_the_event_runs() {
+        val receives = ReceivingVerdict.of(active(), KeyPresence.NotNeeded)
+        assertEquals(ReportScope.FACTS, ReceivedReport.dueFor(receives, ended = false, untold = true))
+        assertEquals(ReportScope.FACTS, ReceivedReport.dueFor(ReceivingVerdict.KeyLost, ended = false, untold = true))
+        assertEquals(
+            ReportScope.HELD,
+            ReceivedReport.dueFor(receives, ended = true, untold = true),
+            "after the end the position report carries them",
+        )
     }
 
     @Test

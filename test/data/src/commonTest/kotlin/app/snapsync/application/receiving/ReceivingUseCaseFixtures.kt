@@ -32,6 +32,7 @@ import app.snapsync.data.receiving.RecognitionPasses
 import app.snapsync.data.receiving.RecognitionRecords
 import app.snapsync.data.receiving.ReportedReceived
 import app.snapsync.data.receiving.StagingArea
+import app.snapsync.data.receiving.db.DownloadDatabase
 import app.snapsync.data.sharing.ManifestRecord
 import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.domain.asset.AssetId
@@ -55,6 +56,8 @@ import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.mobileDataAnswering
+import app.snapsync.ports.DbOpen
+import app.snapsync.ports.DbResult
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.GalleryAssetResources
@@ -70,6 +73,7 @@ import app.snapsync.ports.TransferNetwork
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.test.assertIs
 
 /** The device that shares the photos this one receives. */
 internal const val SENDER = "A0000000-0000-4000-8000-00000000000A"
@@ -227,6 +231,17 @@ internal class Receiver {
 
     /** The download store unreadable — or readable again. */
     fun unreadable(on: Boolean = true) = device.databases.unreadable(DOWNLOADS_DB_NAME, on)
+
+    /** Run [sql] on the download store's database, after the app's own open created and migrated it. */
+    fun sql(vararg sql: String) {
+        open()
+        val opened = assertIs<DbOpen.Opened>(
+            device.databases.port().open(DOWNLOADS_DB_NAME, DownloadDatabase.Schema, false),
+        )
+        sql.forEach { statement ->
+            assertIs<DbResult.Ok<*>>(opened.database.execute { it.execute(null, statement, 0) })
+        }
+    }
 
     /** A library photo [id] that carries [of]'s SnapSync mark, captured at [created]. */
     fun markedPhoto(id: String, of: Listed, created: String = of.created): GalleryAssetResources =
