@@ -33,17 +33,17 @@ class DeliveryFactsTest {
     @Test
     fun the_header_joins_the_facts_in_order_and_strips_its_own_separators() {
         assertEquals(
-            mapOf(DeliveryFacts.HEADER to "model=abc;os=ios/18.6"),
-            DeliveryFacts.header(listOf("model" to "a;b=c", "os" to "ios/18.6")),
+            mapOf(DeliveryFacts.HEADER to "model=abc;os=ios"),
+            DeliveryFacts.header(listOf("model" to "a;b=c", "os" to "ios")),
         )
         assertEquals(emptyMap(), DeliveryFacts.header(emptyList()))
     }
 
     @Test
     fun the_os_is_the_platform_and_the_version_number_it_states() {
-        assertEquals(mapOf("os" to "ios/26.6"), DeliveryFacts.os(Platform.IOS, "iOS 26.6"))
-        assertEquals(mapOf("os" to "android/15"), DeliveryFacts.os(Platform.ANDROID, "15"))
-        assertEquals(emptyMap(), DeliveryFacts.os(Platform.IOS, "?"))
+        assertEquals(mapOf("os" to "ios", "os_version" to "26.6"), DeliveryFacts.os(Platform.IOS, "iOS 26.6"))
+        assertEquals(mapOf("os" to "android", "os_version" to "15"), DeliveryFacts.os(Platform.ANDROID, "15"))
+        assertEquals(mapOf("os" to "ios"), DeliveryFacts.os(Platform.IOS, "?"))
     }
 
     @Test
@@ -51,6 +51,15 @@ class DeliveryFactsTest {
         assertEquals("release", DeliveryFacts.flavour("production"))
         assertEquals("dev", DeliveryFacts.flavour("development"))
         assertEquals("dev", DeliveryFacts.flavour("?"))
+    }
+
+    @Test
+    fun the_build_number_is_kept_when_it_is_digits_and_left_out_otherwise() {
+        assertEquals(mapOf("build" to "2140"), DeliveryFacts.build("2140"))
+        assertEquals(mapOf("build" to "1"), DeliveryFacts.build("1"))
+        assertEquals(emptyMap(), DeliveryFacts.build("?"))
+        assertEquals(emptyMap(), DeliveryFacts.build(""))
+        assertEquals(emptyMap(), DeliveryFacts.build("12a"))
     }
 
     @Test

@@ -217,8 +217,8 @@ fingerprint, but never their address (requirement "The service reports its own f
 ### Requirement: The service records how photos are delivered
 The service SHALL keep a delivery record of every request it is sent. For a request from a genuine SnapSync app it
 SHALL record which phone sent it (by its device identifier, requirement "No account and no personal identity"),
-the app's version, the phone's operating system and its version, its model, whether it is a release or a
-development build, the photo access the app has, the kind of network the
+the app's version and build number, the phone's operating system and its version, its model, whether it is a
+release or a development build, the photo access the app has, the kind of network the
 phone is on and whether it may use mobile data for SnapSync, whether power saving is on, and whether the system
 lets the app work in the background. For the photos the app shares and receives it SHALL record when each photo
 was taken, when the app found it, when it was queued, sent and became available to the members, when it was
@@ -255,6 +255,10 @@ whether or not the event's photos have been deleted — and then deleted.
 #### Scenario: Members do not see each other's activity
 - **WHEN** a member uses the app during an event
 - **THEN** nothing in the app shows when or why other members' apps read, shared or received the event's photos
+
+#### Scenario: Two builds of one version
+- **WHEN** two phones run different builds that carry the same app version
+- **THEN** the operator can tell from their requests which build each phone runs
 
 ### Requirement: Automatic failure reports are minimal and anonymous
 Only builds distributed through the App Store, TestFlight or Google Play SHALL report failures automatically, and

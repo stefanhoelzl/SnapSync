@@ -39,6 +39,7 @@ class DeliveryContextTest {
         osVersion = "iOS 18.6",
         deviceModel = "iPhone12,8",
         reporterEnvironment = "production",
+        buildNumber = "2140",
         platform = BuildPlatform(Platform.IOS),
     ).port()
     private val clock = ClockMock(Instant.parse("2026-11-10T12:00:00Z"))
@@ -59,8 +60,8 @@ class DeliveryContextTest {
         MobileDataStore(preferences).write(MobileDataChoice.WIFI_ONLY)
         assertEquals(
             mapOf(
-                DeliveryFacts.HEADER to "os=ios/18.6;model=iPhone12,8;flavour=release;device=$device;access=limited;" +
-                    "network=restricted;mobile_data=0;low_power=0;background=1",
+                DeliveryFacts.HEADER to "os=ios;os_version=18.6;model=iPhone12,8;flavour=release;build=2140;" +
+                    "device=$device;access=limited;network=restricted;mobile_data=0;low_power=0;background=1",
             ),
             context().headers(),
         )
@@ -71,6 +72,7 @@ class DeliveryContextTest {
         val android = BuildInfoMock(
             osVersion = "15",
             deviceModel = "samsung SM-A405FN",
+            buildNumber = "1",
             platform = BuildPlatform(Platform.ANDROID),
         )
         conditions.reading = conditions.reading.copy(
@@ -84,7 +86,8 @@ class DeliveryContextTest {
             ConditionsContext(conditions.port(), clock.port()),
         ).headers().getValue(DeliveryFacts.HEADER)
         assertEquals(
-            "os=android/15;model=samsung SM-A405FN;flavour=dev;network=unrestricted;low_power=1;background=0",
+            "os=android;os_version=15;model=samsung SM-A405FN;flavour=dev;build=1;" +
+                "network=unrestricted;low_power=1;background=0",
             header,
         )
     }
@@ -115,7 +118,7 @@ class DeliveryContextTest {
     fun a_value_never_carries_the_header_s_separators() = runTest {
         val odd = BuildInfoMock(deviceModel = "a;b=c", reporterEnvironment = "development").port()
         assertEquals(
-            "model=abc;flavour=dev",
+            "os=ios;model=abc;flavour=dev",
             DeliveryContext(BuildContext(odd)).headers().getValue(DeliveryFacts.HEADER),
         )
     }

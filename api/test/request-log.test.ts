@@ -91,18 +91,38 @@ Deno.test("middleware → exactly one line per request, out= the bytes sent", as
   );
 });
 
+// @Verifies(spec = "privacy-security", requirement = "The service records how photos are delivered", scenario = "Two builds of one version")
+Deno.test("middleware → two builds of one version are told apart by their build", async () => {
+  const { app, lines } = logged((a) => a.get("/x", (c) => c.body(null, 204)));
+  for (
+    const [device, build] of [["0f8fad5b-d9cb-469f-a165-70867728950e", "2140"], [
+      "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "2152",
+    ]]
+  ) {
+    await app.request("/x", {
+      headers: {
+        "x-snapsync-app-version": "0.7",
+        "x-snapsync-context": `device=${device};build=${build}`,
+      },
+    });
+  }
+  assertMatch(lines[0], / v=0\.7 .* device=0f8fad5b-d9cb-469f-a165-70867728950e build=2140$/);
+  assertMatch(lines[1], / v=0\.7 .* device=7c9e6679-7425-40de-944b-e07fc1f90ae7 build=2152$/);
+});
+
 Deno.test("middleware → the delivery context leads the fields, every readable key once", async () => {
   const { app, lines } = logged((a) => a.get("/x", (c) => c.body(null, 204)));
   await app.request("/x", {
     headers: {
       "x-snapsync-context":
-        "device=0f8fad5b-d9cb-469f-a165-70867728950e;os=ios/18.6;model=iPhone12,8;" +
-        "flavour=release;access=limited;network=restricted;mobile_data=1;low_power=0;background=1",
+        "device=0f8fad5b-d9cb-469f-a165-70867728950e;os=ios;os_version=18.6;model=iPhone12,8;" +
+        "flavour=release;build=2140;access=limited;network=restricted;mobile_data=1;low_power=0;background=1",
     },
   });
   assertMatch(
     lines[0],
-    / out=0 device=0f8fad5b-d9cb-469f-a165-70867728950e os=ios\/18.6 model="iPhone12,8" flavour=release access=limited network=restricted mobile_data=true low_power=false background=true$/,
+    / out=0 device=0f8fad5b-d9cb-469f-a165-70867728950e os=ios os_version=18.6 model="iPhone12,8" flavour=release build=2140 access=limited network=restricted mobile_data=true low_power=false background=true$/,
   );
 });
 
@@ -112,7 +132,7 @@ Deno.test("middleware → an absent, unknown or unreadable context value is left
   await app.request("/x", {
     headers: {
       "x-snapsync-context":
-        "os=windows/11;flavour=beta;mobile_data=yes;colour=red;device=nope;garbage;network=unrestricted;network=restricted",
+        "os=windows;os=ios/18.6;os_version=18.6a;flavour=beta;build=?;build=12a;mobile_data=yes;colour=red;device=nope;garbage;network=unrestricted;network=restricted",
     },
   });
   assertMatch(lines[0], / out=0$/);

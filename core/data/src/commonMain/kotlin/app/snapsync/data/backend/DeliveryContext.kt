@@ -22,7 +22,7 @@ import kotlin.time.Instant
 /**
  * **The delivery context** (decision record `changes/delivery-record`, D8; `docs/architecture.md`, "The delivery
  * record"): the device a request comes from, its platform and its conditions, which every request carries in ONE header
- * for the service's request log — `x-snapsync-context: device=<id>;os=ios/18.6;model=iPhone12,8;…`, in the words
+ * for the service's request log — `x-snapsync-context: device=<id>;os=ios;os_version=18.6;…`, in the words
  * [DeliveryFacts] gives each fact. The service reads nothing else from it and refuses nothing for it.
  *
  * Each process hands the [ContextPart]s it can read: the app every one, the upload extension what it has. A part that
@@ -38,10 +38,11 @@ interface ContextPart {
     suspend fun facts(): Map<String, String>
 }
 
-/** The build and its platform: `os`, `model`, `flavour`. */
+/** The build and its platform: `os`, `os_version`, `model`, `flavour`, `build`. */
 class BuildContext(private val build: BuildInfo) : ContextPart {
     override suspend fun facts(): Map<String, String> = DeliveryFacts.os(build.platform, build.osVersion) +
-        mapOf("model" to build.deviceModel, "flavour" to DeliveryFacts.flavour(build.reporterEnvironment))
+        mapOf("model" to build.deviceModel, "flavour" to DeliveryFacts.flavour(build.reporterEnvironment)) +
+        DeliveryFacts.build(build.buildNumber)
 }
 
 /** This install's device id, when it can be read: `device`. */
