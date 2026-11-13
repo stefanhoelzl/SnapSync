@@ -48,6 +48,7 @@ class WalkOwnPhotos(
                 WalkDiff.of(rows, emptyList(), emptySet(), emptySet()),
                 emptyMap(),
                 SettlingLook.CouldNotLook,
+                admitted = null,
             )
         }
 
@@ -73,6 +74,7 @@ class WalkOwnPhotos(
             WalkDiff.of(rows, walked.map { it.found }, ids, window),
             walked.handles(),
             SettlingLook.Looked(read.discovery),
+            admitted = ids,
         )
     }
 
@@ -89,12 +91,18 @@ class WalkOutcome(
     val handles: Map<UploadKey, SendFrom>,
     /** What the walk was as a look at the member's photos — what a publish after it may settle on. */
     val look: SettlingLook,
+    /**
+     * The photos the membership admits now, as this walk read them — the status's total, counted by the walk — or
+     * `null` when it could not read them: a walk that read nothing is no count.
+     */
+    val admitted: Set<AssetId>?,
 ) {
     companion object {
         val NOTHING = WalkOutcome(
             WalkDiff.of(emptyList(), emptyList(), emptySet(), emptySet()),
             emptyMap(),
             SettlingLook.CouldNotLook,
+            admitted = null,
         )
     }
 }

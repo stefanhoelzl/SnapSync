@@ -17,6 +17,7 @@ import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.receiving.ReceivedPhotosRead
+import app.snapsync.data.sharing.AdmittedPhotos
 import app.snapsync.data.sharing.ManifestPublication
 import app.snapsync.data.sharing.ManifestRecord
 import app.snapsync.data.sharing.OwnPhotos
@@ -76,6 +77,9 @@ class UploadGraph(
     val transitions: RowTransitions = RowTransitions(records)
     val record: JobRecord = JobRecord(transitions)
     val recent: RecentWalk = RecentWalk()
+
+    /** The member's admitted photos as this process last counted or walked them — the joined screen's total `N`. */
+    val admitted: AdmittedPhotos = AdmittedPhotos()
     val resources: OwnPhotoResources = OwnPhotoResources(photos)
     val requests: UploadRequests = UploadRequests(exchange, credentials, credential, identity, names, clock)
     val sealing: UploadSealing = UploadSealing(membership, keys, identity, cipher)
@@ -83,7 +87,7 @@ class UploadGraph(
         UploadGateRead(records, PassEntryRead(rows, membership, identity, keys), host, admission, received)
     val contribute: DeriveContribution = DeriveContribution(photos)
     val walk: WalkOwnPhotos = WalkOwnPhotos(photos, rows, resources)
-    val recordWalk: RecordWalk = RecordWalk(walkRecord, recent)
+    val recordWalk: RecordWalk = RecordWalk(walkRecord, recent, admitted)
     val plan: PlanTopUp = PlanTopUp(rows)
     val album: AlbumPlacement = AlbumPlacement(placeOwn)
 

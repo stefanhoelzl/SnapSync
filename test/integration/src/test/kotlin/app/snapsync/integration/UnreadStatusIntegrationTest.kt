@@ -118,7 +118,7 @@ class UnreadStatusIntegrationTest {
 
     @Test
     @Verifies(spec = "sync-status", requirement = "\"Up to date\" is never claimed before the app has looked")
-    fun `a failed enumeration leaves the total unknown and does not take its siblings down`() = behaviour {
+    fun `a failed enumeration is no count and does not take its siblings down`() = behaviour {
         given {
             joinedEvent()
             aPhotoTaken()
@@ -130,8 +130,9 @@ class UnreadStatusIntegrationTest {
         // reclaim and the membership refresh, none of which have anything to do with enumerating a library
         // (design D5). The foreground must still be answered.
         //
-        // The consequence, named rather than hidden: the total stays UNKNOWN, so the screen holds its neutral
-        // line. It is deliberately not collapsed to `0`, which would read "In sync".
+        // The failed count is no count: it is deliberately not collapsed to `0`, which would read "In sync". The
+        // lever is one-shot, like a transient platform failure, so the same opening's upload walk reads the library
+        // after it — and every walk counts the total, so the app has looked and the new photo shows as work.
         //
         // The library changes first: the status read sits behind the app's walk memo (`changes/own-work-per-wake`,
         // D9), which answers an unchanged library without walking, so only a moved change token makes the refresh
@@ -142,13 +143,9 @@ class UnreadStatusIntegrationTest {
             os.foreground()
         }
         then {
-            screen<Layer.Joined> { it.health == SyncHealth.Loading }
+            screen<Layer.Joined> { it.health is SyncHealth.Syncing }
             neverInSync()
         }
-
-        // And the next refresh recovers: the lever is one-shot, like a transient platform failure.
-        whenever { os.foreground() }
-        then { screen<Layer.Joined> { it.health is SyncHealth.Syncing } }
     }
 
     @Test

@@ -31,8 +31,8 @@ class StatusGraph(
     uploader: UploaderGraph,
     runtime: Runtime,
 ) {
-    /** The total `N`, as last counted. */
-    val admitted: AdmittedPhotos = AdmittedPhotos()
+    /** The total `N`, as last counted or walked: the upload's own, which every walk updates. */
+    val admitted: AdmittedPhotos = uploader.layers.admitted
 
     /** The count of the total, a step of the opening, a join, a settings change and a selection change. */
     val count: CountOwnPhotos = CountOwnPhotos(services.membership, receiving.received, ownPhotos, admitted)

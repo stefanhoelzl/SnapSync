@@ -438,7 +438,8 @@ since a suspended app hears no other process. Its first read of a store is defer
 query opens nothing. A refused read keeps the last good value, and nothing goes back to "not read yet".
 
 What no store holds is not followed: the member's admitted photos — the status total — are a library walk, counted by
-a use case (`CountOwnPhotos`) as a step of the entry points that change it, and held for the query to read.
+a use case (`CountOwnPhotos`) as a step of the entry points that change it, and by every walk the upload records
+(`RecordWalk`), so a photo a wake's walk finds counts at once; held in memory (`AdmittedPhotos`) for the query to read.
 
 Every write goes through the generated queries (`StoreWritesAnnounceTest`): a raw statement announces nothing, and a
 screen over the rows it changed would stay stale with no error anywhere.
