@@ -461,7 +461,7 @@ class InterruptedImportIntegrationTest {
             until = {
                 event<WorldEvent.LibraryImportParked>()
                 event<WorldEvent.LibraryAssetCreated> { it.asset == imported(foreignAsset, foreignDevice) }
-                screen<Layer.Joined> { it.received() == SHORT } // but the import was never confirmed
+                neverScreen<Layer.Joined> { it.received() == SETTLED } // but the import was never confirmed
                 parked = settled { true }
             },
         )
@@ -503,9 +503,6 @@ class InterruptedImportIntegrationTest {
     private fun WorldEvent.Settled.storage(): Long = checkNotNull(state.appStorageBytes)
 
     private companion object {
-        /** The one photo planned, not yet imported. */
-        val SHORT = DirectionCount.Progress(0, 1)
-
         /** The one photo planned, imported. */
         val SETTLED = DirectionCount.Progress(1, 1)
 

@@ -39,6 +39,25 @@ class ReceivingCountsTest {
     }
 
     @Test
+    fun `a photo whose every file is here is importing until it is in the library`() = runTest {
+        val whole = photo(ref("WHOLE"))
+        val half = photo(ref("HALF"), captured(), resource("h-primary.heic"), resource("h-live.mov", role = "live"))
+        device.planned(page(whole, half))
+        device.stagedAll(whole)
+        val at = app.snapsync.domain.receiving.StagedPath("download-staging/x/h")
+        device.files.staged(at.value)
+        device.queue.staged(half.ref, half.resources[0].key, at).ok()
+        assertEquals(1, device.counts.counts(EVENT).ok().importing, "WHOLE is here; HALF still downloads its movie")
+
+        val claim = device.queue.claimNext(emptySet()).ok()!!
+        assertEquals(1, device.counts.counts(EVENT).ok().importing, "its import running")
+
+        device.queue.imported(claim, testAssetId("LOCAL-W"))
+        assertEquals(0, device.counts.counts(EVENT).ok().importing, "in the library")
+        assertEquals(0, device.counts.census().ok().importing, "the census counts no import")
+    }
+
+    @Test
     fun `a whole read's foreign photos are held when every one is settled and nothing waits`() = runTest {
         val a = photo(ref("A"))
         device.planned(page(a))

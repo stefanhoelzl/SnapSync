@@ -28,7 +28,8 @@ private val log = Log("ReceivingProgress")
 
 /**
  * The joined screen's download progress: `downloaded` — the joined event's received photos, `total` — every foreign
- * photo known for it that can still arrive, `inFlight` — those with a transfer under way, and `awaited` — what the
+ * photo known for it that can still arrive, `inFlight` — those with a transfer under way, `importing` — those whose
+ * bytes are all here and that are on their way into the library, and `awaited` — what the
  * others declared beyond them ([AwaitedPhotos]). Scoped to the joined event: the store keeps every past event's
  * received rows as suppression handles, and unscoped "received" was every photo ever received.
  *
@@ -82,6 +83,7 @@ class ReceivingProgress(
         downloaded = counts.imported,
         total = counts.stillArriving,
         inFlight = counts.inFlight,
+        importing = counts.importing,
         awaited = AwaitedPhotos.of(receives, counts.othersDeclared, counts.known),
     )
 }
@@ -94,10 +96,11 @@ data class DownloadProgress(
     val downloaded: Int,
     val total: Int,
     val inFlight: Int = 0,
+    val importing: Int = 0,
     val awaited: Int = 0,
     val read: Boolean = true,
 ) {
     companion object {
-        val UNREAD = DownloadProgress(downloaded = 0, total = 0, inFlight = 0, awaited = 0, read = false)
+        val UNREAD = DownloadProgress(downloaded = 0, total = 0, inFlight = 0, importing = 0, awaited = 0, read = false)
     }
 }

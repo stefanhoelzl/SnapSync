@@ -97,7 +97,7 @@ class UnconfirmedImportIntegrationTest {
         },
         until = {
             event<WorldEvent.LibraryImportParked>()
-            screen<Layer.Joined> { it.counts?.received == SHORT }
+            neverScreen<Layer.Joined> { it.counts?.received == SETTLED } // the import was never confirmed
             settled { true }
         },
     )
@@ -110,9 +110,6 @@ class UnconfirmedImportIntegrationTest {
     }
 
     private companion object {
-        /** The one photo planned, not yet imported. */
-        val SHORT = DirectionCount.Progress(0, 1)
-
         /** The one photo planned, imported. */
         val SETTLED = DirectionCount.Progress(1, 1)
 
