@@ -1150,13 +1150,15 @@ will read these keys later (that change's D1), so **a key, once shipped, keeps i
   (`2026-07-09T19:24:17Z`) — a phone's own clock where the fact happened on the phone. **Ids** are the strings the
   wire carries. **Yes/no** is a JSON boolean. A **per-photo list** is an array of objects (below).
 - **Never refused, never trusted**: each phone fact is dropped when it does not read as its shape, and none is
-  verified — the record is diagnostic.
+  verified — the record is diagnostic. The shape is checked although nothing interprets the value, because any
+  caller may send the headers and the record is kept 30 days: a closed vocabulary keeps free text (anything that
+  could identify a person) out, keeps each value a short token, and gives each fact one spelling to query.
 
 | Request | Keys | Source |
 |---|---|---|
 | every request | `app_version` (the line prints it in its head, as `v=`) | the version header |
 | the nightly sweep (no request) | method `SWEEP`, url `sweep:/events/<id>`: `event` `outcome` (`completed` `deleted`), written with the change | the sweep |
-| every app request | `device` `os` (`ios/18.6`) `model` `flavour` (`release` `dev`: the same binary is promoted between tracks, so a build knows no more) `access` (`full` `limited` `none`) `network` (`unrestricted` `restricted` — metered: mobile data, a hotspot, Low Data Mode or Data Saver — `offline` `blocked`) `mobile_data` `low_power` `background` | `x-snapsync-context: <key>=<value>;…` (`src/delivery-context.ts`) |
+| every app request | `device` `os` (`ios` `android`) `os_version` (`18.6`) `model` `flavour` (`release` `dev`: the same binary is promoted between tracks, so a build knows no more) `build` (digits: the build number — `run_number + 2000` on CI, `1` for a local build; left out when unreadable) `access` (`full` `limited` `none`) `network` (`unrestricted` `restricted` — metered: mobile data, a hotspot, Low Data Mode or Data Saver — `offline` `blocked`) `mobile_data` `low_power` `background` | `x-snapsync-context: <key>=<value>;…` (`src/delivery-context.ts`) |
 | byte upload (event-scoped) | `kind` (`fresh`, or `resume` with a range) `from` `size` `media` (`photo` `video` `other`) · `taken` `discovered` `discovered_by` `queued` `queued_by` (phone) · `backlog` (taken before this device joined) · `uploaded_all` (the landing of a settled device's last declared photo) | route · `x-snapsync-taken` … `-queued-by` headers |
 | upload probe | `offset` (what a drop kept — `0` for nothing) or `landed=true` | route |
 | union read | `reader` (the verified token's device, `-` for any other reader) `served` `trigger` `from` (a delta's cursor) `to` (the position served) · `notified` `announced` (the push that caused the read, phone) | route · `x-snapsync-notified`, `-announced` headers |
