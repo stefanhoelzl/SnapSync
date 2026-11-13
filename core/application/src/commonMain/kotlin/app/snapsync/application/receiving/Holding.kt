@@ -24,6 +24,7 @@ import app.snapsync.domain.receiving.HeldUnion
 import app.snapsync.domain.receiving.ReceivedReport
 import app.snapsync.domain.receiving.ReceivingVerdict
 import app.snapsync.domain.receiving.ReportDue
+import app.snapsync.domain.receiving.ReportScope
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
@@ -77,8 +78,10 @@ class HoldsEverything(
  * `changes/back-dated-events`, D4 and D7). A share-only membership says at once that it receives nothing, so a phone
  * that settled early and went off holds up nobody; one that receives tells, once its event's range has ended, up to
  * which union position it holds every photo of the others — or position `0` while it lacks some, which clears a
- * "receives nothing" an earlier share-only phase left. Only what the backend has not recorded in this process is sent.
- * Every doubt sends nothing, and the next wake repeats.
+ * "receives nothing" an earlier share-only phase left. Before the end, one that receives tells only the delivery facts
+ * of the photos it added since its last report, under position `0` ([ReportScope.FACTS]), so they reach the service
+ * while the event runs. Only what the backend has not recorded in this process is sent. Every doubt sends nothing, and
+ * the next wake repeats.
  */
 class ReportReceivedPosition(
     private val reporter: ReceivedReporting,
@@ -90,13 +93,20 @@ class ReportReceivedPosition(
 ) {
     private val log = Log("ReportReceivedPosition")
 
-    /** Whether a report on [active], which [receiving] says it receives or not, is worth telling at this wake's end. */
+    /** What report on [active], which [receiving] says it receives or not, is worth telling at this wake's end. */
     @EntryPointCall
-    fun due(active: Membership.Active, receiving: ReceivingVerdict): Boolean =
-        ReceivedReport.dueFor(receiving, active.event.range.phaseAt(clock.now()) == EventPhase.Ended)
+    suspend fun due(active: Membership.Active, receiving: ReceivingVerdict): ReportScope = ReceivedReport.dueFor(
+        receiving,
+        ended = active.event.range.phaseAt(clock.now()) == EventPhase.Ended,
+        untold = untold(active.event.id).isNotEmpty(),
+    )
 
     @EntryPointCall
     suspend operator fun invoke(active: Membership.Active, held: HeldPosition) = told(active, held.report)
+
+    /** Only [active]'s untold delivery facts ([ReportScope.FACTS]): position `0` claims nothing held. */
+    @EntryPointCall
+    suspend fun facts(active: Membership.Active) = told(active, ReceivedReport.Position(0))
 
     /**
      * [active] receives again — a settings change turned receiving on: told at once, as position `0`, so a "receives

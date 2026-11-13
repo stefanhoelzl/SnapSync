@@ -155,14 +155,35 @@ sealed interface ReceivedReport {
 
     companion object {
         /**
-         * Whether a report is due at the end of a wake: a share-only membership tells it at once — it holds up the
-         * event's end otherwise — and one that receives once its event's range has [ended].
+         * What report is due at the end of a wake: a share-only membership tells it at once — it holds up the event's
+         * end otherwise — and one that receives tells its position once its event's range has [ended]. Before that, a
+         * receiving one with delivery facts [untold] tells only those: the operator learns when a photo reached the
+         * library while the event runs, not after it (decision record `changes/delivery-record`, D3).
          */
-        fun dueFor(receiving: ReceivingVerdict, ended: Boolean): Boolean = when (receiving) {
-            ReceivingVerdict.SharesOnly -> true
-            is ReceivingVerdict.Receives, ReceivingVerdict.KeyLost -> ended
+        fun dueFor(receiving: ReceivingVerdict, ended: Boolean, untold: Boolean): ReportScope = when (receiving) {
+            ReceivingVerdict.SharesOnly -> ReportScope.HELD
+            is ReceivingVerdict.Receives, ReceivingVerdict.KeyLost -> when {
+                ended -> ReportScope.HELD
+                untold -> ReportScope.FACTS
+                else -> ReportScope.NONE
+            }
         }
     }
+}
+
+/** What a wake's end tells its event of what this device received ([ReceivedReport.dueFor]). */
+enum class ReportScope {
+    /** Nothing. */
+    NONE,
+
+    /** How far this device holds the others' photos — the union read that judges it first. */
+    HELD,
+
+    /**
+     * Only the untold delivery facts, under position `0`: it claims nothing, so it never moves a recorded position
+     * back, and it reads no union to say so.
+     */
+    FACTS,
 }
 
 /**

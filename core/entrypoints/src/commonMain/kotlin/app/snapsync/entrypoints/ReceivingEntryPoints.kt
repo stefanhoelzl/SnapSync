@@ -25,6 +25,7 @@ import app.snapsync.data.sharing.SelectionState
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.ReceivingVerdict
+import app.snapsync.domain.receiving.ReportScope
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.upload.UploaderChange
@@ -194,8 +195,8 @@ class ForegroundReceiving(
 
 /**
  * The end of a wake for what this device received: a share-only membership tells its event at once that it receives
- * nothing; one that receives tells, once the event's range has ended, how far it holds the others' photos
- * ([ReportReceivedPosition]).
+ * nothing; one that receives tells, once the event's range has ended, how far it holds the others' photos — and before
+ * that only the delivery facts of the photos it added ([ReportReceivedPosition]).
  */
 class ReceivedPositionReport(
     private val membership: MembershipBranch,
@@ -209,8 +210,9 @@ class ReceivedPositionReport(
             active { joined ->
                 val receiving = required { receivingOf(joined) }
                 when (required { report.due(joined, receiving) }) {
-                    true -> required { reported(joined, receiving, on) }
-                    false -> Unit
+                    ReportScope.HELD -> required { reported(joined, receiving, on) }
+                    ReportScope.FACTS -> required { report.facts(joined) }
+                    ReportScope.NONE -> Unit
                 }
             }
         }
