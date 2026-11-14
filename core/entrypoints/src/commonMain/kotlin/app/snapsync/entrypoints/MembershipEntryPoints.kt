@@ -110,13 +110,18 @@ class Enrolling(
     }
 }
 
-/** The member left — from the leave question, a switch's confirmation, or a quiet switch. */
+/**
+ * The member left — from the leave question, a switch's confirmation, or a quiet switch. The delivery facts not told
+ * yet go first, while the membership they are told under still stands: after the leave they never can be.
+ */
 class OnLeaveConfirmed(
     runtime: Runtime,
+    private val received: ReceivedPositionReport,
     private val leave: LeaveEvent,
     private val leaving: Leaving,
 ) : BackgroundEntryPoint<Unit>(runtime) {
     override suspend fun run(arg: Unit, on: Run) = on.steps {
+        isolated("delivery facts") { received.untold(on) }
         when (val left = required { leave() }) {
             is LeaveOutcome.Left -> required { leaving.run(left.evidence, on) }
             // Nothing ran: the member is fully joined, or never was.

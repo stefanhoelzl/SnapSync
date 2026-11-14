@@ -211,10 +211,21 @@ class ReceivedPositionReport(
                 val receiving = required { receivingOf(joined) }
                 when (required { report.due(joined, receiving) }) {
                     ReportScope.HELD -> required { reported(joined, receiving, on) }
-                    ReportScope.FACTS -> required { report.facts(joined) }
+                    ReportScope.FACTS -> required { report.untold(joined, receiving) }
                     ReportScope.NONE -> Unit
                 }
             }
+        }
+    }
+
+    /**
+     * The joined membership's untold delivery facts alone, told at once ([ReportReceivedPosition.untold]): after an
+     * import that ran outside a wake, and before a leave ends the membership they are told under.
+     */
+    @OptIn(EntryPointCall::class)
+    suspend fun untold(on: Run) = on.steps {
+        membership(membership, Freshness.Cached) {
+            active { joined -> required { report.untold(joined, required { receivingOf(joined) }) } }
         }
     }
 

@@ -262,12 +262,21 @@ class OnDownloadFinished(
 }
 
 /**
- * A received photo was staged in a running process: it is imported, and nothing else is due for it. A recognition this
- * import still needs is a background read of the operating system's download, with no push behind it.
+ * A received photo was staged in a running process: it is imported, and the delivery facts of what the import added
+ * are told at once — the wake that started the download has usually ended before it lands, and the next one may never
+ * come for this membership. A recognition this import still needs is a background read of the operating system's
+ * download, with no push behind it.
  */
-class OnDownloadStaged(private val runtime: Runtime, private val importReceived: ImportReceived) {
+class OnDownloadStaged(
+    private val runtime: Runtime,
+    private val importReceived: ImportReceived,
+    private val received: ReceivedPositionReport,
+) {
     suspend fun requested() = runtime.detached("OnDownloadStaged") { on ->
-        on.steps { run(importReceived, UnionTrigger.WAKE) }
+        on.steps {
+            run(importReceived, UnionTrigger.WAKE)
+            isolated("delivery facts") { received.untold(on) }
+        }
     }
 }
 

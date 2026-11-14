@@ -104,9 +104,18 @@ class ReportReceivedPosition(
     @EntryPointCall
     suspend operator fun invoke(active: Membership.Active, held: HeldPosition) = told(active, held.report)
 
-    /** Only [active]'s untold delivery facts ([ReportScope.FACTS]): position `0` claims nothing held. */
+    /**
+     * Only [active]'s untold delivery facts: at a wake's end before the event's range has ended ([ReportScope.FACTS]),
+     * after a photo was added outside a wake, and before a leave ends the membership they are told under. None untold
+     * sends nothing. The report claims nothing a wake's end would not ([ReceivedReport.claimingNothing]), so it is sent
+     * whatever the event's phase.
+     */
     @EntryPointCall
-    suspend fun facts(active: Membership.Active) = told(active, ReceivedReport.Position(0))
+    suspend fun untold(active: Membership.Active, receiving: ReceivingVerdict) =
+        when (untold(active.event.id).isEmpty()) {
+            true -> Unit
+            false -> told(active, ReceivedReport.claimingNothing(receiving))
+        }
 
     /**
      * [active] receives again — a settings change turned receiving on: told at once, as position `0`, so a "receives

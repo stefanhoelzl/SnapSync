@@ -83,7 +83,7 @@ class OptInPinsTest {
         ),
         "/core/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ReceivingEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
-                12,
+                13,
                 "receiving's triggers, ordered as steps, call its use cases (4.5), and a usable grant counts the status " +
                     "total once its recognition ran (4.9)",
             ),
