@@ -3,8 +3,10 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Expectations
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.BackendFault
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.time.Duration.Companion.minutes
 
@@ -53,23 +55,51 @@ class DeliveryContextIntegrationTest {
         requirement = "The service records how photos are delivered",
         scenario = "A photo travels from one member to another",
     )
-    fun the_received_report_tells_when_each_photo_was_downloaded_and_added_and_by_which_entry_point() = behaviour {
+    fun a_photo_added_while_the_app_runs_tells_when_and_how_it_arrived_without_waiting_for_a_wake() = behaviour {
         given {
-            joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END)
-            receivedFrom(DEV_F, "FQ")
-            laterInThePocket(AFTER_THE_END)
+            joinedEvent()
+            downloadStarted()
         }
 
-        whenever { os.foreground() }
+        // The wake that started the download has ended; the app stays in front, and no other wake comes.
+        whenever { downloadSession.finish() }
         then {
-            event<WorldEvent.BackendReceived> { received ->
-                received.operation == "reportReceived" && received.body.orEmpty().let { body ->
-                    "\"delivered\":[{" in body && "\"asset\":\"FQ\"" in body &&
-                        "\"downloaded\":\"" in body && "\"added\":\"" in body && "\"by\":\"" in body
-                }
-            }
+            event<WorldEvent.LibraryAssetCreated> { it.asset == imported("FQ") }
+            event<WorldEvent.BackendReceived> { it.tellsArrival("FQ") }
         }
     }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "The service records how photos are delivered",
+        scenario = "A photo travels from one member to another",
+    )
+    fun a_leave_tells_the_delivery_facts_not_told_yet_before_it_leaves() = behaviour {
+        given {
+            joinedEvent()
+            downloadStarted()
+            step("FQ added, its report lost", act = {
+                backend.fail(REPORT_RECEIVED, BackendFault.UNREACHABLE, times = 1)
+                downloadSession.finish()
+            }, until = {
+                event<WorldEvent.LibraryAssetCreated> { it.asset == imported("FQ") }
+                settled { true }
+            })
+        }
+
+        whenever { tap(UiIntent.LeaveEvent) }
+        then {
+            event<WorldEvent.BackendReceived> { it.tellsArrival("FQ") }
+            event<WorldEvent.BackendReceived> { it.operation == "leaveEvent" }
+        }
+    }
+
+    /** A received report that tells when [asset] was downloaded and added to the library, and by which entry point. */
+    private fun WorldEvent.BackendReceived.tellsArrival(asset: String) = operation == REPORT_RECEIVED &&
+        body.orEmpty().let { text ->
+            listOf("\"asset\":\"$asset\"", "\"downloaded\":\"", "\"added\":\"", "\"by\":\"").all { it in text }
+        }
 
     /** A union read whose context holds every one of [facts], and passes [also] on the whole header. */
     private fun Expectations.read(facts: List<String>, also: (String) -> Boolean = { true }) {
@@ -81,11 +111,7 @@ class DeliveryContextIntegrationTest {
 
     private companion object {
         const val CONTEXT = "x-snapsync-context"
-
-        /** A short event, and a moment past it: a received report is due once the event has ended. */
-        const val SHORT_START = "2026-05-25T00:00:00"
-        const val SHORT_END = "2026-06-02T00:00:00"
-        const val AFTER_THE_END = "2026-06-04T12:00:00Z"
+        const val REPORT_RECEIVED = "reportReceived"
 
         /** What the composed app on the mock world says once the device turned restricted and Android-like. */
         val EXPECTED = listOf("access=full", "network=restricted", "low_power=1", "background=0")

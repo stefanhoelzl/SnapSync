@@ -168,6 +168,16 @@ sealed interface ReceivedReport {
                 else -> ReportScope.NONE
             }
         }
+
+        /**
+         * The report that carries delivery facts and claims nothing held: "receives nothing" for a share-only
+         * membership — the word its every wake's end tells, and every report rewrites — and position `0` for one that
+         * receives, which never moves a recorded position back.
+         */
+        fun claimingNothing(receiving: ReceivingVerdict): ReceivedReport = when (receiving) {
+            ReceivingVerdict.SharesOnly -> ReceivesNothing
+            is ReceivingVerdict.Receives, ReceivingVerdict.KeyLost -> Position(0)
+        }
     }
 }
 

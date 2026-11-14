@@ -124,6 +124,17 @@ class ReceivingTest {
     }
 
     @Test
+    fun a_report_that_claims_nothing_keeps_a_share_only_membership_receiving_nothing() {
+        val receives = ReceivingVerdict.of(active(), KeyPresence.NotNeeded)
+        assertIs<ReceivedReport.ReceivesNothing>(ReceivedReport.claimingNothing(ReceivingVerdict.SharesOnly))
+        assertEquals(0L, assertIs<ReceivedReport.Position>(ReceivedReport.claimingNothing(receives)).position)
+        assertEquals(
+            0L,
+            assertIs<ReceivedReport.Position>(ReceivedReport.claimingNothing(ReceivingVerdict.KeyLost)).position,
+        )
+    }
+
+    @Test
     fun only_a_higher_position_or_a_change_of_word_is_reported() {
         fun at(position: Long) = ReceivedReport.Position(position)
         fun reported(found: ReceivedReport, last: ReceivedReport?) = assertIs<ReportDue.Report>(

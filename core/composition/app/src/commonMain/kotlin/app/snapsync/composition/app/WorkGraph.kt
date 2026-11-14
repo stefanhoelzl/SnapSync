@@ -126,6 +126,10 @@ class WorkGraph(
     private val stateRefresh: StateRefresh =
         StateRefresh(membership.branch, DeletedTransfers(uploader.stop, receiving.stop))
 
+    /** What this device received, told its event: at a wake's end, after an import outside one, and before a leave. */
+    private val receivedReport: ReceivedPositionReport =
+        ReceivedPositionReport(membership.branch, receiving.receivingOf, receiving.holds, receiving.report)
+
     private val endOfWake: EndOfWake = EndOfWake(
         membership.branch,
         PhotoCheck(membership.branch, receiving.receivingOf, receiving.planIfDue, receiving.plan),
@@ -135,7 +139,7 @@ class WorkGraph(
         SettleShare(membership.branch, uploader.layers.settleNeed, walkAndPublish),
         membership.claimState,
         stateRefresh,
-        ReceivedPositionReport(membership.branch, receiving.receivingOf, receiving.holds, receiving.report),
+        receivedReport,
     )
 
     val wakeWork: WakeWork =
@@ -164,8 +168,8 @@ class WorkGraph(
         ),
     )
 
-    /** A staging recorded in a running process asks for the import, and nothing else. */
-    val downloadStaged: OnDownloadStaged = OnDownloadStaged(runtime, importReceived)
+    /** A staging recorded in a running process asks for the import, then tells what it added. */
+    val downloadStaged: OnDownloadStaged = OnDownloadStaged(runtime, importReceived, receivedReport)
 
     /** The photo grant changed after the launch: the uploads follow it, and the received photos are recognised. */
     val grantChanged: OnGrantChanged = OnGrantChanged(runtime, uploaderChange, recognitionBeforeImporting, status.count)
@@ -218,6 +222,7 @@ class WorkGraph(
     /** The member left. */
     val leaveConfirmed: OnLeaveConfirmed = OnLeaveConfirmed(
         runtime,
+        receivedReport,
         membership.leave,
         Leaving(uploader.stop, receiving.stop, services.eventKeyStore, membership.deliver),
     )

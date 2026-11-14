@@ -106,22 +106,43 @@ class HoldingTest {
     fun `while the event runs, the photos added to the library are told at once, and only once`() = runTest {
         val report = reportOver()
         r.device.clock.now = DURING_THE_EVENT
-        r.sql(
-            "INSERT INTO eventRef (eventId, sourceDeviceId, sourceAssetId) " +
-                "VALUES ('${membership.event.id.value}', '$SENDER', 'A')",
-            "INSERT INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId, " +
-                "downloadedAt, addedAt, addedBy) VALUES ('$SENDER', 'A', 'IMPORTED', '2026-07-16T11:59:00Z', " +
-                "'LOCAL-A', '2026-07-16T11:59:30Z', '2026-07-16T11:59:31Z', 'OnSilentPush')",
-        )
+        addedA()
 
         assertEquals(ReportScope.FACTS, report.due(membership, receives))
-        report.facts(membership)
+        report.untold(membership, receives)
 
         assertEquals(1, reports())
         val body = r.device.transport.requests.last().body.orEmpty()
         assertTrue("\"position\":0" in body, "it claims no position held: $body")
         assertTrue("\"added\":\"2026-07-16T11:59:31Z\"" in body, body)
         assertEquals(ReportScope.NONE, report.due(membership, receives), "told: nothing waits any more")
+    }
+
+    @Test
+    fun `untold delivery facts are told outside a wake whatever the phase, and nothing when none waits`() = runTest {
+        val report = reportOver()
+        report.untold(membership, receives)
+        assertEquals(0, reports(), "nothing untold sends nothing")
+
+        addedA()
+        report.untold(membership, receives)
+        assertEquals(1, reports(), "after the event's end too: the report claims nothing")
+        assertTrue("\"position\":0" in r.device.transport.requests.last().body.orEmpty())
+
+        report.untold(membership, receives)
+        assertEquals(1, reports(), "told once")
+    }
+
+    @Test
+    fun `a share-only membership's untold delivery facts keep saying it receives nothing`() = runTest {
+        val report = reportOver()
+        addedA()
+
+        report.untold(membership, ReceivingVerdict.SharesOnly)
+
+        val body = r.device.transport.requests.last().body.orEmpty()
+        assertTrue("\"receivesNothing\":true" in body, "a position would clear it and hold up the event's end: $body")
+        assertTrue("\"added\":\"2026-07-16T11:59:31Z\"" in body, body)
     }
 
     @Test
@@ -194,6 +215,15 @@ class HoldingTest {
         assertEquals(0, reports(unreadable), "the membership cannot be read")
         assertNull(ReportedReceived().last(membership.event.id))
     }
+
+    /** The sender's photo `A`, imported into this device's library: delivery facts the event was not told yet. */
+    private fun addedA() = r.sql(
+        "INSERT INTO eventRef (eventId, sourceDeviceId, sourceAssetId) " +
+            "VALUES ('${membership.event.id.value}', '$SENDER', 'A')",
+        "INSERT INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId, " +
+            "downloadedAt, addedAt, addedBy) VALUES ('$SENDER', 'A', 'IMPORTED', '2026-07-16T11:59:00Z', " +
+            "'LOCAL-A', '2026-07-16T11:59:30Z', '2026-07-16T11:59:31Z', 'OnSilentPush')",
+    )
 
     private companion object {
         /** Before the fixture event's range ends — the fixture clock's own instant is past it. */
