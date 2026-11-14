@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalForeignApi::class)
 
-package app.snapsync.contract
+package app.snapsync.network.contract
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
@@ -13,6 +13,7 @@ import app.snapsync.contracts.NetworkState
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.proxy.recorded
+import app.snapsync.keychain.contract.recordOnDevice
 import app.snapsync.network.IosNetworkMonitor
 import app.snapsync.network.NetworkPathApi
 import app.snapsync.network.PathReading
@@ -30,9 +31,10 @@ import platform.Network.nw_path_unsatisfied_reason_vpn_inactive
 import platform.Network.nw_path_unsatisfied_reason_wifi_denied
 
 /*
- * `nw_path_monitor`'s operating-system boundary as TEXT, and the bindings of `NetworkMonitorContract` on the simulator
- * app (live) and the entitled device (recorded) (`docs/architecture.md`, "Hosts CI cannot reach are recorded at the
- * operating-system boundary and replayed on every build").
+ * `nw_path_monitor`'s operating-system boundary as TEXT, and the bindings of `NetworkMonitorContract` on the entitled
+ * device, recorded — the simulator app's live one is `:adapter:ios:app-only`'s, beside every simulator binding
+ * (`docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on every
+ * build").
  *
  * Compiled into this module's `iosMain` only under `-Psnapsync.rig=true` (where the device records), and into `iosTest`
  * otherwise (where CI replays) — one file, so the recorder and the replayer cannot spell a call differently.
@@ -107,24 +109,6 @@ internal class ReplayingNetworkPathApi(private val replayer: Replayer) : Network
         onPath(replayer.answer("start()").parseReading())
         return { replayer.answer("cancel()") }
     }
-}
-
-/**
- * The real `nw_path_monitor` in the simulator app — the one CI host whose process runs Network.framework against a real
- * network. The simulator shares its Mac's network, which no binding can take down, so this host presents only `ONLINE`.
- */
-class SimAppNetworkMonitorBinding : Binding<NetworkState, NetworkMonitor> {
-    override val host = Host.IOS_SIM_APP
-    override val kind = BindingKind.Live
-    override val adapter = IosNetworkMonitor::class
-    override val reaches = setOf(NetworkState.ONLINE)
-
-    override fun create(state: NetworkState, clauseId: String, log: CallLog): Entered<NetworkMonitor> =
-        if (state == NetworkState.ONLINE) {
-            Entered.Ready(IosNetworkMonitor().recorded(log))
-        } else {
-            Entered.Unreachable("the simulator shares its Mac's network, which no binding can take down")
-        }
 }
 
 /** The device online — Wi-Fi joined — recording every `nw_path_monitor` call and iOS's answer. */
@@ -209,10 +193,10 @@ private fun recordingIn(
  * phone was not in the stated condition, and that recording is not committed.
  */
 internal fun recordNetwork(params: Map<String, String>): String = when (params["network"]) {
-    "online" -> recordAppOnDevice(NetworkMonitorContract, null, "ONLINE") { DeviceNetworkOnlineBinding(it) }
-    "offline" -> recordAppOnDevice(NetworkMonitorContract, null, "OFFLINE") { DeviceNetworkOfflineBinding(it) }
-    "restricted" -> recordAppOnDevice(NetworkMonitorContract, null, "RESTRICTED") { DeviceNetworkRestrictedBinding(it) }
-    "blocked" -> recordAppOnDevice(NetworkMonitorContract, null, "BLOCKED") { DeviceNetworkBlockedBinding(it) }
+    "online" -> recordOnDevice(NetworkMonitorContract, "ONLINE") { DeviceNetworkOnlineBinding(it) }
+    "offline" -> recordOnDevice(NetworkMonitorContract, "OFFLINE") { DeviceNetworkOfflineBinding(it) }
+    "restricted" -> recordOnDevice(NetworkMonitorContract, "RESTRICTED") { DeviceNetworkRestrictedBinding(it) }
+    "blocked" -> recordOnDevice(NetworkMonitorContract, "BLOCKED") { DeviceNetworkBlockedBinding(it) }
     else ->
         CONTRACT_REFUSED +
             "state the phone's condition: ?network=online (Wi-Fi joined), ?network=restricted (a personal hotspot, or Low " +

@@ -309,7 +309,9 @@ Where bindings live: beside their implementations.
   online, in Low Data Mode (restricted) and in airplane mode, once each (`.ONLINE.rec`, `.RESTRICTED.rec`, `.OFFLINE.rec`).
 - `DeviceConditions` (what a bug report says about power saving, the battery, the thermal state and the background
   allowance, capability `privacy-security`): live on `ANDROID_EMU` as an Android device and on `IOS_SIM_APP` as an
-  iPhone, each clause holding a platform to its own facts and to answering the other's unsupported. The simulator has
+  iPhone, each clause holding a platform to its own facts and to answering the other's unsupported. The upload
+  extension's `IosProcessConditions` runs live on `IOS_SIM_KEXE` as an iPhone process without UIKit: Low Power Mode and
+  the thermal state known, everything UIKit answers unsupported. The simulator has
   no battery, so its battery reads failed — the contract holds the battery only to its range. That `IosDeviceConditions`
   leaves `UIDevice`'s battery monitoring as it found it is unobservable through the port and is stated on the adapter;
   how a report renders each fact, and a read that stalls, run on the JVM (`AssembleBugReportTest`).

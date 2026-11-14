@@ -29,6 +29,7 @@ class AndroidDeviceConditionsContractTest {
         override fun create(state: DeviceConditionsState, clauseId: String, log: CallLog): Entered<DeviceConditions> = when (state) {
             DeviceConditionsState.ANDROID -> Entered.Ready(AndroidDeviceConditions(context).recorded(log))
             DeviceConditionsState.IPHONE -> Entered.Unreachable("Android is not an iPhone")
+            DeviceConditionsState.IPHONE_PROCESS -> Entered.Unreachable("Android is not an iPhone")
         }
     }
 

@@ -10,6 +10,7 @@ import app.snapsync.config.IosBuildInfo
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.crypto.IosCrypto
 import app.snapsync.databases.IosDatabases
+import app.snapsync.device.IosProcessConditions
 import app.snapsync.entry.NoEntryEvents
 import app.snapsync.extension.IosExtensionHost
 import app.snapsync.files.IosFiles
@@ -26,6 +27,7 @@ import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.logging.removeStaleExtensionDocumentsLog
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.metrics.NoProcessMetrics
+import app.snapsync.network.IosNetworkMonitor
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.time.SystemClock
@@ -96,6 +98,10 @@ object UploadExtensionRoot {
         uploadQueue = lazy { uploadJobQueue(log) },
         // The same transport the app runs, over this process's own Darwin client.
         http = lazy { KtorHttpTransport(darwinHttpClient()) },
+        // The network and the power state, for the delivery context only: Network.framework and `NSProcessInfo`, which
+        // an extension may read — never UIKit's Background App Refresh or battery.
+        network = lazy { IosNetworkMonitor() },
+        deviceConditions = lazy { IosProcessConditions() },
     )
 
     private val device: ExtensionDevicePorts = extensionPorts(real)

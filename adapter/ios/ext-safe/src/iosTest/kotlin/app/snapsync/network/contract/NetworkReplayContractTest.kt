@@ -1,4 +1,4 @@
-package app.snapsync.contract
+package app.snapsync.network.contract
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
@@ -11,6 +11,7 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
+import app.snapsync.keychain.contract.RECORDINGS
 import app.snapsync.network.IosNetworkMonitor
 import app.snapsync.ports.NetworkMonitor
 import kotlin.test.Test

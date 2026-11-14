@@ -5,10 +5,12 @@ import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.Databases
+import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.HttpTransport
+import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
@@ -38,6 +40,10 @@ class ExtensionPorts(
     val uploadQueue: OsUploadQueue,
     /** HTTP: the backend's protocol is composed over it, behind a credential that only drops a rejected token. */
     val http: HttpTransport,
+    /** The network as the platform reports it — read for the delivery context only: PhotoKit waits for one itself. */
+    val network: NetworkMonitor,
+    /** The device's power and thermal state as this process may read it — for the delivery context only. */
+    val deviceConditions: DeviceConditions,
     /** The operating system's invocations of this extension — the one entry port, listened to at composition. */
     val host: ExtensionHost,
 )
@@ -61,6 +67,8 @@ class ExtensionDevicePorts(
     /** The OS's upload-job queue the upload cycle creates its jobs on. */
     val uploadQueue: Lazy<OsUploadQueue>,
     val http: Lazy<HttpTransport>,
+    val network: Lazy<NetworkMonitor>,
+    val deviceConditions: Lazy<DeviceConditions>,
 ) {
     /**
      * The extension process's [ExtensionPorts] over these ports, its own [process] ports and the operating system's
@@ -76,6 +84,8 @@ class ExtensionDevicePorts(
         gallery = galleryReader.value,
         uploadQueue = uploadQueue.value,
         http = http.value,
+        network = network.value,
+        deviceConditions = deviceConditions.value,
         host = host,
     )
 }

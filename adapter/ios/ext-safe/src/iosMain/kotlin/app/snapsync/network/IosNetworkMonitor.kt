@@ -16,8 +16,9 @@ import platform.Network.nw_path_unsatisfied_reason_cellular_denied
 import platform.Network.nw_path_unsatisfied_reason_wifi_denied
 
 /**
- * The iOS [NetworkMonitor]: one `nw_path_monitor` per collection, cancelled with it. App-only — the extension uploads
- * through PhotoKit, which waits for a network by itself, and has no screen to tell.
+ * The iOS [NetworkMonitor]: one `nw_path_monitor` per collection, cancelled with it. Network.framework is open to an app
+ * extension, so both processes read it: the app to decide and to tell, the upload extension only for its requests'
+ * delivery context — its uploads go through PhotoKit, which waits for a network by itself.
  *
  * WHAT IS CONTRACTED, AND WHAT CANNOT BE. `NetworkMonitorContract` runs live on the simulator app (online) and is
  * replayed from the SE2 online and in airplane mode. The BLOCKED mapping has no host: it needs the per-app Cellular

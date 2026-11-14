@@ -128,6 +128,9 @@ class JvmApp<D>(
             galleryReader = lazyOf(ports.systems.cycleGallery),
             uploadQueue = lazyOf(ports.systems.uploadQueue),
             http = lazyOf(ports.systems.http),
+            // The same network and device as the app's: one phone, read from either process.
+            network = lazyOf(ports.device.network),
+            deviceConditions = lazyOf(ports.device.deviceConditions),
         )
 
         val composed: ComposedApp = composeApp(

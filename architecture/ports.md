@@ -17,7 +17,7 @@ differs.
 | `Databases` | `:adapter:android` AndroidDatabases<br>`:adapter:generic:app` JdbcDatabases<br>`:adapter:ios:ext-safe` IosDatabases | Process |
 | `DateFormatting` | `:adapter:android` AndroidDateFormatting<br>`:adapter:generic:app` JvmDateFormatting<br>`:adapter:ios:app-only` IosDateFormatting | — |
 | `DevControls` | `:adapter:generic:app` InertDevControls | DevControlsMock.Face |
-| `DeviceConditions` | `:adapter:android` AndroidDeviceConditions<br>`:adapter:ios:app-only` IosDeviceConditions | InMemoryDeviceConditions |
+| `DeviceConditions` | `:adapter:android` AndroidDeviceConditions<br>`:adapter:ios:app-only` IosDeviceConditions<br>`:adapter:ios:ext-safe` IosProcessConditions | InMemoryDeviceConditions |
 | `DeviceIntegrity` | `:adapter:android` AndroidDeviceIntegrity<br>`:adapter:ios:ext-safe` IosDeviceIntegrity | InMemoryDeviceIntegrity |
 | `Download` | `:adapter:android` AndroidDownload<br>`:adapter:ios:app-only` IosDownload | DownloadSessionMock.Face |
 | `EntryEvents` | `:adapter:generic:app` NoEntryEvents | TellingEntryEvents |
@@ -32,7 +32,7 @@ differs.
 | `Lifecycle` | `:adapter:android` AndroidLifecycle<br>`:adapter:ios:ui` IosLifecycle | LifecycleMock.Face |
 | `Links` | `:adapter:android` AndroidLinks<br>`:adapter:ios:app-only` IosLinks | LinksMock.Face |
 | `LogSink` | `:adapter:android` FileLogSink<br>`:adapter:android` LogcatSink<br>`:adapter:ios:ext-safe` FileLogSink<br>`:adapter:ios:ext-safe` PublicNSLogSink | — |
-| `NetworkMonitor` | `:adapter:android` AndroidNetworkMonitor<br>`:adapter:ios:app-only` IosNetworkMonitor | InMemoryNetworkMonitor |
+| `NetworkMonitor` | `:adapter:android` AndroidNetworkMonitor<br>`:adapter:ios:ext-safe` IosNetworkMonitor | InMemoryNetworkMonitor |
 | `OsUploadQueue` | `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform<br>`:adapter:ios:ext-safe` SimulatorUploadJobQueue | UploadQueueMock.Face |
 | `PlatformDeviceId` | `:adapter:android` AndroidPlatformDeviceId<br>`:adapter:generic:app` NoPlatformDeviceId | — |
 | `Preferences` | `:adapter:android` AndroidPreferences<br>`:adapter:ios:ext-safe` IosPreferences | InMemoryPreferences |

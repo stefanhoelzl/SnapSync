@@ -68,6 +68,7 @@ class ExtensionSafetyTest {
         "UniformTypeIdentifiers", // MIME/UTI for the resources it uploads
         "DeviceCheck", // App Attest key material
         "darwin", // libnotify + libdispatch: the cross-process commit notice on the shared database (`DarwinCommits`)
+        "Network", // nw_path_monitor (`IosNetworkMonitor`): the network the delivery context names
     )
 
     private fun moduleDir(path: String): File = File(repoRoot, path.removePrefix(":").replace(':', '/'))

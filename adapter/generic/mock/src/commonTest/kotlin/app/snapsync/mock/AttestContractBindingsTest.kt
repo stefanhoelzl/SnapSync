@@ -144,6 +144,7 @@ class AttestContractBindingsTest {
         override fun create(state: DeviceConditionsState, clauseId: String, log: CallLog): Entered<DeviceConditions> = when (state) {
             DeviceConditionsState.IPHONE -> Entered.Ready(DeviceConditionsMock().port().recorded(log))
             DeviceConditionsState.ANDROID -> Entered.Unreachable("the double opens as an iPhone")
+            DeviceConditionsState.IPHONE_PROCESS -> Entered.Unreachable("the double opens as an iPhone app")
         }
     }
 
