@@ -132,9 +132,10 @@ The deployment declares the **names**. Values come from the environment of which
   itself, so the event page's install referrer works through the steps. The site derives the opt-in page and the
   listing from `androidPackageName`. So the site has three states: group set → the steps; `playStoreUrl` set →
   the badge alone; neither → no Google Play at all. The resolver refuses the two set together. **The production
-  switch** is therefore one `android.json` edit — empty `playTestGroupUrl`, set `playStoreUrl` — and, when the
-  production release goes through `promote.yml` rather than the Play Console, `PLAY_TRACK` changed to
-  `production` ("Promote a build you already tested"). Decision record: `changes/archive/2026-10-02-advertise-play-closed-test`.
+  switch** is therefore one `android.json` edit — empty `playTestGroupUrl`, set `playStoreUrl` — made once Google
+  has approved the first production release, because the site's next deploy links the public listing.
+  `promote.yml` already releases to `production` ("Promote a build you already tested"). The first production
+  release, 0.6 (2421), was promoted from the closed track by hand in the Play Console: its tag was spent on `alpha`. Decision record: `changes/archive/2026-10-02-advertise-play-closed-test`.
 
 ### iOS: the baked values
 
@@ -694,8 +695,8 @@ gh workflow run promote.yml -f build_number=2140 -f ios=false               # Go
 There is no `version` input: the store version is **derived** from the build's own marketing version, read from
 App Store Connect's build N **for either store** (Play's API carries no version name; both platforms build one
 version line). The stores are checkboxes: `ios` and `android`, both default on; neither is
-refused. Play's target is the workflow constant `PLAY_TRACK`, today `alpha` (closed
-testing). A promote **always submits**; there is no submit flag. The workflow is a single `ubuntu` job: no Xcode,
+refused. Play's target is the workflow constant `PLAY_TRACK`, `production` (it was `alpha`, closed
+testing, until Google granted production access in 2026-11). A promote **always submits**; there is no submit flag. The workflow is a single `ubuntu` job: no Xcode,
 no Gradle, no signing, only the existing Admin ASC key and Play service account. Order of steps:
 
 1. Resolve build N in App Store Connect and derive `X.Y`. It must match `^\d+\.\d+$`. Also read whether the `X.Y`
