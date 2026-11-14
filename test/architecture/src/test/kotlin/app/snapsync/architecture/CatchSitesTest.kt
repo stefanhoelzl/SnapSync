@@ -144,6 +144,7 @@ class CatchSitesTest {
             "$IOS_APP/device/IosDeviceConditions.kt" to Named(1, "each device fact's platform read"),
             "$IOS_APP/download/LivePhotoFromMotionPhoto.kt" to Named(1, "taking a Motion Photo apart (ImageIO, AVFoundation)"),
             "$IOS_EXT/crypto/IosCrypto.kt" to Named(1, "CryptoKit's open of a seal that does not authenticate"),
+            "$IOS_EXT/device/IosProcessConditions.kt" to Named(1, "each process fact's platform read"),
             "$IOS_EXT/databases/IosDatabases.kt" to Named(2, "SQLiter's open and its version read"),
             "$DESKTOP/MirrorHarness.kt" to Named(3, "the mirrored phone's control channel: its advertisement, state and taps"),
         )

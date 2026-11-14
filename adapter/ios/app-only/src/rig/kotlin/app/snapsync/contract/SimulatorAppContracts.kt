@@ -34,6 +34,7 @@ import app.snapsync.contracts.LivePhotoImportContract
 import app.snapsync.contracts.LivePhotoImportState
 import app.snapsync.contracts.LivePhotoLibrary
 import app.snapsync.contracts.NetworkMonitorContract
+import app.snapsync.contracts.NetworkState
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
@@ -56,6 +57,7 @@ import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Log
+import app.snapsync.network.IosNetworkMonitor
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
@@ -64,6 +66,7 @@ import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.ImportFile
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ProcessInfo
@@ -405,6 +408,24 @@ class SimAppProcessInfoBinding : Binding<ProcessInfoState, ProcessInfo> {
 }
 
 /**
+ * The real `nw_path_monitor` in the simulator app — the one CI host whose process runs Network.framework against a real
+ * network. The simulator shares its Mac's network, which no binding can take down, so this host presents only `ONLINE`.
+ */
+class SimAppNetworkMonitorBinding : Binding<NetworkState, NetworkMonitor> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val adapter = IosNetworkMonitor::class
+    override val reaches = setOf(NetworkState.ONLINE)
+
+    override fun create(state: NetworkState, clauseId: String, log: CallLog): Entered<NetworkMonitor> =
+        if (state == NetworkState.ONLINE) {
+            Entered.Ready(IosNetworkMonitor().recorded(log))
+        } else {
+            Entered.Unreachable("the simulator shares its Mac's network, which no binding can take down")
+        }
+}
+
+/**
  * The real [IosDeviceConditions] in the simulator app — the one CI host with a `UIApplication` and a `UIDevice` a
  * binding may read (a test executable has neither). An iPhone, so it presents `IPHONE` and never `ANDROID`. The
  * simulator has no battery, so its level and state answer failed — which the contract allows for exactly this host.
@@ -419,6 +440,10 @@ class SimAppDeviceConditionsBinding : Binding<DeviceConditionsState, DeviceCondi
         when (state) {
             DeviceConditionsState.IPHONE -> Entered.Ready(IosDeviceConditions().recorded(log))
             DeviceConditionsState.ANDROID -> Entered.Unreachable("an iPhone is not Android")
+            DeviceConditionsState.IPHONE_PROCESS ->
+                Entered.Unreachable(
+                    "an app links UIKit; the process without it is the test executable (IosProcessConditions)",
+                )
         }
 }
 

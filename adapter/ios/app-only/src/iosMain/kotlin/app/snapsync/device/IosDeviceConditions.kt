@@ -4,15 +4,10 @@ import app.snapsync.domain.report.BackgroundRefresh
 import app.snapsync.domain.report.Charging
 import app.snapsync.domain.report.DeviceConditionsReading
 import app.snapsync.domain.report.Fact
-import app.snapsync.domain.report.Thermal
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.DeviceConditions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import platform.Foundation.NSProcessInfo
-import platform.Foundation.NSProcessInfoThermalState
-import platform.Foundation.isLowPowerModeEnabled
-import platform.Foundation.thermalState
 import platform.UIKit.UIApplication
 import platform.UIKit.UIBackgroundRefreshStatus
 import platform.UIKit.UIDevice
@@ -20,9 +15,9 @@ import platform.UIKit.UIDeviceBatteryState
 import kotlin.math.roundToInt
 
 /**
- * The iOS [DeviceConditions] of the app process: Low Power Mode and the thermal state
- * from `NSProcessInfo`, the battery from `UIDevice`, Background App Refresh from `UIApplication`. App-only, because the
- * last two are UIKit, which an app extension may not link — and only the app sends a bug report.
+ * The iOS [DeviceConditions] of the app process: what any process reads ([IosProcessConditions] — Low Power Mode and
+ * the thermal state, from `NSProcessInfo`), and over it the battery from `UIDevice` and Background App Refresh from
+ * `UIApplication`. App-only, because those two are UIKit, which an app extension may not link.
  *
  * Android's standby bucket and battery-optimisation exemption have no iOS counterpart and answer unsupported.
  *
@@ -33,17 +28,14 @@ import kotlin.math.roundToInt
  * a level of zero.
  */
 class IosDeviceConditions : DeviceConditions {
+    private val process = IosProcessConditions()
+
     override suspend fun read(): DeviceConditionsReading {
-        val process = NSProcessInfo.processInfo
         val main = withContext(Dispatchers.Main) { MainThreadFacts.read() }
-        return DeviceConditionsReading(
-            powerSaving = fact { process.isLowPowerModeEnabled() },
+        return process.read().copy(
             backgroundRefresh = main.backgroundRefresh,
-            standbyBucket = Fact.Unsupported,
-            batteryOptimizationExempt = Fact.Unsupported,
             batteryPercent = main.batteryPercent,
             charging = main.charging,
-            thermal = fact { thermalOf(process.thermalState) },
         )
     }
 }
@@ -95,13 +87,6 @@ private val CHARGING = mapOf(
     UIDeviceBatteryState.UIDeviceBatteryStateUnplugged to Charging.UNPLUGGED,
 )
 
-private val THERMAL = mapOf(
-    NSProcessInfoThermalState.NSProcessInfoThermalStateNominal to Thermal.NOMINAL,
-    NSProcessInfoThermalState.NSProcessInfoThermalStateFair to Thermal.FAIR,
-    NSProcessInfoThermalState.NSProcessInfoThermalStateSerious to Thermal.SERIOUS,
-    NSProcessInfoThermalState.NSProcessInfoThermalStateCritical to Thermal.CRITICAL,
-)
-
 private fun refreshOf(status: UIBackgroundRefreshStatus): BackgroundRefresh =
     REFRESH[status] ?: error("an unknown background refresh status: $status")
 
@@ -111,6 +96,3 @@ private fun levelOf(level: Float): Fact<Int> =
 // `UIDeviceBatteryStateUnknown` is the one declared case missing from the table: a device that cannot say.
 private fun chargingOf(state: UIDeviceBatteryState): Fact<Charging> =
     CHARGING[state]?.let { Fact.Known(it) } ?: Fact.Failed("the battery state is unknown ($state)")
-
-private fun thermalOf(state: NSProcessInfoThermalState): Thermal =
-    THERMAL[state] ?: error("an unknown thermal state: $state")

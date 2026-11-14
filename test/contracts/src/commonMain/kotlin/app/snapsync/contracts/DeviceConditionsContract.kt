@@ -14,6 +14,12 @@ enum class DeviceConditionsState {
 
     /** A running app on Android: Battery Saver, the standby bucket, the optimisation exemption and the thermal status. */
     ANDROID,
+
+    /**
+     * An iPhone process without `UIApplication` — the upload extension: Low Power Mode and the thermal state, which any
+     * process reads, and nothing UIKit answers.
+     */
+    IPHONE_PROCESS,
 }
 
 /**
@@ -66,10 +72,31 @@ object DeviceConditionsContract : Contract<DeviceConditionsState, DeviceConditio
             )
             assertBatteryInRange(reading)
         }
+
+        clause(
+            "AN_IPHONE_PROCESS_WITHOUT_UIKIT_ANSWERS_WHAT_ANY_PROCESS_READS",
+            DeviceConditionsState.IPHONE_PROCESS,
+            covers = cells {
+                on<DeviceConditions>().answers(DeviceConditions::read).returns()
+            },
+        ) { conditions ->
+            val reading = conditions.read()
+            assertKnown(reading.powerSaving, "power saving")
+            assertKnown(reading.thermal, "thermal state")
+            mapOf(
+                "background refresh" to reading.backgroundRefresh,
+                "battery level" to reading.batteryPercent,
+                "charging state" to reading.charging,
+                "standby bucket" to reading.standbyBucket,
+                "battery-optimisation exemption" to reading.batteryOptimizationExempt,
+            ).forEach { (what, fact) ->
+                assertIs<Fact.Unsupported>(fact, "a process without UIKit cannot read its $what: $fact")
+            }
+        }
     }
 
     private fun assertKnown(fact: Fact<*>, what: String) {
-        if (fact !is Fact.Known) fail("a running app reads its $what: $fact")
+        if (fact !is Fact.Known) fail("a running process reads its $what: $fact")
     }
 
     private fun assertBatteryInRange(reading: DeviceConditionsReading) {

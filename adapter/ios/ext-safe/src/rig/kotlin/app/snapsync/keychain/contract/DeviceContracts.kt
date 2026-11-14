@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+
 package app.snapsync.keychain.contract
 
 import app.snapsync.attest.IosDeviceIntegrity
@@ -15,18 +17,27 @@ import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.InAppContract
+import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
+import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.keychain.IosSecureStore
 import app.snapsync.keychain.SystemKeychainApi
+import app.snapsync.logging.documentsDirectory
+import app.snapsync.network.contract.recordNetwork
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.SecureStore
 import platform.Foundation.NSDate
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSString
+import platform.Foundation.NSUTF8StringEncoding
+import platform.Foundation.create
+import platform.Foundation.writeToFile
 
 /**
  * The real [app.snapsync.keychain.IosSecureStore] in the entitled app, recording every `SecItem*` call and
@@ -98,7 +109,8 @@ internal class DeviceOfflineIntegrityBinding(
 
 /**
  * The contracts the rig can run on a device, by name — `contract.run(<name>)` (`docs/architecture.md`,
- * "The device run is reached through the rig and contained at compile time").
+ * "The device run is reached through the rig and contained at compile time"): this module's adapters' — the
+ * Keychain, App Attest and the network monitor.
  *
  * Each answers with the recording to commit verbatim at `test/contracts/recordings/<name>@IOS_DEVICE_APP.rec`:
  * a provenance header, the live outcome of every clause (as header lines, so the committed file says what the
@@ -106,51 +118,74 @@ internal class DeviceOfflineIntegrityBinding(
  */
 fun deviceContracts(): List<InAppContract> = listOf(
     InAppContract(SecureStoreContract.name, Host.IOS_DEVICE_APP) {
-        recordOnDevice(SecureStoreContract) { DeviceKeychainBinding(it) }
+        recordOnDevice(SecureStoreContract, refusal = KEYCHAIN_HOST) { DeviceKeychainBinding(it) }
     },
     InAppContract(DeviceIntegrityContract.name, Host.IOS_DEVICE_APP) { params ->
         // The condition is the person's to set and to state: the run never reads it from the adapter under test.
         if (params["network"] == "offline") {
-            recordOnDevice(DeviceIntegrityContract, OFFLINE) { DeviceOfflineIntegrityBinding(it) }
+            recordOnDevice(DeviceIntegrityContract, OFFLINE, KEYCHAIN_HOST) { DeviceOfflineIntegrityBinding(it) }
         } else {
-            recordOnDevice(DeviceIntegrityContract) { DeviceIntegrityBinding(it) }
+            recordOnDevice(DeviceIntegrityContract, refusal = KEYCHAIN_HOST) { DeviceIntegrityBinding(it) }
         }
     },
+    InAppContract(NetworkMonitorContract.name, Host.IOS_DEVICE_APP) { params -> recordNetwork(params) },
 )
 
 /**
- * Runs [contract] against the real platform of THIS app through the recording binding [binding] builds, and
- * renders the recording.
- *
- * It refuses on a simulator. A simulator app is not [Host.IOS_DEVICE_APP]: its Keychain answers `-34018`
- * (`errSecMissingEntitlement`) to an explicit-group query, because `simulator.entitlements` omits
- * `keychain-access-groups` on purpose and `RuntimeIdentityTest` pins that absence (measured here
- * 2026-09-22, iOS 26.2), and it has no App Attest at all. A recording taken there would file simulator
- * answers under the device's name — the host confusion the `-25291`/`-34018` pair exists to prevent.
+ * Why a simulator app cannot record the Keychain or App Attest: it is not [Host.IOS_DEVICE_APP]. Its Keychain answers
+ * `-34018` (`errSecMissingEntitlement`) to an explicit-group query, because `simulator.entitlements` omits
+ * `keychain-access-groups` on purpose and `RuntimeIdentityTest` pins that absence (measured here 2026-09-22, iOS 26.2),
+ * and it has no App Attest at all. A recording taken there would file simulator answers under the device's name — the
+ * host confusion the `-25291`/`-34018` pair exists to prevent.
  */
-private fun <K : Enum<K>, T> recordOnDevice(
+private const val KEYCHAIN_HOST = "Its Keychain answers -34018 (errSecMissingEntitlement) to an explicit-group query " +
+    "and it has no App Attest, so a recording taken here would be filed under the wrong host. Record on an entitled " +
+    "device."
+
+/**
+ * Runs [contract] against the real platform of THIS app through the recording binding [binding] builds, under
+ * [precondition] where the binding declares one, renders the recording, and keeps it in the app's
+ * `Documents/contracts/` too: a run the person ends with the phone locked may find the rig's connection gone by the
+ * time it answers, and the device tooling pulls `Documents/` like `debug.log`.
+ *
+ * It refuses on a simulator, for [refusal]: a simulator app is not [Host.IOS_DEVICE_APP], and a recording taken there
+ * would be filed under the device's name.
+ */
+internal fun <K : Enum<K>, T> recordOnDevice(
     contract: Contract<K, T>,
     precondition: String? = null,
+    refusal: String = "Record ${contract.name} on a device.",
     binding: (Recorder) -> Binding<K, T>,
 ): String {
     if (NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null) {
-        return CONTRACT_REFUSED +
-            "this process is a simulator app, not ${Host.IOS_DEVICE_APP}. Its Keychain answers -34018 " +
-            "(errSecMissingEntitlement) to an explicit-group query and it has no App Attest, so a recording " +
-            "taken here would be filed under the wrong host. Record on an entitled device.\n"
+        return "${CONTRACT_REFUSED}this process is a simulator app, not ${Host.IOS_DEVICE_APP}. $refusal\n"
     }
     val recorder = Recorder()
     val results = run(contract, binding(recorder))
     val env = IosBuildInfo()
-    val header = listOf(
-        "contract" to contract.name,
-        "host" to Host.IOS_DEVICE_APP.name,
-    ) + listOfNotNull(precondition?.let { "file" to "${contract.name}@${Host.IOS_DEVICE_APP.name}.$it.rec" }) + listOf(
-        "device" to env.deviceModel,
-        "os" to env.osVersion,
-        "build" to env.buildNumber,
-        "kotlin" to KotlinVersion.CURRENT.toString(),
-        "recorded" to NSISO8601DateFormatter().stringFromDate(NSDate()),
-    ) + results.map { "live ${it.clauseId}" to it.outcome.render() }
-    return recorder.recording(header).render()
+    val name = recordingName(contract.name, Host.IOS_DEVICE_APP, null, precondition)
+    val header = listOf("contract" to contract.name, "host" to Host.IOS_DEVICE_APP.name) +
+        listOfNotNull(precondition?.let { "precondition" to it }) +
+        listOf(
+            "file" to "$name.rec",
+            "device" to env.deviceModel,
+            "os" to env.osVersion,
+            "build" to env.buildNumber,
+            "kotlin" to KotlinVersion.CURRENT.toString(),
+            "recorded" to NSISO8601DateFormatter().stringFromDate(NSDate()),
+        ) + results.map { "live ${it.clauseId}" to it.outcome.render() }
+    return recorder.recording(header).render().also { keep(name, it) }
+}
+
+/** [text] in the app's `Documents/contracts/<name>.rec`, the name it is committed as. */
+private fun keep(name: String, text: String) {
+    val dir = documentsDirectory()?.let { "$it/contracts" } ?: return
+    NSFileManager.defaultManager.createDirectoryAtPath(
+        dir,
+        withIntermediateDirectories = true,
+        attributes = null,
+        error = null,
+    )
+    NSString.create(string = text)
+        .writeToFile("$dir/$name.rec", atomically = true, encoding = NSUTF8StringEncoding, error = null)
 }

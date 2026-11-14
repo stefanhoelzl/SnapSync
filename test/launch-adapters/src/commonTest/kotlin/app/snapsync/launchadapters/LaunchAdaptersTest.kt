@@ -289,6 +289,7 @@ class LaunchAdaptersTest {
         files = unbuilt("files"), databases = unbuilt("databases"), preferences = unbuilt("preferences"),
         secureStore = unbuilt("secureStore"),
         galleryReader = unbuilt("galleryReader"), uploadQueue = unbuilt("uploadQueue"), http = unbuilt("http"),
+        network = unbuilt("network"), deviceConditions = unbuilt("deviceConditions"),
     )
 
     private fun <T> unbuilt(port: String): Lazy<T> = lazy { error("the real $port was built") }

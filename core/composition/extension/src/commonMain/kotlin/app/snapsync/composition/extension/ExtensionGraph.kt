@@ -8,22 +8,27 @@ import app.snapsync.composition.process.ProcessGraph
 import app.snapsync.composition.process.UploadGraph
 import app.snapsync.data.album.AlbumFiling
 import app.snapsync.data.album.AlbumMap
+import app.snapsync.data.backend.AccessContext
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.BuildContext
 import app.snapsync.data.backend.BuildTarget
+import app.snapsync.data.backend.ConditionsContext
 import app.snapsync.data.backend.DeliveryContext
 import app.snapsync.data.backend.IdentityContext
 import app.snapsync.data.backend.MobileDataContext
+import app.snapsync.data.backend.NetworkContext
 import app.snapsync.data.backend.VersionIgnored
 import app.snapsync.data.crash.ReportedIdsRead
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.FileCipher
 import app.snapsync.data.crypto.FileNameCipher
+import app.snapsync.data.gallery.GalleryGrantRead
 import app.snapsync.data.identity.StoredDeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
+import app.snapsync.data.network.NetworkReadings
 import app.snapsync.data.process.StartedProcess
 import app.snapsync.data.receiving.ReceivedPhotosReader
 import app.snapsync.data.sharing.DenylistedAlbums
@@ -90,8 +95,10 @@ class ExtensionGraph(ports: ExtensionPorts, runtime: Runtime, process: ProcessGr
     private val credential: DropOnlyCredential = DropOnlyCredential(attestStore)
 
     /**
-     * No version gate: the extension has no screen to show a refusal on. Its delivery context is what it can read — its
-     * build, the device id and the shared mobile-data choice; it watches no network and reads no device conditions.
+     * No version gate: the extension has no screen to show a refusal on. Its delivery context is what this process
+     * can read: its build, the device id, the grant it reads itself, the network, the shared mobile-data choice and the
+     * power state. Never `background` — Background App Refresh is `UIApplication`'s, which an extension may not link,
+     * and the same device's app requests carry it.
      */
     private val exchange: BackendExchange = BackendExchange(
         ports.http,
@@ -100,7 +107,10 @@ class ExtensionGraph(ports: ExtensionPorts, runtime: Runtime, process: ProcessGr
         DeliveryContext(
             BuildContext(ports.process.build),
             IdentityContext(identity),
+            AccessContext(GalleryGrantRead(ports.gallery)),
+            NetworkContext(NetworkReadings(ports.network)),
             MobileDataContext(MobileDataStore(ports.preferences)),
+            ConditionsContext(ports.deviceConditions, ports.process.clock),
         ),
     )
 

@@ -1,6 +1,6 @@
 package app.snapsync.data.upload
 
-import app.snapsync.data.gallery.PhotoGrants
+import app.snapsync.data.gallery.GalleryGrantRead
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.upload.AppUploaderSwitch
 import app.snapsync.domain.upload.UploadAdmission
@@ -20,6 +20,8 @@ class AppUploaderAdmission(private val photos: OwnPhotos, private val switches: 
 }
 
 /** The upload extension's: only under a full grant, read from its own gallery at the pass. */
-class ExtensionUploaderAdmission(private val gallery: GalleryReader) : UploaderAdmission {
-    override fun admission(): UploadAdmission = UploadAdmission.forExtension(PhotoGrants.of(gallery.access()).access)
+class ExtensionUploaderAdmission(gallery: GalleryReader) : UploaderAdmission {
+    private val grant = GalleryGrantRead(gallery)
+
+    override fun admission(): UploadAdmission = UploadAdmission.forExtension(grant.access())
 }

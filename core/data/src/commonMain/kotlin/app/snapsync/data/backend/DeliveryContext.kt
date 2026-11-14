@@ -1,6 +1,6 @@
 package app.snapsync.data.backend
 
-import app.snapsync.data.gallery.GrantRead
+import app.snapsync.data.gallery.PhotoAccessRead
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.mobiledata.MobileDataStore
@@ -53,9 +53,12 @@ class IdentityContext(private val identity: DeviceIdentity) : ContextPart {
     }
 }
 
-/** The photo access the member gave: `access`. */
-class AccessContext(private val grant: GrantRead) : ContextPart {
-    override suspend fun facts(): Map<String, String> = mapOf("access" to DeliveryFacts.access(grant.access()))
+/**
+ * The photo access the member gave: `access`, as [access] reads it now — the app from the grant it follows, the upload
+ * extension from the grant it reads in its own process.
+ */
+class AccessContext(private val access: PhotoAccessRead) : ContextPart {
+    override suspend fun facts(): Map<String, String> = mapOf("access" to DeliveryFacts.access(access.access()))
 }
 
 /** The member's mobile-data choice: `mobile_data`. */

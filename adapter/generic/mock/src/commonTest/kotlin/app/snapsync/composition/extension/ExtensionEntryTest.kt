@@ -11,9 +11,11 @@ import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.data.trust.TokenText
 import app.snapsync.domain.album.AlbumChoice
+import app.snapsync.domain.delivery.DeliveryFacts
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.report.Fact
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
@@ -22,8 +24,10 @@ import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.BackendMock
 import app.snapsync.mock.BuildInfoMock
+import app.snapsync.mock.DeviceConditionsMock
 import app.snapsync.mock.EntryEventsMock
 import app.snapsync.mock.ExtensionHostMock
+import app.snapsync.mock.NetworkMock
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.mock.ThreadLabelMock
 import app.snapsync.mock.UploadNetwork
@@ -40,6 +44,7 @@ import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.MetricHandlers
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.testids.testEventId
@@ -49,6 +54,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 /**
@@ -87,6 +93,22 @@ class ExtensionEntryTest {
         )
     }
 
+    @Test
+    fun an_invocation_s_requests_carry_what_the_extension_reads_of_its_grant_its_network_and_its_power() = runTest {
+        val host = ExtensionHostMock()
+        composeExtension(extensionPorts(host), lane = Dispatchers.Default, answerOn = null)
+        joinedWithAToken("token")
+
+        host.process(Dispatchers.Default)
+
+        val context = contextOf.single().orEmpty().split(";")
+        assertTrue(
+            listOf("access=full", "network=restricted", "low_power=1").all { it in context },
+            "$context",
+        )
+        assertTrue(context.none { it.startsWith("background=") }, "an extension cannot read it: $context")
+    }
+
     private val files = inMemoryFiles()
     private val clock = fixedClock(Instant.parse("2026-07-15T00:00:00Z"))
     private val databases = inMemoryDatabases()
@@ -97,11 +119,15 @@ class ExtensionEntryTest {
     /** The token each manifest publish carried, in order. */
     private val publishedWith = mutableListOf<String?>()
 
+    /** The delivery context each manifest publish carried, in order. */
+    private val contextOf = mutableListOf<String?>()
+
     private val backend = BackendMock().port().let { mock ->
         object : HttpTransport {
             override suspend fun send(request: HttpRequest): HttpResult = run {
                 if (request.method == Routes.PublishManifest.METHOD && request.url.endsWith("/manifest")) {
                     publishedWith += request.headers["Authorization"]?.removePrefix("Bearer ")
+                    contextOf += request.headers[DeliveryFacts.HEADER]
                     HttpResult.Response(200, emptyMap(), "")
                 } else {
                     mock.send(request)
@@ -174,6 +200,16 @@ class ExtensionEntryTest {
             restricted = { false },
         ).port(),
         http = backend,
+        network = NetworkMock(NetworkAccess.Online(restricted = true)).port(),
+        // The extension's own read: what a process without UIKit answers.
+        deviceConditions = DeviceConditionsMock(
+            DeviceConditionsMock.TYPICAL.copy(
+                powerSaving = Fact.Known(true),
+                backgroundRefresh = Fact.Unsupported,
+                batteryPercent = Fact.Unsupported,
+                charging = Fact.Unsupported,
+            ),
+        ).port(),
         host = host.port(),
     )
 }

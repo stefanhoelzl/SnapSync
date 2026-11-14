@@ -75,5 +75,10 @@ fun chosenExtensionPorts(real: ExtensionDevicePorts, choice: AdapterChoice, devi
         galleryReader = pick(MockedSystem.LIBRARY, real.galleryReader) { device.library.port() },
         uploadQueue = pick(MockedSystem.UPLOAD_QUEUE, real.uploadQueue) { device.uploadQueue.port() },
         http = pick(MockedSystem.BACKEND, real.http) { device.backend.port(device.declaredVersion) },
+        network = pick(MockedSystem.NETWORK, real.network) { device.connectivity.port() },
+        deviceConditions = pick(
+            MockedSystem.DEVICE_CONDITIONS,
+            real.deviceConditions,
+        ) { device.deviceConditions.port() },
     )
 }
