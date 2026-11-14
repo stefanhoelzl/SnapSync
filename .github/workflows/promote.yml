@@ -8,7 +8,7 @@
 # STORES ARE CHECKBOXES: `ios` and `android`, both default on, so a plain dispatch releases one version to both
 # stores. Neither selected is refused. A store left out NEVER gets
 # that version: the tag makes a version single-shot, so its next release is the next version. Play's target track is
-# the constant PLAY_TRACK below — the closed track until production access is granted.
+# the constant PLAY_TRACK below: production, the public listing.
 #
 # ONE VERSION LINE, ONE BUILD NUMBER. `ci.yml` builds both platforms with the same N (run_number + 2000) and the same
 # marketing version, so the version is read from App Store Connect's build N EVEN FOR AN ANDROID-ONLY PROMOTE (read
@@ -76,7 +76,7 @@ on:
         default: true
         type: boolean
       android:
-        description: "Release to Google Play (the closed track until production access)."
+        description: "Release to Google Play (production)."
         required: false
         default: true
         type: boolean
@@ -107,9 +107,9 @@ jobs:
     env:
       ASC_APP_ID: "6781692480"
       BUILD_NUMBER: ${{ inputs.build_number }}
-      # Play's target track. `alpha` is Play's closed testing track; it becomes `production` by PR once Google grants
-      # production access.
-      PLAY_TRACK: alpha
+      # Play's target track: `production`, the public listing. Closed testers (the `alpha` track) update to it on their
+      # own, since Play serves each user the highest versionCode of the tracks they may install.
+      PLAY_TRACK: production
       # asc reads ASC_PRIVATE_KEY; appstore_release.py reads ASC_API_PRIVATE_KEY. Same Admin key the rest
       # of the pipeline uses — no new ASC credential.
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
