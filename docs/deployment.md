@@ -132,10 +132,11 @@ The deployment declares the **names**. Values come from the environment of which
   itself, so the event page's install referrer works through the steps. The site derives the opt-in page and the
   listing from `androidPackageName`. So the site has three states: group set → the steps; `playStoreUrl` set →
   the badge alone; neither → no Google Play at all. The resolver refuses the two set together. **The production
-  switch** is therefore one `android.json` edit — empty `playTestGroupUrl`, set `playStoreUrl` — made once Google
-  has approved the first production release, because the site's next deploy links the public listing.
-  `promote.yml` already releases to `production` ("Promote a build you already tested"). The first production
-  release, 0.6 (2421), was promoted from the closed track by hand in the Play Console: its tag was spent on `alpha`. Decision record: `changes/archive/2026-10-02-advertise-play-closed-test`.
+  switch** is therefore one `android.json` edit — empty `playTestGroupUrl`, set `playStoreUrl` — made in 2026-11 once
+  Google approved the first production release, since the site's next deploy links the public listing. Since then
+  the site shows the badge alone, and `promote.yml` releases to `production` ("Promote a build you already tested").
+  The first production release, 0.6 (2421), was promoted from the closed track by hand in the Play Console: its tag
+  was spent on `alpha`. Decision record: `changes/archive/2026-10-02-advertise-play-closed-test`.
 
 ### iOS: the baked values
 
