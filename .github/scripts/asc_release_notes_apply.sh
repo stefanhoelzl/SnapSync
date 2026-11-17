@@ -16,7 +16,7 @@
 # nothing that could be mistaken for a change to the committed listing.
 #
 # THE SAME ENGLISH NOTES IN EVERY LOCALIZATION, by decision (capability `localization`: What's New stays English;
-# `changes/archive/<date>-localize-store-listings`, D5). Apple refuses to submit an update while any localization
+# `changes/archive/2026-11-17-localize-store-listings`, D5). Apple refuses to submit an update while any localization
 # lacks `whatsNew`, and the notes are derived from English PR titles, so English is the only text there is. That
 # covers each localization the version holds (one a console edit added included) plus every committed store
 # locale (`metadata/listing/<locale>.json`), created when the version lacks it.
