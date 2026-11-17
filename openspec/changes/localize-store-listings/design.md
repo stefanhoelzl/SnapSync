@@ -83,7 +83,13 @@ store's language.
 - `asc_metadata_apply.sh`: no change. It pushes every rendered `<locale>.json`, and `asc metadata push` creates a
   localization a version does not have yet. A `--dry-run` confirms this in the first apply.
 - `asc_screenshots_upload.sh`: composes every locale in `metadata/screenshots/` into `$OUT_DIR/<locale>/`, then makes
-  the one existing `--path` upload, which fans out per locale.
+  the one existing `--path` upload, which fans out per locale. The upload refuses a locale the version has no
+  localization for (measured on the first `de-DE` dry run: "no matching App Store version localizations found").
+  So before uploading it creates each committed locale the version lacks, using a helper in `asc_lib.sh`
+  (`asc_ensure_localizations`) that the release notes share. A promote therefore doesn't depend on the metadata
+  apply having run first.
+- Play: `PATCH /listings/<language>` answers 404 for a language Play doesn't hold yet (measured on the first `de-DE`
+  preflight), so a listing is written with `PUT`, which creates or replaces it.
 - `promote.yml` (Play): stages `$IMAGES/<locale>/{icon.png, featureGraphic.png, phoneScreenshots/}` per locale. The
   icon is the same file for every locale, because Play keeps images per language.
 - `play_release.py`: `rendered_listing` returns every language. `sync_listing` diffs and writes text and image sets

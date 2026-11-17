@@ -32,6 +32,10 @@ DEVICE_TYPE="APP_IPHONE_69"   # 1320x2868; App Store Connect scales this class d
 # State gate (`asc_lib.sh`): only PREPARE_FOR_SUBMISSION / DEVELOPER_REJECTED are editable; none is a green no-op.
 asc_require_editable_version upload
 
+# The upload refuses a locale the version has no localization for: create each committed one it lacks (`asc_lib.sh`).
+asc_require_version_id "$version" "screenshots"
+asc_ensure_localizations "$version_id" "$version"
+
 # Compose from the committed raws. Fails loudly on a missing raw or a wrong output size.
 OUT_DIR="${RUNNER_TEMP:-/tmp}/shots-out"
 for headlines in metadata/screenshots/*.json; do

@@ -38,22 +38,11 @@ notes="$(cat "$NOTES_FILE")"
 # Resolve the version id by versionString (`asc_lib.sh`), pinned to ONE object.
 asc_require_version_id "$VERSION" "release notes"
 
-# find-or-create each committed locale. App Store Connect normally seeds a new version's localizations from the
-# previous version, so this is a no-op in practice — except for a locale's first release, and a version born
-# without one would otherwise fail the update with a message about the locale rather than about the notes.
-held="$("$ASC" localizations list --version "$version_id" --output json \
-  | jq -r '[.. | objects | .attributes?.locale? // empty] | unique | .[]')"
-for listing in metadata/listing/*.json; do
-  locale="$(basename "$listing" .json)"
-  if ! grep -qxF "$locale" <<<"$held"; then
-    echo "version '$VERSION' has no $locale localization — creating"
-    "$ASC" localizations create --version "$version_id" --locale "$locale"
-    held="$(printf '%s\n%s' "$held" "$locale")"
-  fi
-done
+# Every committed locale, created where the version lacks it (`asc_lib.sh`), then every localization it holds.
+asc_ensure_localizations "$version_id" "$VERSION"
 
 while IFS= read -r locale; do
   [ -n "$locale" ] || continue
   "$ASC" localizations update --version "$version_id" --locale "$locale" --whats-new "$notes"
   echo "::notice::wrote $locale release notes for version $VERSION ($(printf '%s' "$notes" | wc -c) chars)"
-done <<<"$held"
+done <<<"$localizations"

@@ -40,7 +40,7 @@
 - [x] 3.2 Make `metadata/graphic/check.py` check each per-locale render against its own JSON's tagline, and update
       `graphic.py`'s, `render.py`'s and `ci.yml`'s comments that name `en-US.json`. Verify that `python3
       metadata/graphic/check.py` passes, and fails after a temporary edit to the German tagline.
-- [ ] 3.3 Point `compose_screenshots.sh`'s concept frame at `metadata/graphic/<locale>/frame-<target>.png`. Verify
+- [x] 3.3 Point `compose_screenshots.sh`'s concept frame at `metadata/graphic/<locale>/frame-<target>.png`. Verify
       that `TARGET=appstore` and `TARGET=play` runs for `de-DE` produce correctly sized sets: German headlines on the
       English raws, with the German graphic first.
 
@@ -53,12 +53,12 @@
       every committed store locale it lacks (created first), and replace its "en-US ONLY" comment with D5's
       reasoning. Verify with shellcheck, and on the next promote by the version showing `whatsNew` in en-US and
       de-DE.
-- [ ] 4.3 Make `play_release.py` handle many languages: `rendered_listing` returns every rendered language,
+- [x] 4.3 Make `play_release.py` handle many languages: `rendered_listing` returns every rendered language,
       `image_sets` reads `<images>/<language>/…`, and `sync_listing` diffs and writes text and images per language,
       with the contact details once. Release notes stay `en-US`. Verify with
       `uv run .github/scripts/play_release.py listing-diff <package> build/metadata/play <images>` (read-only),
       which reports per-language lines for en-US and de-DE.
-- [ ] 4.4 Make `promote.yml`'s "Render the Play store listing and its images" step stage
+- [x] 4.4 Make `promote.yml`'s "Render the Play store listing and its images" step stage
       `$IMAGES/<locale>/{icon.png, featureGraphic.png, phoneScreenshots/}` for every locale, from the per-locale
       feature graphic and a `compose_screenshots.sh <locale>` run each. Verify with actionlint, then with a
       `promote.yml -f dry_run=true` run whose Play preflight lists de-DE text and image changes.
