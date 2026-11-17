@@ -703,9 +703,12 @@ no Gradle, no signing, only the existing Admin ASC key and Play service account.
 5. Derive the release notes for both stores (§7). Apple's over 4000 characters fails here, having changed nothing.
 6. With `ios`, unless already submitted: find or create the `X.Y` version record and attach the build (idempotent).
    A **newly created** record gets the committed copyright (year of first publication). An existing record's
-   copyright is left alone. Upload the listing screenshots — the use-case graphic first, then the app captures
-   composed from `screenshots/ios/*.png` + `metadata/screenshots/en-US.json` (ImageMagick) — only an **editable** version is written to, and the set is
-   **replaced**. Apply the `en-US` `whatsNew` and the App Review details (notes from `metadata/review/notes.md`;
+   copyright is left alone. Upload the listing screenshots, one set per store locale: that locale's use-case graphic
+   first, then the app captures composed from `screenshots/ios/*.png` (English in every locale) under
+   `metadata/screenshots/<locale>.json`'s headlines (ImageMagick). Only an **editable** version is written to, and
+   each set is **replaced**. Apply the `whatsNew` to **every** localization: the same English notes, created for a
+   committed locale the version lacks. What's New stays English by decision (capability `localization`), and Apple
+   refuses an update while any localization lacks it. Then apply the App Review details (notes from `metadata/review/notes.md`;
    contact details from secrets because the repo is public; "no demo account").
 7. **Preflight** every selected store before either submit: `asc review doctor` must report no blocking check;
    Play validates an edit holding the exact release the submit will commit, with the store listing's differences
@@ -758,15 +761,18 @@ Every output is committed and none may be edited by hand. Change the geometry or
 
 **The use-case graphic** is the other store art: two generic phones on the brand green, one camera taking a photo
 and it arriving in the other's gallery, with the tagline. `metadata/graphic/graphic.py` builds it as HTML and
-`uv run metadata/graphic/render.py` renders it in headless Chromium into seven committed PNGs: Play's 1024×500
-feature graphic (`metadata/play/images/featureGraphic.png`), the first store screenshot for each store
-(`metadata/graphic/frame-appstore.png` 1320×2868, `frame-play.png` 1080×1920) and the landing page's hero
+`uv run metadata/graphic/render.py` renders it in headless Chromium into committed PNGs. The three that carry words
+feed a store page, so they are rendered once per store locale (`metadata/screenshots/<locale>.json`): Play's 1024×500
+feature graphic (`metadata/play/images/<locale>/featureGraphic.png`) and the first store screenshot for each store
+(`metadata/graphic/<locale>/frame-appstore.png` 1320×2868, `frame-play.png` 1080×1920). The rest are rendered once,
+from `en-US`: the landing page's hero
 (`metadata/graphic/site-hero.png`, the feature graphic's composition without words, which the page sets as text,
 and `site-hero-narrow.png`, the phones alone on a transparent background for phone-width pages),
 and the store screenshots' background for each store (`bg-appstore.png`, `bg-play.png`): the graphic's gradient alone,
-which `compose_screenshots.sh` lays every app capture on, so all four frames of a set share one green. Its words are the `tagline` in `metadata/screenshots/en-US.json`; each render
-carries the tagline it was made with, and the `metadata` gate (`metadata/graphic/check.py`) fails when the JSON has
-moved on without a re-render. The phones must stay generic (no Dynamic Island, no Apple layout): Apple allows its
+which `compose_screenshots.sh` lays every app capture on, so all four frames of a set share one green. Its words are
+the `tagline` in each locale's `metadata/screenshots/<locale>.json`. Each render carries the tagline it was made with,
+and the `metadata` gate (`metadata/graphic/check.py`) fails when a locale's JSON has moved on (or a locale was added)
+without a re-render. Look at every locale's render: a longer translation wraps differently. The phones must stay generic (no Dynamic Island, no Apple layout): Apple allows its
 hardware in listing images only as a photograph of the real product.
 
 ### Listing metadata
@@ -774,6 +780,11 @@ hardware in listing images only as a photograph of the real product.
 - **One source for both stores.** `metadata/listing/<locale>.json` holds the copy the App Store and Google Play
   share: the name, the description and the marketing, support and privacy-policy URLs. It also has an `apple`
   section (subtitle, keywords, promotional text) and a `play` section (short description).
+- **One file per language the app speaks** (capability `localization`): `en-US.json` and `de-DE.json`, named by
+  store locale. `./gradlew nativeStrings` fails while the file set disagrees with the app's languages
+  (`nativeStrings { storeLocales }`) or a translation's keys differ from `en-US.json`'s (`docs/architecture.md`,
+  "Localization"). Every step below loops over the files, so a language reaches both stores with no script change.
+  What stays English, in every language: the app screens in the screenshots, What's New (below), the review notes.
 - **Rendering.** The resolver renders it into `build/metadata/`: App Store Connect's strict-schema files
   (`app-info/`, `version/current/`) and Play's fields (`play/`: title, short and full description, contact
   website). No store's file is committed.
@@ -803,15 +814,19 @@ hardware in listing images only as a photograph of the real product.
   nothing in Play ties it to a release. It once followed `main`, written by every merge's `android-deliver`, and so
   ran ahead of the build testers could install: a merged screen redesign reached the listing while the closed track
   still served the previous version. It is now written only by `promote.yml`, like the App Store's version-bound
-  listing. With `android`, the promote renders the listing (`build/metadata/play/`), checks it, and stages the
-  committed icon and feature graphic. It composites the phone screenshots from `screenshots/android/` (the `play`
-  target). All of it comes from the promote's own checkout (the dispatched ref), as the App Store screenshots do.
+  listing. With `android`, the promote renders the listing (`build/metadata/play/<language>.json`, one per language),
+  checks it, and stages per language the committed icon and that language's feature graphic. It composites each
+  language's phone screenshots from `screenshots/android/` under that language's headlines (the `play` target).
+  Play keeps every image per language, so each language's set is compared and written on its own. All of it comes from the promote's own checkout (the dispatched ref), as the App Store screenshots do.
   `play_release.py promote … --listing … --images …` then compares each part with what Play holds, inside the edit
   that releases build N to `PLAY_TRACK`:
-  - the three text fields, by value;
+  - each language's three text fields, by value;
   - the contact website, and the contact email from the `ASC_REVIEW_CONTACT_EMAIL` secret (the App Store review
     contact; never committed, never printed);
-  - each image set, by the sha256 Play lists, which is the uploaded file's own (measured).
+  - each language's image sets, by the sha256 Play lists, which is the uploaded file's own (measured).
+
+  A language Play holds that is not committed is left alone; removing one is a Console decision. The release notes
+  are `en-US` only: Play shows the default language's notes in every other.
 
   Only a difference is written. A promote that changes no copy and no image therefore sends Play no listing change to
   review. The listing rides in the release's ONE edit because committing an edit invalidates every other open one.
@@ -828,7 +843,9 @@ hardware in listing images only as a photograph of the real product.
 
 Six committed raws in `screenshots/ios/` (3 states × light/dark) feed **both** the App Store listing
 (uploaded at promote time only) and the `site/` landing page (on merge). A merge that changes them
-changes **no** listing; neither does one that changes `screenshots/android/`. Each capture is the **real app** — the rig build on a simulator — in a state its real
+changes **no** listing; neither does one that changes `screenshots/android/`. The raws show the English app and
+serve every store locale; only the headline over them and the opening graphic are the locale's (capability
+`localization`). Each capture is the **real app** — the rig build on a simulator — in a state its real
 reduction reached: `screenshots.yml` sets its launch adapters to mock every system but the screen and the app's
 foreground life, and `:test:integration`'s capture drives it to each state through the control channel (`Shots.kt`:
 `create`, `joining`, `in_sync`) and captures it light and dark. The backend, the photo library, the Keychain and App

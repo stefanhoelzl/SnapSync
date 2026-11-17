@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "The German listing: en-US.json's copy in German, with exactly its keys (`./gradlew nativeStrings` fails",
+    "otherwise). The wording follows metadata/messaging.md's German column; change it in the same PR as English."
+  ],
+  "name": "SnapSync Photos",
+  "description": "Alle Fotos, in deiner Galerie.\n\nErstelle ein Event für einen Ausflug, eine Party oder einen Urlaub. Deine Familie und Freunde treten einfach bei, und ab dann landet jedes Foto, das jemand macht, in deiner Galerie, noch während ihr zusammen seid.\n\nEinfach beitreten\nKein Konto, keine Anmeldung, kein Passwort. QR-Code scannen oder Link antippen, und du bist dabei. Auch wer später beitritt, bekommt jedes Foto des Events.\n\nAlle Fotos, in deiner Galerie\nDie Fotos der Gruppe landen in der Galerie, die du schon benutzt, neben deinen eigenen, genau so, wie sie aufgenommen wurden. Du wählst, aus welchem Zeitraum du teilst; Screenshots und aus Chats gespeicherte Fotos bleiben draußen.\n\nFür einen Ausflug, eine Party oder einen Urlaub\nSchnell genug für einen spontanen Nachmittag, lang genug für zwei Wochen Urlaub.",
+  "urls": {
+    "marketing": "https://{{domain}}",
+    "support": "https://github.com/stefanhoelzl/SnapSync/issues",
+    "privacyPolicy": "https://{{domain}}/#privacy"
+  },
+  "apple": {
+    "subtitle": "Alle Fotos, in deiner Galerie",
+    "keywords": "familie,freunde,gruppe,teilen,album,event,feier,party,urlaub,reise,ausflug,geburtstag,bilder",
+    "promotionalText": "Erstelle ein Event oder tritt einem bei, und die Fotos deiner Familie und Freunde landen in deiner Galerie."
+  },
+  "play": {
+    "shortDescription": "Alle Fotos, in deiner Galerie. Ein Event mit Familie und Freunden, ganz einfach."
+  }
+}

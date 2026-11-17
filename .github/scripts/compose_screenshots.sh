@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Composite the committed raw captures into store listing images: the App Store's from `screenshots/ios/`, Google
-# Play's from `screenshots/android/`, both with the same per-locale headlines.
+# Play's from `screenshots/android/`, both with the same per-locale headlines. The raws are English for every locale
+# (capability `localization`); the headlines and the opening graphic are the locale's own.
 #
 # The raws are the SINGLE SOURCE OF TRUTH (`docs/deployment.md`); this script is the App
 # Store's rendering of them, and the backend's `deno task shots` is the landing page's. Compositing here —
@@ -38,7 +39,7 @@ HEADLINES="metadata/screenshots/${LOCALE}.json"
 case "$TARGET" in
   appstore)
     RAW_DIR="${RAW_DIR:-screenshots/ios}"
-    CONCEPT="metadata/graphic/frame-appstore.png"
+    CONCEPT="metadata/graphic/${LOCALE}/frame-appstore.png"  # this locale's words (metadata/graphic/render.py)
     CANVAS_BG="metadata/graphic/bg-appstore.png"
     # APP_IPHONE_69 accepts exactly these dimensions; App Store Connect scales this class down to the smaller
     # iPhone listings, so it is the only iPhone set we produce.
@@ -54,7 +55,7 @@ case "$TARGET" in
     ;;
   play)
     RAW_DIR="${RAW_DIR:-screenshots/android}"
-    CONCEPT="metadata/graphic/frame-play.png"
+    CONCEPT="metadata/graphic/${LOCALE}/frame-play.png"
     CANVAS_BG="metadata/graphic/bg-play.png"
     # Phones only (no tablet set): 9:16 at 1080 wide, Play's recommended size for a phone screenshot.
     CANVAS_W=1080

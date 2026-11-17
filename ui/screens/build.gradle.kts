@@ -74,10 +74,12 @@ compose.resources {
 }
 
 // The languages the app ships (`docs/architecture.md`, "Localization"): the first is the base, in `values/`. Adding
-// one is a `values-<lang>/strings.xml` in BOTH UI modules plus its tag here; `./gradlew nativeStrings` then writes
-// what each OS needs to offer it.
+// one is a `values-<lang>/strings.xml` in BOTH UI modules plus its tag here, and its store locale with a
+// `metadata/{listing,screenshots}/<store-locale>.json` (the store pages speak the same languages); `./gradlew
+// nativeStrings` then writes what each OS needs to offer it, and fails while any of these disagree.
 nativeStrings {
     locales.set(listOf("en", "de"))
+    storeLocales.set(mapOf("en" to "en-US", "de" to "de-DE"))
     otherResources.add(rootProject.file("ui/components/src/commonMain/composeResources"))
 }
 

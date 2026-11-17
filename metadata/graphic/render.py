@@ -7,9 +7,10 @@
     uv run metadata/graphic/render.py            # every layout
     uv run metadata/graphic/render.py site-hero  # one layout
 
-Run it after changing `graphic.py` or the `tagline` in `metadata/screenshots/en-US.json`, LOOK at the
-results, and commit them. Each PNG carries the tagline it was rendered with (a `snapsync-tagline` text
-chunk), which `check.py` compares with the JSON so a stale render fails the build. The words are set in the
+Run it after changing `graphic.py` or a `tagline` in `metadata/screenshots/<locale>.json`, LOOK at the
+results (every locale's: a longer translation wraps differently), and commit them. A layout with words is rendered
+once per locale (`graphic.renders`). Each PNG carries the tagline it was rendered with (a `snapsync-tagline` text
+chunk), which `check.py` compares with its locale's JSON so a stale render fails the build. The words are set in the
 machine's sans-serif (Adwaita Sans / Inter first), so render on the same kind of machine to avoid a
 font-only diff.
 """
@@ -30,10 +31,6 @@ import graphic  # noqa: E402
 TAGLINE_KEY = "snapsync-tagline"
 
 
-def tagline():
-    return json.loads((ROOT / "metadata/screenshots/en-US.json").read_text())["tagline"]
-
-
 def launch(p):
     try:
         return p.chromium.launch()
@@ -43,12 +40,12 @@ def launch(p):
 
 
 def main(names):
-    words = tagline()
-    stamp = PngImagePlugin.PngInfo()
-    stamp.add_text(TAGLINE_KEY, json.dumps(words, sort_keys=True, ensure_ascii=False))
     with sync_playwright() as p:
         browser = launch(p)
-        for name in names:
+        for name, locale, rel in graphic.renders(names):
+            words = graphic.tagline(locale)
+            stamp = PngImagePlugin.PngInfo()
+            stamp.add_text(TAGLINE_KEY, json.dumps(words, sort_keys=True, ensure_ascii=False))
             L = graphic.LAYOUTS[name]
             page = browser.new_page(viewport={"width": L["w"], "height": L["h"]}, device_scale_factor=L["scale"])
             page.set_content(graphic.page(name, words))
@@ -59,12 +56,12 @@ def main(names):
             want = (L["w"] * L["scale"], L["h"] * L["scale"])
             if shot.size != want:
                 sys.exit(f"{name}: rendered {shot.size}, expected {want}")
-            out = ROOT / L["out"]
+            out = ROOT / rel
             out.parent.mkdir(parents=True, exist_ok=True)
             shot.save(out, pnginfo=stamp, optimize=True)
-            print(f"wrote {L['out']} ({want[0]}x{want[1]})")
+            print(f"wrote {rel} ({want[0]}x{want[1]})")
         browser.close()
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:] or list(graphic.LAYOUTS))
+    main(sys.argv[1:])

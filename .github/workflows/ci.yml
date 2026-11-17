@@ -158,7 +158,7 @@ jobs:
       - name: Test the deployment resolver
         run: python3 scripts/resolve_deployment_test.py
       # The use-case graphic (metadata/graphic/): its renders are committed, not built here, so this catches a tagline
-      # changed in metadata/screenshots/en-US.json without re-running metadata/graphic/render.py.
+      # changed (or a locale added) in metadata/screenshots/<locale>.json without re-running metadata/graphic/render.py.
       - name: Check the graphic renders carry the current tagline
         run: python3 metadata/graphic/check.py
       # The App Store listing (`docs/deployment.md`), validated OFFLINE: schema, character limits, URL format. It
