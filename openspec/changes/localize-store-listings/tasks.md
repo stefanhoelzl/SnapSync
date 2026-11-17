@@ -68,7 +68,7 @@
 
 ## 5. The site stays English
 
-- [ ] 5.1 Confirm the site still reads `metadata/listing/en-US.json` / `metadata/screenshots/en-US.json` and the
+- [x] 5.1 Confirm the site still reads `metadata/listing/en-US.json` / `metadata/screenshots/en-US.json` and the
       `en-US` hero renders, and update any path the move in 3.1 changed. Verify that `cd site && deno task test` (or
       the site's test task) and the site build pass.
 

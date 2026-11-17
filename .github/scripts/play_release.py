@@ -174,8 +174,11 @@ class Edit:
         # A language with no listing yet answers 404: nothing is there to match.
         return {} if response.status_code == 404 else checked(response)
 
-    def patch_listing(self, language: str, fields: dict) -> None:
-        checked(self.http.patch(self.url(f"/listings/{language}"), json=fields, timeout=CALL_TIMEOUT))
+    def put_listing(self, language: str, fields: dict) -> None:
+        """Create or replace one language's listing. PUT, not PATCH: PATCH answers 404 for a language Play does not
+        hold yet (measured, the first de-DE preflight), and every field is sent anyway."""
+        body = {"language": language, **fields}
+        checked(self.http.put(self.url(f"/listings/{language}"), json=body, timeout=CALL_TIMEOUT))
 
     def details(self) -> dict:
         return checked(self.http.get(self.url("/details"), timeout=CALL_TIMEOUT))
@@ -243,7 +246,7 @@ def sync_listing(edit: Edit, listing_dir: str, images_dir: str, write: bool) -> 
         if text:
             changed.append(f"text {language}")
             if write:
-                edit.patch_listing(language, {f: rendered[f] for f in LISTING_FIELDS})
+                edit.put_listing(language, {f: rendered[f] for f in LISTING_FIELDS})
 
     # The contact details are the app's, not a language's: taken from the default language's rendering.
     wanted = {"contactWebsite": listings[NOTE_LANGUAGE]["contactWebsite"]}
