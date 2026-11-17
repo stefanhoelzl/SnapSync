@@ -1,10 +1,14 @@
 """SnapSync's use-case graphic: two phones on the brand green — one camera takes a photo, and it arrives in
 the other phone's gallery (`metadata/messaging.md`; decision record: changes/archive/2026-10-05-refresh-marketing-wording).
 
-This module only builds HTML. `render.py` opens each layout in headless Chromium and writes the committed PNGs
-(the look — perspective, depth, glow — needs a browser engine; a plain SVG rasteriser drops CSS 3D). Nothing
-here runs in CI: the renders are committed like the screenshot raws, and `check.py` fails the build when they
-no longer carry the tagline in `metadata/screenshots/en-US.json`.
+This module builds HTML and names the renders. `render.py` opens each layout in headless Chromium and writes the
+committed PNGs (the look — perspective, depth, glow — needs a browser engine; a plain SVG rasteriser drops CSS 3D).
+Nothing here runs in CI: the renders are committed like the screenshot raws, and `check.py` fails the build when one
+no longer carries its locale's tagline in `metadata/screenshots/<locale>.json`.
+
+A layout that carries words feeds a store page, which speaks every language the app does (capability
+`localization`), so it is rendered once per locale. A word-free layout, and the site's hero (the site is English),
+is rendered once, from `BASE`.
 
 The phones are deliberately GENERIC — a punch-hole camera, no Dynamic Island, no Apple button layout, no Apple
 UI. Apple's Guidelines for Third Parties allow Apple hardware in listing images only as a photograph of the real
@@ -12,6 +16,14 @@ product, never as an artist's rendering (the same rule `.github/scripts/compose_
 no device frame), and this graphic is the first App Store screenshot.
 """
 import html
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+# Each locale's tagline: `metadata/screenshots/<locale>.json` (one per language the app speaks — `nativeStrings`).
+SCREENSHOTS = ROOT / "metadata" / "screenshots"
+# The base locale: the word-free layouts and the site's hero are rendered from it.
+BASE = "en-US"
 
 # The painted "photos": gradient scenes, each a <symbol> 100x100, so no photo licensing is involved.
 def scenes():
@@ -152,18 +164,18 @@ body{font-family:"Adwaita Sans","Inter",-apple-system,"Segoe UI",Roboto,Helvetic
 """
 
 # Each layout: CSS-pixel size, the device scale the PNG is taken at, and where the copy and the stage sit.
-# out = the committed file, relative to the repo root.
+# out = the committed file, relative to the repo root; a layout with copy names its `{locale}`.
 LAYOUTS = {
     # Google Play's feature graphic: exactly 1024x500.
-    "feature-graphic": dict(w=1024, h=500, scale=1, out="metadata/play/images/featureGraphic.png", copy=True,
+    "feature-graphic": dict(w=1024, h=500, scale=1, out="metadata/play/images/{locale}/featureGraphic.png", copy=True,
         copy_css="left:60px;top:50%;transform:translateY(-50%);width:440px", h1=40, p=19,
         stage_css="left:500px;top:0", bg="70% 90% at 72% 55%"),
     # The App Store's first screenshot: 440x956 x3 = exactly 1320x2868 (APP_IPHONE_69).
-    "frame-appstore": dict(w=440, h=956, scale=3, out="metadata/graphic/frame-appstore.png", copy=True,
+    "frame-appstore": dict(w=440, h=956, scale=3, out="metadata/graphic/{locale}/frame-appstore.png", copy=True,
         copy_css="left:0;right:0;top:90px;text-align:center;padding:0 28px", h1=38, p=20,
         stage_css="left:12px;top:330px;transform:scale(.8);transform-origin:0 0", bg="80% 60% at 55% 55%"),
     # Google Play's first screenshot: 360x640 x3 = exactly 1080x1920 (9:16, as the compositor's Play canvas).
-    "frame-play": dict(w=360, h=640, scale=3, out="metadata/graphic/frame-play.png", copy=True,
+    "frame-play": dict(w=360, h=640, scale=3, out="metadata/graphic/{locale}/frame-play.png", copy=True,
         copy_css="left:0;right:0;top:56px;text-align:center;padding:0 22px", h1=31, p=16,
         stage_css="left:2px;top:250px;transform:scale(.69);transform-origin:0 0", bg="80% 60% at 55% 60%"),
     # The landing page's hero: the Play feature graphic's composition WITHOUT its words, wider and lower, at 2x. The page sets the
@@ -181,6 +193,24 @@ LAYOUTS = {
     "site-hero-narrow": dict(w=360, h=250, scale=3, out="metadata/graphic/site-hero-narrow.png", copy=False,
         stage_css="left:49px;top:0;transform:scale(.5);transform-origin:0 0", bg=None),
 }
+
+
+def locales():
+    """Every locale the store pages speak: one `metadata/screenshots/<locale>.json` each."""
+    return sorted(p.stem for p in SCREENSHOTS.glob("*.json"))
+
+
+def tagline(locale):
+    return json.loads((SCREENSHOTS / f"{locale}.json").read_text())["tagline"]
+
+
+def renders(names=None):
+    """Every committed render as (layout, locale, out): a layout with copy once per locale, any other once in BASE."""
+    for name, L in LAYOUTS.items():
+        if names and name not in names:
+            continue
+        for locale in (locales() if L["copy"] else [BASE]):
+            yield name, locale, L["out"].format(locale=locale)
 
 
 def page(layout, tagline):

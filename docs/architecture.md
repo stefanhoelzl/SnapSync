@@ -855,7 +855,7 @@ Cupertino) or a swap of the QR library changes one module.
 ### Localization
 
 The app ships in English (the base) and German, and is built so that another language is a translated file rather than a
-code change.
+code change. Which languages SnapSync speaks, and what follows them, is capability `localization`.
 
 - **Every word a person reads is a string resource.** `:ui:screens` and `:ui:components` each carry
   `src/commonMain/composeResources/values/strings.xml` (Compose Multiplatform Resources), read with
@@ -890,13 +890,22 @@ code change.
   setting. There is no language picker in the app. The generated files are committed and written by
   `build` (`nativeStrings`, section 6, "Generated files are written by the build"); the same task fails while
   either UI module's `values-*` directories disagree with the list.
+- **The store pages speak the same languages.** `nativeStrings { storeLocales }` names each app language's store
+  locale (`en` → `en-US`, `de` → `de-DE`; a tag has no portable store locale to derive). The task also fails while
+  `metadata/listing/` or `metadata/screenshots/` holds a `<store-locale>.json` too many or too few, or while a
+  translation's keys differ from `en-US.json`'s (`StoreListings`, `_comment` exempt). Every delivery step loops over
+  those files (`docs/deployment.md`, "Listing metadata"). As for `strings.xml`, nothing gates whether a translation
+  still says what English says: `metadata/messaging.md` has every language change in the same PR.
 - **Tests find nodes by resource, not by copy.** Screen tests look a node up by
   `str(Res.string.x)` (`TestStrings.kt`), so a copy edit breaks no test. The UI test JVMs pin `en-GB`,
   so a date assertion holds on any machine.
 
 **Adding a language:** add `values-<lang>/strings.xml` to both UI modules (including `date_language`),
-add the tag to `nativeStrings { locales }`, and run `./gradlew nativeStrings`. The store listing, its
-screenshots and the web join page stay English for now.
+add the tag to `nativeStrings { locales }` and its store locale to `storeLocales`, add
+`metadata/listing/<store-locale>.json` and `metadata/screenshots/<store-locale>.json` (following
+`metadata/messaging.md`), render the graphic (`uv run metadata/graphic/render.py`), and run `./gradlew nativeStrings`.
+The app screens inside the store screenshots, What's New, the site and the invite page stay English
+(capability `localization`).
 
 ---
 

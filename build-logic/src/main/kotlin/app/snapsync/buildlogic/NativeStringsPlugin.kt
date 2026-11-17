@@ -1,14 +1,18 @@
 package app.snapsync.buildlogic
 
+import groovy.json.JsonSlurper
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -29,7 +33,8 @@ import javax.xml.parsers.DocumentBuilderFactory
  * The outputs are COMMITTED, like the architecture diagrams, and written during `build` (`docs/architecture.md`,
  * "Generated files are written by the build"): a file is rewritten only when its text changed, and the build says so;
  * CI fails while the build leaves the tree dirty. The same task fails while a module's translations and the locale
- * list disagree.
+ * list disagree, and while the store listing's language files disagree with it ([StoreListings]): each app language
+ * names ONE store locale (`storeLocales`), and the listing speaks exactly those.
  */
 class NativeStringsPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -40,11 +45,16 @@ class NativeStringsPlugin : Plugin<Project> {
         extension.xcstrings.convention(root.file("iosApp/iosApp/InfoPlist.xcstrings"))
         extension.androidRes.convention(root.dir("adapter/android/src/androidMain/res"))
         extension.localeConfig.convention(root.file("app/android/src/main/res/xml/locales_config.xml"))
+        extension.storeListings.convention(
+            listOf(root.dir("metadata/listing").asFile, root.dir("metadata/screenshots").asFile),
+        )
 
         val writer = project.tasks.register("nativeStrings", NativeStringsTask::class.java) {
             group = "build"
             description = "Writes the OS-shown strings and locale lists from the screens' strings.xml."
             locales.set(extension.locales)
+            storeLocales.set(extension.storeLocales)
+            storeListings.from(extension.storeListings)
             strings.set(extension.strings)
             otherResources.set(extension.otherResources)
             infoPlist.set(extension.infoPlist)
@@ -82,6 +92,15 @@ abstract class NativeStringsExtension {
     /** The languages the app ships, as BCP 47 tags; the first is the base (`values/`). */
     abstract val locales: ListProperty<String>
 
+    /**
+     * Each app language's store locale: the name App Store Connect and Google Play give it, and the stem of its
+     * listing files (`en` → `en-US`). Covers exactly [locales]; a tag has no portable store locale to derive.
+     */
+    abstract val storeLocales: MapProperty<String, String>
+
+    /** The store listing's language-file families, each a directory of `<store-locale>.json` ([StoreListings]). */
+    abstract val storeListings: ListProperty<File>
+
     /** The `composeResources` directory the OS strings are read from. */
     abstract val strings: DirectoryProperty
 
@@ -97,6 +116,13 @@ abstract class NativeStringsExtension {
 abstract class NativeStringsTask : DefaultTask() {
     @get:Input
     abstract val locales: ListProperty<String>
+
+    @get:Input
+    abstract val storeLocales: MapProperty<String, String>
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val storeListings: ConfigurableFileCollection
 
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -133,6 +159,7 @@ abstract class NativeStringsTask : DefaultTask() {
         val tags = locales.get()
         if (tags.isEmpty()) throw GradleException("nativeStrings: no locales declared")
         (listOf(strings.get().asFile) + otherResources.get()).forEach { checkLocales(it, tags) }
+        checkStoreListings(tags)
         val byLocale = tags.associateWith {
             readStrings(
                 File(strings.get().asFile, "${valuesDir(it, tags)}/strings.xml"),
@@ -164,6 +191,29 @@ abstract class NativeStringsTask : DefaultTask() {
             throw GradleException(
                 "nativeStrings: ${dir.relativeTo(rootDir.get().asFile)} has ${present.sorted()}, but the locale list " +
                     "$tags declares ${declared.sorted()}. A translation and its declaration land together.",
+            )
+        }
+    }
+
+    /** The store listing speaks exactly the app's languages, each file with the base's keys ([StoreListings]). */
+    private fun checkStoreListings(tags: List<String>) {
+        val mapping = storeLocales.get()
+        if (mapping.keys != tags.toSet()) {
+            throw GradleException(
+                "nativeStrings: storeLocales maps ${mapping.keys.sorted()}, but the locale list declares $tags. " +
+                    "Each app language names its store locale.",
+            )
+        }
+        val root = rootDir.get().asFile
+        val families = storeListings.files.associate { dir ->
+            dir.relativeTo(root).path to dir.listFiles().orEmpty().filter { it.isFile && it.extension == "json" }
+                .associate { it.nameWithoutExtension to JsonSlurper().parse(it) }
+        }
+        val problems = StoreListings.problems(families, tags.map { mapping.getValue(it) })
+        if (problems.isNotEmpty()) {
+            throw GradleException(
+                "nativeStrings: the store listing disagrees with the app's languages $tags " +
+                    "(`docs/architecture.md`, \"Localization\"):\n" + problems.joinToString("\n") { "  - $it" },
             )
         }
     }

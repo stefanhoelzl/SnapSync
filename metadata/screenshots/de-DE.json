@@ -1,0 +1,16 @@
+{
+  "_comment": [
+    "The German screenshot headlines and tagline: en-US.json's in German, with exactly its keys (`./gradlew",
+    "nativeStrings` fails otherwise). The headlines sit over the ENGLISH captures (capability `localization`); the",
+    "tagline is rendered into this locale's graphic (metadata/graphic/render.py). Change it in the same PR as English."
+  ],
+  "headlines": {
+    "create": "Erstelle ein Event",
+    "joining": "Deine Familie und Freunde treten bei",
+    "in_sync": "Fotos kommen von selbst an"
+  },
+  "tagline": {
+    "headline": "Alle Fotos, in deiner Galerie.",
+    "support": "Tritt einfach einem Event bei, und die Fotos deiner Familie und Freunde landen in deiner Galerie."
+  }
+}

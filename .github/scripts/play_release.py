@@ -42,10 +42,13 @@ the rerun completes it.
 
 THE STORE LISTING (`docs/deployment.md`, "Google Play listing delivery"). Play's listing is one per app, not per
 track or release, so it is written only when a release is promoted — never on a merge — and so describes the build
-users can install, as the App Store's version-bound listing does. <listing dir> holds the rendered Play listing,
-`<language>.json` (title, shortDescription, fullDescription, contactWebsite: scripts/resolve-deployment.py renders it
-from metadata/listing/); <images dir> holds icon.png, featureGraphic.png and phoneScreenshots/*.png, in upload order.
-Each text field, the contact details and each image set is compared with what Play holds — text by value, images by
+users can install, as the App Store's version-bound listing does. It speaks every language the app does (capability
+`localization`): <listing dir> holds one rendered Play listing per language, `<language>.json` (title,
+shortDescription, fullDescription, contactWebsite: scripts/resolve-deployment.py renders them from metadata/listing/),
+the default language (en-US) among them; <images dir> holds, per language, `<language>/icon.png`,
+`<language>/featureGraphic.png` and `<language>/phoneScreenshots/*.png`, in upload order — Play keeps every image per
+language. Release notes stay en-US only: Play shows the default language's to every other.
+Each language's text fields, the contact details and each language's image set is compared with what Play holds — text by value, images by
 the sha256 Play lists, which is the uploaded file's own (measured: Play keeps the bytes) — and only a difference is
 written. So a promote that changes no copy and no image sends Play no listing change to review. PLAY_CONTACT_EMAIL, when set, is the
 listing's contact email (a secret: it never enters the repo, and is never printed).
@@ -202,16 +205,18 @@ class Edit:
         print(f"committed edit {self.id}")
 
 
-def rendered_listing(listing_dir: str) -> tuple[str, dict]:
-    """The one rendered language's listing: (language, fields). Play's listing is en-US only today."""
+def rendered_listings(listing_dir: str) -> dict[str, dict]:
+    """Every rendered language's listing, language → fields: one per language the app speaks (`localization`)."""
     files = sorted(pathlib.Path(listing_dir).glob("*.json"))
-    if len(files) != 1:
-        sys.exit(f"error: expected exactly one rendered listing in {listing_dir}, found {[f.name for f in files]}")
-    return files[0].stem, json.loads(files[0].read_text())
+    listings = {f.stem: json.loads(f.read_text()) for f in files}
+    if NOTE_LANGUAGE not in listings:
+        sys.exit(f"error: no {NOTE_LANGUAGE} listing (the default language) in {listing_dir}, found {sorted(listings)}")
+    return listings
 
 
-def image_sets(images_dir: str) -> dict[str, list[pathlib.Path]]:
-    root = pathlib.Path(images_dir)
+def image_sets(images_dir: str, language: str) -> dict[str, list[pathlib.Path]]:
+    """One language's image sets, from `<images dir>/<language>/`: Play keeps every image per language."""
+    root = pathlib.Path(images_dir) / language
     sets = {
         "icon": [root / "icon.png"],
         "featureGraphic": [root / "featureGraphic.png"],
@@ -225,20 +230,23 @@ def image_sets(images_dir: str) -> dict[str, list[pathlib.Path]]:
 
 
 def sync_listing(edit: Edit, listing_dir: str, images_dir: str, write: bool) -> list[str]:
-    """Bring Play's listing in line with the rendered one; answer what differed. With write=False only compare."""
-    language, rendered = rendered_listing(listing_dir)
+    """Bring Play's listing in line with the rendered one, every language; answer what differed. With write=False only
+    compare. A language Play holds that is not rendered is left alone: removing one is a console decision."""
+    listings = rendered_listings(listing_dir)
     changed = []
 
-    held = edit.listing(language)
-    text = {f: rendered[f] for f in LISTING_FIELDS if held.get(f) != rendered[f]}
-    for field in LISTING_FIELDS:
-        print(f"listing {language} {field}: {'updated' if field in text else 'unchanged'}")
-    if text:
-        changed.append("text")
-        if write:
-            edit.patch_listing(language, {f: rendered[f] for f in LISTING_FIELDS})
+    for language, rendered in listings.items():
+        held = edit.listing(language)
+        text = {f: rendered[f] for f in LISTING_FIELDS if held.get(f) != rendered[f]}
+        for field in LISTING_FIELDS:
+            print(f"listing {language} {field}: {'updated' if field in text else 'unchanged'}")
+        if text:
+            changed.append(f"text {language}")
+            if write:
+                edit.patch_listing(language, {f: rendered[f] for f in LISTING_FIELDS})
 
-    wanted = {"contactWebsite": rendered["contactWebsite"]}
+    # The contact details are the app's, not a language's: taken from the default language's rendering.
+    wanted = {"contactWebsite": listings[NOTE_LANGUAGE]["contactWebsite"]}
     email = os.environ.get("PLAY_CONTACT_EMAIL", "").strip()
     if email:
         wanted["contactEmail"] = email
@@ -251,14 +259,15 @@ def sync_listing(edit: Edit, listing_dir: str, images_dir: str, write: bool) -> 
         if write:
             edit.patch_details(wanted)
 
-    for kind, files in image_sets(images_dir).items():
-        ours = [hashlib.sha256(f.read_bytes()).hexdigest() for f in files]
-        same = edit.image_hashes(language, kind) == ours
-        print(f"images {language} {kind} ({len(files)}): {'unchanged' if same else 'updated'}")
-        if not same:
-            changed.append(kind)
-            if write:
-                edit.replace_images(language, kind, files)
+    for language in listings:
+        for kind, files in image_sets(images_dir, language).items():
+            ours = [hashlib.sha256(f.read_bytes()).hexdigest() for f in files]
+            same = edit.image_hashes(language, kind) == ours
+            print(f"images {language} {kind} ({len(files)}): {'unchanged' if same else 'updated'}")
+            if not same:
+                changed.append(f"{kind} {language}")
+                if write:
+                    edit.replace_images(language, kind, files)
     return changed
 
 

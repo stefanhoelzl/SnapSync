@@ -646,6 +646,18 @@ class ListingTest(unittest.TestCase):
         with self.assertRaisesRegex(rd.ResolveError, "gallery.*play"):
             self.render({**LISTING, "words": {"gallery": {"apple": "Photos app"}}})
 
+    def test_every_language_renders_for_both_stores(self):
+        # One file per store locale (capability `localization`); each renders on its own, with its own copy.
+        t = with_listing(Tree().standard(), LISTING)
+        (t.root / "metadata" / "listing" / "de-DE.json").write_text(json.dumps({**LISTING, "name": "App DE"}))
+        rd.emit(t.root, t.resolve())
+        out = t.root / "build/metadata"
+        rendered = sorted(str(p.relative_to(out)) for p in out.rglob("*.json"))
+        self.assertEqual(rendered, ["app-info/de-DE.json", "app-info/en-US.json", "play/de-DE.json", "play/en-US.json",
+                                    "version/current/de-DE.json", "version/current/en-US.json"])
+        self.assertEqual(json.loads((out / "play/de-DE.json").read_text())["title"], "App DE")
+        self.assertEqual(json.loads((out / "app-info/en-US.json").read_text())["name"], "App")
+
     def test_nothing_else_under_metadata_is_rendered(self):
         t = with_listing(Tree().standard(), LISTING)
         (t.root / "metadata" / "screenshots").mkdir()

@@ -158,9 +158,10 @@ jobs:
 
       # PLAY'S STORE LISTING (`docs/deployment.md`, "Google Play listing delivery"), staged for the Play preflight and
       # release below, which compare each part with what Play holds and write only a difference. The text is rendered
-      # from metadata/listing/ and checked against Play's limits (as the `metadata` gate did), the icon and feature
-      # graphic are the committed ones, and the phone screenshots are composited from screenshots/android/ with the
-      # shared headlines — byte-stable, which is what the comparison relies on. Before any store mutation, so a broken
+      # from metadata/listing/ and checked against Play's limits (as the `metadata` gate did), the icon and each
+      # language's feature graphic are the committed ones, and the phone screenshots are composited from
+      # screenshots/android/ with each language's headlines — byte-stable, which is what the comparison relies on.
+      # Every language the app speaks gets the lot (capability `localization`). Before any store mutation, so a broken
       # render costs a red run and nothing else.
       - name: Render the Play store listing and its images
         if: ${{ inputs.android }}
@@ -169,10 +170,15 @@ jobs:
           python3 scripts/resolve-deployment.py prod --quiet
           python3 scripts/validate_play_listing.py build/metadata/play
           IMAGES="$RUNNER_TEMP/play-images"
-          mkdir -p "$IMAGES/phoneScreenshots"
-          cp metadata/play/images/icon.png metadata/play/images/featureGraphic.png "$IMAGES/"
-          TARGET=play OUT_DIR="$RUNNER_TEMP/play-shots" bash .github/scripts/compose_screenshots.sh en-US
-          cp "$RUNNER_TEMP/play-shots/en-US/"*.png "$IMAGES/phoneScreenshots/"
+          # Per language (capability `localization`; Play keeps every image per language): the one icon, that
+          # language's feature graphic, and the English raws under that language's headlines.
+          for listing in build/metadata/play/*.json; do
+            locale="$(basename "$listing" .json)"
+            mkdir -p "$IMAGES/$locale/phoneScreenshots"
+            cp metadata/play/images/icon.png "metadata/play/images/$locale/featureGraphic.png" "$IMAGES/$locale/"
+            TARGET=play OUT_DIR="$RUNNER_TEMP/play-shots" bash .github/scripts/compose_screenshots.sh "$locale"
+            cp "$RUNNER_TEMP/play-shots/$locale/"*.png "$IMAGES/$locale/phoneScreenshots/"
+          done
 
       # DERIVE the store version from the build (no mutation), for EITHER store. Fails fast if the build's marketing
       # version is not two-part X.Y (e.g. a pre-change 0.1.0 build cannot be promoted). Also reports whether the
@@ -324,8 +330,8 @@ jobs:
           ASC: ${{ runner.temp }}/asc
         run: bash .github/scripts/asc_screenshots_upload.sh
 
-      # The release notes derived above, written to the version's en-US localization. AFTER the attach (the record
-      # must exist to be resolved) and BEFORE the submit — a submitted version must not carry the previous
+      # The release notes derived above, written (in English) to every localization of the version. AFTER the attach
+      # (the record must exist to be resolved) and BEFORE the submit — a submitted version must not carry the previous
       # release's notes, and must not be missing them.
       - name: Apply the release notes
         if: ${{ inputs.ios && steps.resolve.outputs.submitted != 'true' }}

@@ -16,14 +16,17 @@
 # matters MORE here than for text: replacing a screenshot set is destructive.
 #
 # Env: ASC (path to the asc binary), ASC_APP_ID, plus asc's auth vars (ASC_KEY_ID / ASC_ISSUER_ID /
-# ASC_PRIVATE_KEY, ASC_BYPASS_KEYCHAIN=1). LOCALE defaults to en-US.
+# ASC_PRIVATE_KEY, ASC_BYPASS_KEYCHAIN=1).
+#
+# EVERY LOCALE the store page speaks (capability `localization`): one set per `metadata/screenshots/<locale>.json`,
+# each composed into `$OUT_DIR/<locale>/`, which the one `--path` upload fans out over (its immediate children are
+# locale directories). `./gradlew nativeStrings` keeps that file set equal to the app's languages.
 set -euo pipefail
 # shellcheck source=.github/scripts/asc_lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/asc_lib.sh"
 
 ASC="${ASC:-${RUNNER_TEMP:-/tmp}/asc}"
 APP="${ASC_APP_ID:?ASC_APP_ID is required}"
-LOCALE="${LOCALE:-en-US}"
 DEVICE_TYPE="APP_IPHONE_69"   # 1320x2868; App Store Connect scales this class down to smaller iPhones
 
 # State gate (`asc_lib.sh`): only PREPARE_FOR_SUBMISSION / DEVELOPER_REJECTED are editable; none is a green no-op.
@@ -31,7 +34,9 @@ asc_require_editable_version upload
 
 # Compose from the committed raws. Fails loudly on a missing raw or a wrong output size.
 OUT_DIR="${RUNNER_TEMP:-/tmp}/shots-out"
-RAW_DIR=screenshots/ios OUT_DIR="$OUT_DIR" bash .github/scripts/compose_screenshots.sh "$LOCALE"
+for headlines in metadata/screenshots/*.json; do
+  RAW_DIR=screenshots/ios OUT_DIR="$OUT_DIR" bash .github/scripts/compose_screenshots.sh "$(basename "$headlines" .json)"
+done
 
 # Show the plan before mutating a public listing. --dry-run reports what would be uploaded/deleted.
 echo "=== dry run ==="

@@ -1,5 +1,6 @@
-"""Fail when a committed render of the use-case graphic no longer carries the tagline in
-`metadata/screenshots/en-US.json` — i.e. the words changed and nobody re-ran `render.py`.
+"""Fail when a committed render of the use-case graphic no longer carries its locale's tagline in
+`metadata/screenshots/<locale>.json` (`graphic.renders`: a layout with words per locale, any other in the base) —
+i.e. the words changed, or a locale was added, and nobody re-ran `render.py`.
 
     python3 metadata/graphic/check.py
 
@@ -14,7 +15,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 sys.path.insert(0, str(HERE))
-from graphic import LAYOUTS  # noqa: E402
+from graphic import renders, tagline  # noqa: E402
 
 KEY = b"snapsync-tagline"
 
@@ -43,22 +44,22 @@ def text_chunks(path: Path) -> dict:
 
 
 def main() -> int:
-    want = json.loads((ROOT / "metadata/screenshots/en-US.json").read_text())["tagline"]
     stale = []
-    for name, layout in LAYOUTS.items():
-        png = ROOT / layout["out"]
+    expected = list(renders())
+    for _, locale, rel in expected:
+        png = ROOT / rel
         if not png.exists():
-            stale.append(f"{layout['out']}: missing")
+            stale.append(f"{rel}: missing")
             continue
         got = text_chunks(png).get(KEY)
-        if got is None or json.loads(got) != want:
-            stale.append(f"{layout['out']}: rendered with {got or 'no tagline stamp'}")
+        if got is None or json.loads(got) != tagline(locale):
+            stale.append(f"{rel}: rendered with {got or 'no tagline stamp'}")
     if stale:
         print("The use-case graphic is stale — re-render the graphic: uv run metadata/graphic/render.py", file=sys.stderr)
         for line in stale:
             print("  " + line, file=sys.stderr)
         return 1
-    print(f"graphic: {len(LAYOUTS)} renders carry the current tagline")
+    print(f"graphic: {len(expected)} renders carry their locale's current tagline")
     return 0
 
 
