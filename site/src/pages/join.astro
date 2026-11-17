@@ -17,7 +17,7 @@
 // handles CRC + ZIP64 so a >4 GB event does not corrupt the archive.
 import Layout from "../layouts/Layout.astro";
 import AppStoreButton from "../components/AppStoreButton.astro";
-import PlayOffer from "../components/PlayOffer.astro";
+import PlayStoreButton from "../components/PlayStoreButton.astro";
 ---
 
 <Layout title="%%TITLE%%" ogTitle="%%OG_TITLE%%" description="%%DESCRIPTION%%" ogUrl="%%URL%%">
@@ -43,7 +43,7 @@ import PlayOffer from "../components/PlayOffer.astro";
       </div>
       <div class="cta">
         <AppStoreButton />
-        <PlayOffer />
+        <PlayStoreButton />
       </div>
     </div>
     <div id="invalid">
@@ -53,7 +53,7 @@ import PlayOffer from "../components/PlayOffer.astro";
       </p>
       <div class="cta">
         <AppStoreButton />
-        <PlayOffer />
+        <PlayStoreButton />
       </div>
     </div>
   </div>
