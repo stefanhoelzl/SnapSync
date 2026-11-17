@@ -706,7 +706,9 @@ no Gradle, no signing, only the existing Admin ASC key and Play service account.
    copyright is left alone. Upload the listing screenshots, one set per store locale: that locale's use-case graphic
    first, then the app captures composed from `screenshots/ios/*.png` (English in every locale) under
    `metadata/screenshots/<locale>.json`'s headlines (ImageMagick). Only an **editable** version is written to, and
-   each set is **replaced**. Apply the `whatsNew` to **every** localization: the same English notes, created for a
+   each set is **replaced**. The upload refuses a locale the version lacks, so each committed locale missing from
+   the version is created first (`asc_lib.sh`'s `asc_ensure_localizations`). That only happens in a locale's first
+   release; its text comes from the metadata apply on the merge that added it. Apply the `whatsNew` to **every** localization: the same English notes, created for a
    committed locale the version lacks. What's New stays English by decision (capability `localization`), and Apple
    refuses an update while any localization lacks it. Then apply the App Review details (notes from `metadata/review/notes.md`;
    contact details from secrets because the repo is public; "no demo account").

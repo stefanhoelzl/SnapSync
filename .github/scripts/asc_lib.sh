@@ -3,7 +3,7 @@
 #
 #   source "$(dirname "${BASH_SOURCE[0]}")/asc_lib.sh"
 #
-# Both read the caller's ASC (the asc binary) and APP (the app id), and set a global the caller reads next.
+# Each reads the caller's ASC (the asc binary) and APP (the app id), and sets a global the caller reads next.
 
 # The state gate: resolve the EDITABLE version into `version`, or conclude the calling script green when there is
 # none. Only PREPARE_FOR_SUBMISSION / DEVELOPER_REJECTED are editable. `asc` takes an explicit --version and its
@@ -41,4 +41,27 @@ asc_require_version_id() {
     exit 1
   fi
   echo "App Store version '$wanted' = $version_id"
+}
+
+# Make the version hold a localization for every committed store locale (`metadata/listing/<locale>.json`, one per
+# language the app speaks — capability `localization`), creating each it lacks, and set `localizations` to every
+# locale it then holds, one per line. App Store Connect seeds a new version's localizations from the previous
+# version, so this creates nothing in practice — except in a locale's first release, where the screenshot upload
+# refuses a locale the version lacks ("no matching App Store version localizations found", measured on the first
+# de-DE dry run) and the release notes would fail on it. A created localization gets its text from the main-only
+# metadata apply, which runs on the merge that adds the locale, before any promote of it.
+#
+# Usage: asc_ensure_localizations <version id> <version string>
+asc_ensure_localizations() {
+  local id="$1" label="$2" listing locale
+  localizations="$("$ASC" localizations list --version "$id" --output json \
+    | jq -r '[.. | objects | .attributes?.locale? // empty] | unique | .[]')"
+  for listing in metadata/listing/*.json; do
+    locale="$(basename "$listing" .json)"
+    if ! grep -qxF "$locale" <<<"$localizations"; then
+      echo "version '$label' has no $locale localization — creating"
+      "$ASC" localizations create --version "$id" --locale "$locale"
+      localizations="$(printf '%s\n%s' "$localizations" "$locale" | sed '/^$/d')"
+    fi
+  done
 }
