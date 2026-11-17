@@ -3,7 +3,6 @@
 // Deno: `deno test --allow-read scripts/` (npm run check:unit, after the build in CI's site-build job).
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { walkSync } from "jsr:@std/fs@^1/walk";
-import { playOfferFor } from "../src/lib/play.ts";
 
 const SITE = new URL("../", import.meta.url);
 const DIST = new URL("dist/", SITE);
@@ -52,14 +51,6 @@ function views(html: string): { app: string; invalid: string } {
   return { app: html.slice(app, invalid), invalid: html.slice(invalid, end) };
 }
 
-/** The Google Play links the deployment's offer puts on a page (none before Google Play). */
-function playHrefs(): string[] {
-  const offer = playOfferFor(deployment);
-  if (offer.kind === "none") return [];
-  if (offer.kind === "listing") return [offer.listingUrl];
-  return [offer.groupUrl, offer.optInUrl, offer.listingUrl];
-}
-
 const hrefs = (html: string) => links(html).map((a) => a.get("href") ?? "");
 
 // @Verifies(spec = "event-site", requirement = "A shared invite previews its event", scenario = "A preview shows no photo")
@@ -69,28 +60,44 @@ Deno.test("the event page's preview image is the app icon, never an event's phot
   assert(!image.includes("%%"), "no token the api could fill with a photo");
 });
 
-// @Verifies(spec = "event-site", requirement = "The page always offers the download and the app", scenario = "Both actions are offered")
+// @Verifies(spec = "event-site", requirement = "The page always offers the download and both stores", scenario = "Both actions are offered")
 Deno.test("the event page offers the zip download and the app", () => {
   const { app } = views(eventPage());
   assert(/<button[^>]*id="download"[^>]*>Download all photos \(zip\)<\/button>/.test(app));
   assert(hrefs(app).includes(deployment.appStoreUrl));
 });
 
-// @Verifies(spec = "event-site", requirement = "The page always offers the download and the app", scenario = "The tester steps are offered for an invalid link too")
-Deno.test(
-  "an invalid link's view offers the App Store and the same Google Play offer, and no download",
-  () => {
-    const { app, invalid } = views(eventPage());
-    assert(hrefs(invalid).includes(deployment.appStoreUrl));
-    for (const href of playHrefs()) {
-      assert(hrefs(app).includes(href), href);
-      assert(hrefs(invalid).includes(href), href);
-    }
-    assert(!invalid.includes('id="download"'));
-  },
-);
+// @Verifies(spec = "event-site", requirement = "The page always offers the download and both stores", scenario = "Both stores are offered")
+// The page's part: the markup links both listings. Its Google Play link names no invite; the island adds the
+// referrer only after it has decoded a valid one (src/lib/invite.ts).
+Deno.test("the event page links both stores", () => {
+  const { app } = views(eventPage());
+  assert(hrefs(app).includes(deployment.appStoreUrl));
+  assert(hrefs(app).includes(deployment.playStoreUrl));
+});
 
-// @Verifies(spec = "web-site", requirement = "A public landing page describes SnapSync", scenario = "A visitor opens the site")
+// @Verifies(spec = "event-site", requirement = "The page always offers the download and both stores", scenario = "Both stores are offered for an invalid link too")
+Deno.test("an invalid link's view offers both stores, and no download", () => {
+  const { invalid } = views(eventPage());
+  assert(hrefs(invalid).includes(deployment.appStoreUrl));
+  assert(hrefs(invalid).includes(deployment.playStoreUrl));
+  assert(!invalid.includes('id="download"'));
+});
+
+// @Verifies(spec = "web-site", requirement = "The landing page describes SnapSync and offers both stores", scenario = "Both stores are offered")
+// @Verifies(spec = "privacy-security", requirement = "The event's identity goes only to SnapSync's own service", scenario = "The landing page carries no invite")
+// The landing page's Google Play link is the listing itself, with no referrer.
+Deno.test("the landing page links both stores, the Google Play listing without a referrer", () => {
+  const html = landing();
+  assert(hrefs(html).includes(deployment.appStoreUrl));
+  assert(hrefs(html).includes(deployment.playStoreUrl));
+  assert(
+    !hrefs(html).some((h) => h.includes("referrer=")),
+    "no link on the landing page carries an invite",
+  );
+});
+
+// @Verifies(spec = "web-site", requirement = "The landing page describes SnapSync and offers both stores", scenario = "A visitor opens the site")
 Deno.test("the landing page describes SnapSync and links the App Store", () => {
   const html = landing();
   assert(/<title>SnapSync\b[^<]*<\/title>/.test(html));
@@ -169,10 +176,9 @@ Deno.test("every App Store link opens in a tab of its own", () =>
 
 // @Verifies(spec = "web-site", requirement = "Links to other sites never replace the SnapSync page", scenario = "Following the Google Play link")
 // The page's part: the link asks for a tab of its own. The browser opens it.
-Deno.test("every Google Play link opens in a tab of its own", () => {
-  if (playHrefs().length === 0) return; // no Google Play offer before publication: nothing to open
-  opensSeparately("https://play.google.com/");
-});
+Deno.test("every Google Play link opens in a tab of its own", () =>
+  opensSeparately("https://play.google.com/"),
+);
 
 /** Whether [href] leaves the site: an email address, or a web address on another host than the site's own. */
 function leavesSite(href: string): boolean {

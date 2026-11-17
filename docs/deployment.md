@@ -28,7 +28,7 @@ deployments/local.json                 the local rig: filesystem storage, domain
 deployments/components/build.json      build-scope values: sha (GITHUB_SHA), channel (SNAPSYNC_CHANNEL)
 deployments/components/policy.json     eventWindowMaxSeconds, eventLifetimeSeconds, attestTokenTtlSeconds
 deployments/components/apple.json      bundleId, teamId, apnsKeyId, appStoreUrl, appAttestRootCa
-deployments/components/android.json    androidPackageName, playStoreUrl, playTestGroupUrl, the attestation roots/trust/digests,
+deployments/components/android.json    androidPackageName, playStoreUrl, the attestation roots/trust/digests,
                                        the Firebase values
 deployments/components/storage-*.json  storage kind / zone / host / s3Region + the access-key env reference
 deployments/components/prod-core.json  domain + the env references for every secret, shared by prod and
@@ -120,23 +120,15 @@ The deployment declares the **names**. Values come from the environment of which
   provisioning for team `E9Z8BADH58`. Decision record: `changes/archive/2026-07-05-push-notification-infra`.
 - Store pages: `appStoreUrl` (`apple.json`) and `playStoreUrl` (`android.json`) reach the site and their
   platform's build — the site's two badges and each platform's update notice (capability `app-update-required`).
-  `playStoreUrl` is **empty until the Play listing is public** (production launch): empty shows no Play badge,
-  gives the Android notice no button, and leaves the event page's install-referrer path dormant. Setting it — to
-  exactly `https://play.google.com/store/apps/details?id=<androidPackageName>`, which the resolver enforces
-  because the event page appends `&referrer=<invite>` — switches all three on: the site on its next deploy, the
-  Android notice in the next Android build. Decision record: `changes/archive/2026-10-01-play-badge-and-install-referrer`.
-- The Play closed test: `playTestGroupUrl` (`android.json`, site only) names the Google Group that is the closed
-  track's tester list, set only while that test runs and anyone may join it. While it is set, the landing page
-  and the event page show three steps where the Play badge sits — join the group, opt in on
-  `play.google.com/apps/testing/<androidPackageName>`, install from the listing — the last step being the badge
-  itself, so the event page's install referrer works through the steps. The site derives the opt-in page and the
-  listing from `androidPackageName`. So the site has three states: group set → the steps; `playStoreUrl` set →
-  the badge alone; neither → no Google Play at all. The resolver refuses the two set together. **The production
-  switch** is therefore one `android.json` edit — empty `playTestGroupUrl`, set `playStoreUrl` — made in 2026-11 once
-  Google approved the first production release, since the site's next deploy links the public listing. Since then
-  the site shows the badge alone, and `promote.yml` releases to `production` ("Promote a build you already tested").
-  The first production release, 0.6 (2421), was promoted from the closed track by hand in the Play Console: its tag
-  was spent on `alpha`. Decision record: `changes/archive/2026-10-02-advertise-play-closed-test`.
+  `playStoreUrl` is **required**: exactly `https://play.google.com/store/apps/details?id=<androidPackageName>`,
+  which the resolver enforces because the event page appends `&referrer=<invite>` (the install referrer). Both
+  pages always show the Play badge. Decision record: `changes/archive/2026-10-01-play-badge-and-install-referrer`.
+- The Play closed test is over. Until Google granted production access, the site offered Google Play as three
+  tester steps (`changes/archive/2026-10-02-advertise-play-closed-test`). The production launch came in 2026-11: the
+  first production release, 0.6 (2421), was promoted from the closed track by hand in the Play Console, its tag
+  having been spent on `alpha`, and `promote.yml` releases to `production` since ("Promote a build you already
+  tested"). The tester steps, their `playTestGroupUrl` key and the site's "no Google Play" state were removed
+  afterwards (`changes/archive/2026-11-17-drop-play-closed-test`).
 
 ### iOS: the baked values
 

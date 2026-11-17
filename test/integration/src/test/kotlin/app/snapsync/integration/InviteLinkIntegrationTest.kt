@@ -265,7 +265,7 @@ class InviteLinkIntegrationTest {
     @Test
     @Verifies(
         spec = "invite-link",
-        requirement = "Without the app, the invite leads to a store and back",
+        requirement = "Without the app, an invite leads to a store and back",
         scenario = "Installing, then reopening the invite joins",
     )
     fun a_fresh_install_opens_the_invite_on_its_join_screen() = behaviour {

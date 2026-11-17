@@ -13,9 +13,7 @@
 import { Image, getImage } from "astro:assets";
 import Layout from "../layouts/Layout.astro";
 import AppStoreButton from "../components/AppStoreButton.astro";
-import PlayOffer from "../components/PlayOffer.astro";
-import deployment from "../deployment.json";
-import { playOfferFor } from "../lib/play";
+import PlayStoreButton from "../components/PlayStoreButton.astro";
 import listing from "../../../metadata/listing/en-US.json";
 import shotCopy from "../../../metadata/screenshots/en-US.json";
 import heroArt from "../../../metadata/graphic/site-hero.png";
@@ -70,8 +68,6 @@ const sections = listing.description
 const heroNarrowSrc = (await getImage({ src: heroNarrow, width: 720, format: "webp" })).src;
 // The tagline breaks after its comma, as the graphic sets it ("Every photo, / in your gallery.").
 const heroLines = shotCopy.tagline.headline.split(", ");
-// Google Play is offered — the badge alone or the closed test's steps, whose third step is the badge.
-const playOffered = playOfferFor(deployment).kind !== "none";
 ---
 
 <Layout title={`SnapSync — ${shotCopy.tagline.headline}`}>
@@ -99,7 +95,7 @@ const playOffered = playOfferFor(deployment).kind !== "none";
       </div>
       <div class="cta">
         <AppStoreButton />
-        <PlayOffer />
+        <PlayStoreButton />
       </div>
     </div>
   </section>
@@ -337,20 +333,17 @@ const playOffered = playOfferFor(deployment).kind !== "none";
           event's key, after a "#", which your browser never sends anywhere; the page uses it to
           open the photos in your browser, and without it the page shows no photos.
         </li>
-        {playOffered && (
-          <li>
-            <strong>Getting the app on Android from an invite.</strong> If you follow the Google
-            Play button on an event page, the page hands that event's invite to Google Play, so that
-            SnapSync can open the invite once it is installed on your phone. Google Play then
-            receives the invite, which is the key to the event: anyone holding it can see the
-            event's photos. For an encrypted event, the invite handed over includes the event's key,
-            and only when the page was opened with it. Nothing is handed over unless you follow that
-            button; the button on this landing page never carries an invite, and neither does the
-            page for an invalid or expired link. Google's handling of it is covered by Google's own
-            privacy policy. Legal basis: your consent (GDPR Art. 6(1)(a)), given by following the
-            button.
-          </li>
-        )}
+        <li>
+          <strong>Getting the app on Android from an invite.</strong> If you follow the Google Play
+          button on an event page, the page hands that event's invite to Google Play, so that
+          SnapSync can open the invite once it is installed on your phone. Google Play then receives
+          the invite, which is the key to the event: anyone holding it can see the event's photos.
+          For an encrypted event, the invite handed over includes the event's key, and only when the
+          page was opened with it. Nothing is handed over unless you follow that button; the button
+          on this landing page never carries an invite, and neither does the page for an invalid or
+          expired link. Google's handling of it is covered by Google's own privacy policy. Legal
+          basis: your consent (GDPR Art. 6(1)(a)), given by following the button.
+        </li>
       </ul>
       <p>
         We record nothing that identifies you: no name, email address, phone number, account,

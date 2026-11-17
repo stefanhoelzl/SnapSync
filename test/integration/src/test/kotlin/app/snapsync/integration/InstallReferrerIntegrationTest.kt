@@ -27,18 +27,13 @@ import kotlin.test.Test
  */
 class InstallReferrerIntegrationTest {
 
+    // The core's part: the referrer an install delivers opens its join screen. The once-per-install delivery is the
+    // Android reader's (`AndroidInstallReferrerTest`).
     @Test
     @Verifies(
         spec = "invite-link",
-        requirement = "Without the app, the invite leads to a store and back",
+        requirement = "Without the app, an invite leads to a store and back",
         scenario = "Installing from Google Play opens the join screen",
-    )
-    // The core's part: the referrer a tester's install delivers opens its join screen. The once-per-install delivery is
-    // the Android reader's (`AndroidInstallReferrerTest`).
-    @Verifies(
-        spec = "invite-link",
-        requirement = "Without the app, the invite leads to a store and back",
-        scenario = "Becoming a tester from an invite's page opens the join screen",
     )
     fun a_referrer_carrying_an_invite_opens_its_join_screen() = behaviour {
         val (event, referrer) = given {
@@ -54,7 +49,7 @@ class InstallReferrerIntegrationTest {
     @Test
     @Verifies(
         spec = "invite-link",
-        requirement = "Without the app, the invite leads to a store and back",
+        requirement = "Without the app, an invite leads to a store and back",
         scenario = "Installing from Google Play opens an encrypted event's join screen",
     )
     fun a_referrer_carrying_an_encrypted_event_s_key_opens_its_join_screen_not_the_incomplete_invite() = behaviour {
@@ -73,7 +68,7 @@ class InstallReferrerIntegrationTest {
     @Test
     @Verifies(
         spec = "invite-link",
-        requirement = "Without the app, the invite leads to a store and back",
+        requirement = "Without the app, an invite leads to a store and back",
         scenario = "An ordinary installation opens no join screen",
     )
     fun an_organic_referrer_opens_no_join_screen_and_reports_no_damaged_invite() = behaviour {
@@ -90,7 +85,7 @@ class InstallReferrerIntegrationTest {
     @Test
     @Verifies(
         spec = "invite-link",
-        requirement = "Without the app, the invite leads to a store and back",
+        requirement = "Without the app, an invite leads to a store and back",
         scenario = "Installing from a computer carries no invite",
     )
     fun an_install_from_a_computer_opens_nothing_and_the_invite_opened_on_the_phone_opens_its_join_screen() = behaviour {

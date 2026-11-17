@@ -30,8 +30,8 @@ network or sign-in problem, and SHALL NOT be retried away as a temporary failure
 The update notice SHALL name the oldest version that will work when the server states one, and
 otherwise SHALL say that a newer version is needed. It SHALL offer a button that opens SnapSync's page in
 the store the app is distributed through, named as that store: the App Store on iPhone, Google Play on
-Android. When the installed app knows no store page for SnapSync, for example on Android before SnapSync is
-published on Google Play, the notice SHALL offer no button and SHALL still say that an update is required.
+Android. When the installed app knows no store page for SnapSync, the notice SHALL offer no button and SHALL
+still say that an update is required.
 
 #### Scenario: Minimum version named
 - **WHEN** the server refuses the app and states that version 0.12 or newer is required
@@ -46,7 +46,7 @@ published on Google Play, the notice SHALL offer no button and SHALL still say t
 - **THEN** SnapSync's Google Play page opens
 
 #### Scenario: No store page known
-- **WHEN** the notice is shown on an Android phone whose installed SnapSync knows no Google Play page
+- **WHEN** the notice is shown on a phone whose installed SnapSync knows no store page
 - **THEN** the notice says an update is required and offers no store button
 
 ### Requirement: Nothing is shared or received while the app is outdated

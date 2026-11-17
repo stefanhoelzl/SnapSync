@@ -1,6 +1,5 @@
 ---
 import deployment from "../deployment.json";
-import { playOfferFor } from "../lib/play";
 import listing from "../../../metadata/listing/en-US.json";
 // Shared page shell for the whole site (capability web-site): the sticky header (brand + nav), the
 // <main> slot, and the footer. Both the landing page and the /join download page compose from this one
@@ -49,8 +48,6 @@ const favicon = await getImage({ src: appIcon, width: 64, height: 64, format: "p
 // would hand an event's content to every server that builds a preview (capability event-site). Absolute,
 // because a previewer resolves it outside the page; same origin, so self-containment holds.
 const ogImage = await getImage({ src: appIcon, width: 512, height: 512, format: "png" });
-// Google Play is offered — the badge alone or the closed test's steps, whose third step is the badge.
-const playOffered = playOfferFor(deployment).kind !== "none";
 ---
 
 <!doctype html>
@@ -129,8 +126,7 @@ const playOffered = playOfferFor(deployment).kind !== "none";
         </div>
         <p class="copy">
           © 2026 SnapSync · An independent project · Not affiliated with Apple Inc. "App Store" is a
-          trademark of Apple Inc.
-          {playOffered && " Google Play and the Google Play logo are trademarks of Google LLC."}
+          trademark of Apple Inc. Google Play and the Google Play logo are trademarks of Google LLC.
         </p>
       </div>
     </footer>

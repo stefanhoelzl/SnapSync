@@ -188,10 +188,9 @@ different invite while one is being answered SHALL replace it.
 - **WHEN** a join screen is open for one event and the user opens the invite of another event
 - **THEN** the join screen now shows the other event
 
-### Requirement: Without the app, the invite leads to a store and back
+### Requirement: Without the app, an invite leads to a store and back
 Opening an invite on a device without SnapSync SHALL show the event's web page (capability `event-site`),
-which offers SnapSync on the App Store and, whenever that page offers Google Play (to testers during a
-closed test, or once SnapSync is published there), on Google Play. Because iOS
+which offers SnapSync on the App Store and on Google Play. Because iOS
 does not hand a link over through an installation, an iPhone user who installs the app from there SHALL
 reach the event by opening the original invite again.
 
@@ -215,10 +214,6 @@ the original invite again SHALL keep working on both platforms.
 - **WHEN** a guest without SnapSync opens an encrypted event's whole invite on an Android phone, follows the page's
   Google Play button, installs SnapSync and opens it for the first time
 - **THEN** SnapSync opens on the join screen for that event, not on the incomplete-invite screen
-
-#### Scenario: Becoming a tester from an invite's page opens the join screen
-- **WHEN** a guest without SnapSync opens an invite on an Android phone during the closed test, follows the page's steps to become a tester, installs SnapSync from the page's Google Play button and opens it for the first time
-- **THEN** SnapSync opens on the join screen for that event
 
 #### Scenario: The carried invite opens only once
 - **WHEN** that guest joins or dismisses the join screen, and later opens SnapSync again

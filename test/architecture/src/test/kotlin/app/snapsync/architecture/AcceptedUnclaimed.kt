@@ -104,13 +104,6 @@ internal object AcceptedUnclaimed {
         ),
         Entry(
             "web-site",
-            "A public landing page describes SnapSync",
-            "Following the steps installs SnapSync",
-            PLATFORM,
-            "Google Groups and Google Play decide who may test and what installs",
-        ),
-        Entry(
-            "web-site",
             "The site follows the reader's light or dark mode",
             "A dark-mode reader",
             PLATFORM,

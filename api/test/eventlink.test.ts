@@ -48,7 +48,7 @@ Deno.test("event-link: the AASA is served as JSON with no redirect", async () =>
   assert((await res.text()).length > 0);
 });
 
-// @Verifies(spec = "web-site", requirement = "A public landing page describes SnapSync", scenario = "The site opens in the browser even with the app installed")
+// @Verifies(spec = "web-site", requirement = "The landing page describes SnapSync and offers both stores", scenario = "The site opens in the browser even with the app installed")
 // The api's part: the app claims only the /join links, never /.
 Deno.test("event-link: the AASA declares the app and the two /join forms only", async () => {
   const body = await (await app().request(AASA)).json();
