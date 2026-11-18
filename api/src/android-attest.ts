@@ -223,6 +223,44 @@ function provisioning(chain: x509.X509Certificate[]): Provisioning {
   return "software";
 }
 
+/**
+ * AOSP's software attestation roots (EC and RSA), from `system/keymaster/contexts/soft_attestation_cert.cpp`. Their
+ * private keys ship in the same file, so a chain under them proves nothing — anyone can sign one. They are known here
+ * only to NAME a refusal (`software-root`), never to trust one.
+ */
+const SOFTWARE_ATTESTATION_ROOTS = [
+  "MIICizCCAjKgAwIBAgIJAKIFntEOQ1tXMAoGCCqGSM49BAMCMIGYMQswCQYDVQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNTW91bnRhaW4gVmlldzEVMBMGA1UECgwMR29vZ2xlLCBJbmMuMRAwDgYDVQQLDAdBbmRyb2lkMTMwMQYDVQQDDCpBbmRyb2lkIEtleXN0b3JlIFNvZnR3YXJlIEF0dGVzdGF0aW9uIFJvb3QwHhcNMTYwMTExMDA0MzUwWhcNMzYwMTA2MDA0MzUwWjCBmDELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDU1vdW50YWluIFZpZXcxFTATBgNVBAoMDEdvb2dsZSwgSW5jLjEQMA4GA1UECwwHQW5kcm9pZDEzMDEGA1UEAwwqQW5kcm9pZCBLZXlzdG9yZSBTb2Z0d2FyZSBBdHRlc3RhdGlvbiBSb290MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7l1ex+HA220Dpn7mthvsTWpdamguD/9/SQ59dx9EIm29sa/6FsvHrcV30lacqrewLVQBXT5DKyqO107sSHVBpKNjMGEwHQYDVR0OBBYEFMit6XdMRcOjzw0WEOR5QzohWjDPMB8GA1UdIwQYMBaAFMit6XdMRcOjzw0WEOR5QzohWjDPMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgKEMAoGCCqGSM49BAMCA0cAMEQCIDUho++LNEYenNVg8x1YiSBq3KNlQfYNns6KGYxmSGB7AiBNC/NR2TB8fVvaNTQdqEcbY6WFZTytTySn502vQX3xvw==",
+  "MIICpzCCAhCgAwIBAgIJAP+U2d2fB8gMMA0GCSqGSIb3DQEBCwUAMGMxCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMRYwFAYDVQQHDA1Nb3VudGFpbiBWaWV3MRUwEwYDVQQKDAxHb29nbGUsIEluYy4xEDAOBgNVBAsMB0FuZHJvaWQwHhcNMTYwMTA0MTIzMTA4WhcNMzUxMjMwMTIzMTA4WjBjMQswCQYDVQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNTW91bnRhaW4gVmlldzEVMBMGA1UECgwMR29vZ2xlLCBJbmMuMRAwDgYDVQQLDAdBbmRyb2lkMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCia63rbi5EYe/VDoLmt5TRdSMfd5tjkWP/96r/C3JHTsAsQ+wzfNes7UA+jCigZtX3hwszl94OuE4TQKuvpSe/lWmgMdsGUmX4RFlXYfC78hdLt0GAZMAoDo9Sd47b0ke2RekZyOmLw9vCkT/X11DEHTVm+Vfkl5YLCazOkjWFmwIDAQABo2MwYTAdBgNVHQ4EFgQUKfrxrMxN0kyWQCd1trDpMuUH/i4wHwYDVR0jBBgwFoAUKfrxrMxN0kyWQCd1trDpMuUH/i4wDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAoQwDQYJKoZIhvcNAQELBQADgYEAT3LzNlmNDsG5dFsxWfbwjSVJMJ6jHBwp0kUtILlNX2S06IDHeHqcOd6os/W/L3BfRxBcxebrTQaZYdKumgf/93y4q+ucDyQHXrF/unlx/U1bnt8Uqf7f7XzAiF343ZtkMlbVNZriE/mPzsF83O+kqrJVw4OpLvtc9mL1J1IXvmM=",
+].map((b64) => new x509.X509Certificate(b64));
+
+/**
+ * Which software-only root `root` is, if it is one: AOSP's (matched by public key) or an emulator's self-signed test
+ * root (matched by NAME — its key is minted per AVD). A name anyone can forge is enough here, because this only chooses
+ * which refusal a chain that is refused anyway gets.
+ */
+function softwareOnlyRoot(
+  root: x509.X509Certificate,
+): "software-root" | "emulator-root" | undefined {
+  if (pinned(root, SOFTWARE_ATTESTATION_ROOTS)) return "software-root";
+  const name = root.subjectName;
+  const emulator = root.issuer === root.subject &&
+    name.getField("O").includes("Google Test LLC") &&
+    name.getField("CN").includes("Droid Unregistered Device CA");
+  return emulator ? "emulator-root" : undefined;
+}
+
+/** A chain whose root `root` is not pinned: named for what it is, where it is a software-only root. */
+function unpinnedRoot(root: x509.X509Certificate): Error {
+  const known = softwareOnlyRoot(root);
+  if (!known) return new Error("the chain does not end at a pinned attestation root");
+  const whose = known === "software-root" ? "AOSP's software" : "an emulator's test";
+  return new AttestationRejected(
+    "device-unverifiable",
+    `the chain ends at ${whose} attestation root, under which only a key held in software is attested`,
+    known,
+  );
+}
+
 /** The pinned root `candidate` is, by public key — or `undefined`. */
 function pinned(candidate: x509.X509Certificate, roots: x509.X509Certificate[]): boolean {
   const key = new Uint8Array(candidate.publicKey.rawData);
@@ -247,7 +285,7 @@ async function verifyChain(
   const root = chain[chain.length - 1];
   if (config.androidAttestationTrust === "hardware") {
     if (!pinned(root, config.androidAttestationRoots.map((pem) => new x509.X509Certificate(pem)))) {
-      throw new Error("the chain does not end at a pinned attestation root");
+      throw unpinnedRoot(root);
     }
   } else if (root.issuer !== root.subject || !await root.verify({ signatureOnly: true })) {
     // Under `any` the anchor is not compared — the emulator's is a per-AVD "Google Test LLC" root that
