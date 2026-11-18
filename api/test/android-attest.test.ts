@@ -177,8 +177,17 @@ Deno.test("android: a SOFTWARE attestation is refused where hardware is required
 });
 
 Deno.test("android: a chain ending at no pinned root is refused", async () => {
-  await refused(verify(hardware(SOFTWARE), SOFTWARE), "pinned attestation root");
+  // Google's own root, where the deployment pins another: a root nobody recognised, a plain `certificate`.
   await refused(verify(hardware(RKP_TEE, [SOFTWARE_ROOT]), RKP_TEE), "pinned attestation root");
+});
+
+Deno.test("android: a chain ending at AOSP's software root is refused, NAMED as one", async () => {
+  await refused(
+    verify(hardware(SOFTWARE), SOFTWARE),
+    "AOSP's software attestation root",
+    "device-unverifiable",
+    "software-root",
+  );
 });
 
 Deno.test("android: another challenge is refused", async () => {

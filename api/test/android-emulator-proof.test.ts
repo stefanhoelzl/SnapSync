@@ -100,5 +100,7 @@ Deno.test("emulator proof: a deployed backend's policy refuses it — software, 
   const deployed: Config = { ...LOCAL, androidAttestationTrust: "hardware" };
   const { db, res } = await attest(deployed);
   assertEquals(res.status, 401);
+  // Named for the emulator's test root, so Play's automated testing stays apart from a root nobody recognised.
+  assertEquals(await res.text(), "attestation rejected: device-unverifiable (emulator-root)");
   assertEquals(await readAttestation(db, D), null);
 });
