@@ -25,12 +25,13 @@ import app.snapsync.data.upload.OsUploader
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.report.ReportOutcome
-import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.LinkOutcome
 import app.snapsync.domain.request.MembershipReadRequest
 import app.snapsync.domain.request.MobileDataRequest
+import app.snapsync.domain.request.OpenLinkRequest
 import app.snapsync.domain.request.RenameRequest
 import app.snapsync.domain.request.ReportRequest
 import app.snapsync.domain.request.SettingsRequest
@@ -64,6 +65,7 @@ class CommandsGraph(
     creationStatus: RequestStatuses<CreateResult>,
     diagnostics: DiagnosticsGraph,
     reportStatus: RequestStatuses<ReportOutcome>,
+    linkStatus: RequestStatuses<LinkOutcome>,
     openedInvites: OpenedInvites,
 ) {
     private val surfaces: SystemSurfaces = SystemSurfaces(ports.systemUi)
@@ -75,7 +77,7 @@ class CommandsGraph(
     val share: Background<ShareRequest> = OnShareTapped(runtime, surfaces)
     val requestAccess: Background<Unit> = OnRequestAccessTapped(runtime, asks)
     val openSettings: Background<Unit> = OnOpenSettingsTapped(runtime, surfaces)
-    val openLink: Background<AppLinkRequest> = OnOpenLinkTapped(runtime, surfaces)
+    val openLink: Background<OpenLinkRequest> = OnOpenLinkTapped(runtime, surfaces, linkStatus)
     val choosePhotos: Background<Unit> = OnChoosePhotosTapped(runtime, asks)
     val reconfigure: Background<SettingsRequest> = work.settingsChanged
     val rename: Background<RenameRequest> = work.renameRequested

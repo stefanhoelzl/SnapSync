@@ -189,8 +189,14 @@ class StatusContainerHost(
     /** The three photo-access taps ([AccessAsks]). */
     internal val access: AccessAsks = AccessAsks(runner, commands)
 
+    /** The one place a brief word shows, until it clears or is tapped ([NoticeSlot]). */
+    private val notices = NoticeSlot(cells, scope)
+
     /** A bug report and the word on what became of it ([ReportFlow]). */
-    private val report = ReportFlow(cells, commands, requests, scope)
+    private val report = ReportFlow(cells, commands, requests, notices)
+
+    /** A page opened outside the app, and the word when it did not open ([LinkFlow]). */
+    private val links = LinkFlow(cells, commands, requests, notices, facts)
 
     /** What is drawn over — or instead of — the current layer ([SurfaceCommands]). */
     internal val surfaces: SurfaceCommands = SurfaceCommands(
@@ -199,7 +205,8 @@ class StatusContainerHost(
         mobileDataQuery,
         mobileData,
         settings,
-        report,
+        notices,
+        links,
     )
 
     /** Create a new event ([CreateFlow.onCreateEvent]). */
@@ -498,7 +505,7 @@ class StatusContainerHost(
      * does not hold.
      */
     internal fun onOpenAppStore() = intent {
-        state.shown.store?.let { commands.platform.openLink.fire(AppLinkRequest.StorePage(it)) }
+        state.shown.store?.let { links.open(AppLinkRequest.StorePage(it)) }
     }
 
     /**

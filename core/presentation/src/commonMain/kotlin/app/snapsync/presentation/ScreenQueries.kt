@@ -13,6 +13,7 @@ import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.report.BuildLabel
 import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.report.ReportOutcome
+import app.snapsync.domain.request.LinkOutcome
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
@@ -111,7 +112,7 @@ class DeviceVerification(
     val service: StateFlow<ServiceFault?>,
 )
 
-/** The request statuses, read: a join, a settings change, a switch, a rename, and a bug report. */
+/** The request statuses, read: a join, a settings change, a switch, a rename, a bug report, and a page opened. */
 class RequestStatusFlows(
     val join: StateFlow<RequestStatus<JoinCommit>>,
     val settings: StateFlow<RequestStatus<SettingsResult>>,
@@ -120,6 +121,8 @@ class RequestStatusFlows(
     /** Trying again to read the membership. */
     val membershipRead: StateFlow<RequestStatus<Unit>>,
     val report: StateFlow<RequestStatus<ReportOutcome>>,
+    /** A page opened outside the app: whether the platform opened it. */
+    val link: StateFlow<RequestStatus<LinkOutcome>>,
 )
 
 /** The build's constants the screen states, as the composition names them. */
@@ -132,4 +135,6 @@ class BuildFacts(
     val label: BuildLabel,
     /** What the event album holds on this phone: the surfaces' album note follows it. */
     val albumContents: AlbumContents,
+    /** The app's own site as a person types it: where a page of it that did not open can be found. */
+    val siteAddress: String,
 )

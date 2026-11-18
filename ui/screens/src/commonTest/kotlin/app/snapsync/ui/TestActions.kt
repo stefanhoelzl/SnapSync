@@ -68,6 +68,7 @@ internal fun testMenuActions(
     onReportBug: () -> Unit = {},
     onOpenLink: (app.snapsync.ui.state.AppLink) -> Unit = {},
     onReportNoticeDismiss: () -> Unit = {},
+    onLinkNoticeDismiss: () -> Unit = {},
     onMobileData: (Boolean) -> Unit = {},
 ) = MenuActions(
     onSendDiagnostics,
@@ -76,6 +77,7 @@ internal fun testMenuActions(
     onReportBug,
     onOpenLink,
     onReportNoticeDismiss,
+    onLinkNoticeDismiss,
     onMobileData,
 )
 

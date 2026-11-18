@@ -11,6 +11,8 @@ import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.Handoff
+import app.snapsync.ports.Observed
+import app.snapsync.ports.RefusalCircumstances
 import app.snapsync.ports.SystemUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,7 +20,8 @@ import kotlinx.coroutines.withContext
 /**
  * The Android [SystemUi]: the system share sheet (a chooser over `ACTION_SEND`), `ACTION_VIEW` for a URL, and this
  * app's page in Settings. Each is started from the activity in front when there is one,
- * and as a new task otherwise; a start the platform refuses — no app claims the URL — is a [Handoff.Refused].
+ * and as a new task otherwise; a start the platform refuses — no app claims the URL — is a [Handoff.Refused], carrying
+ * whether this app was in front and whether an app claimed it.
  */
 class AndroidSystemUi(
     context: Context,
@@ -56,17 +59,26 @@ class AndroidSystemUi(
 
     private suspend fun start(name: String, intent: Intent): Handoff = withContext(Dispatchers.Main) {
         run {
+            // Read before the start, which may bring another app to the front.
+            val inFront = Observed.Seen(foreground.current != null)
             try {
                 launch(intent)
                 Handoff.Accepted
             } catch (e: ActivityNotFoundException) {
-                Handoff.Refused("no app claims it: ${e.message}")
+                Handoff.Refused("no app claims it: ${e.message}", circumstances(inFront, claimed = false))
             } catch (e: SecurityException) {
                 // The app that claims it guards the activity with a permission this app does not hold.
-                Handoff.Refused("the app that claims it refused: ${e.message}")
+                Handoff.Refused("the app that claims it refused: ${e.message}", circumstances(inFront, claimed = true))
             }
         }.also { log.unlabelled.i("systemUi.<name> = <it>", "name" of name, "it" of it) }
     }
+
+    /** What Android's answer already says: nothing is asked of it beyond the start itself. */
+    private fun circumstances(inFront: Observed<Boolean>, claimed: Boolean) = RefusalCircumstances.Read(
+        inFront = inFront,
+        claimed = Observed.Seen(claimed),
+        scene = Observed.Unread("Android has no window scene"),
+    )
 
     private fun launch(intent: Intent) {
         val activity = foreground.current

@@ -1,13 +1,17 @@
 # contract: LinkOpener
 # host: IOS_DEVICE_APP
+# file: LinkOpener@IOS_DEVICE_APP.rec
 # device: iPhone12,8
-# os: Version 26.6.2 (Build 23G90)
+# os: Version 27.2.1 (Build 24B156)
 # build: 1
-# kotlin: 2.4.0
-# recorded: 2026-09-23T11:04:06Z
+# kotlin: 2.4.20
+# recorded: 2026-11-18T21:50:52Z
 # live UNCLAIMED_URL_IS_REFUSED: Passed
+# live A_RESTRICTED_BROWSER_IS_REFUSED_AND_SAYS_SO: NotRunHere(recorded with the browser allowed)
 # live CLAIMED_URL_IS_ACCEPTED: Passed
 [CLAIMED_URL_IS_ACCEPTED]
 openURL:options:completionHandler:(url=https://www.apple.com/ options={}) -> true
 [UNCLAIMED_URL_IS_REFUSED]
 openURL:options:completionHandler:(url=snapsync-contract-unclaimed://link-opener options={}) -> false
+applicationState+canOpenURL+connectedScenes.activationState(url=snapsync-contract-unclaimed://link-opener) -> applicationState=0 canOpenURL=false scenes=0
+

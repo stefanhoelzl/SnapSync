@@ -8,4 +8,7 @@ object OwnPageText {
         OwnPage.WEBSITE -> LINK_ORIGIN
         OwnPage.PRIVACY_POLICY -> "$LINK_ORIGIN/#privacy"
     }
+
+    /** The site's address as a person types it: the origin without its scheme — `snapsync.stho.net`. */
+    fun address(): String = LINK_ORIGIN.substringAfter("://")
 }

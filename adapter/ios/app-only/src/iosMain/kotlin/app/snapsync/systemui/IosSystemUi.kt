@@ -1,12 +1,15 @@
 package app.snapsync.systemui
 
 import app.snapsync.inbound.Log
+import app.snapsync.link.RefusalFacts
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.objc.onQueue
 import app.snapsync.ports.Handoff
+import app.snapsync.ports.Observed
+import app.snapsync.ports.RefusalCircumstances
 import app.snapsync.ports.SystemUi
 import platform.Foundation.NSURL
 import platform.UIKit.UIActivityViewController
@@ -95,7 +98,11 @@ class IosSystemUi internal constructor(
     ): Handoff = objcCallback(shareLog, "share.completion") { done ->
         sheets.present(text, title) { shown ->
             objcBoundary(done) {
-                if (shown) Handoff.Accepted else Handoff.Refused("nothing on screen to present the share sheet from")
+                if (shown) {
+                    Handoff.Accepted
+                } else {
+                    Handoff.Refused("nothing on screen to present the share sheet from", RefusalCircumstances.NotAsked)
+                }
             }
         }
     }
@@ -111,15 +118,25 @@ class IosSystemUi internal constructor(
      * The one-argument `openURL(_:)` must not come back. Measured on the SE2 (iOS 26.6, 2026-09-23) with the build's
      * own store URL: it answered `false` and opened nothing, while this form opened the App Store and completed with
      * `true`. `LinkOpenerContract`'s device recording pins the call.
+     *
+     * iOS gives no reason for a refusal, so after one the adapter asks what iOS says of its own state
+     * ([UrlOpenerApi.afterRefusal]) and carries it as the refusal's circumstances: field refusals were seen on phones
+     * where the same build opens the same page (Bugsink SNAPSYNC-71), and these facts tell their causes apart.
      */
     override suspend fun openUrl(url: String): Handoff {
-        val target = NSURL.URLWithString(url)
-            ?: return Handoff.Refused("'$url' is not a URL iOS can parse — a build misconfiguration")
-        // The completion is what Objective-C calls (through SystemUrlOpenerApi): contained, like every such block.
+        val target = NSURL.URLWithString(url) ?: return Handoff.Refused(
+            "'$url' is not a URL iOS can parse — a build misconfiguration",
+            RefusalCircumstances.NotAsked,
+        )
+        // The completions are what Objective-C calls (through SystemUrlOpenerApi): contained, like every such block.
         val opened = objcCallback(linkLog, "openLink.completion") { done ->
             urls.open(target) { accepted -> objcBoundary(done) { accepted } }
         }
-        return if (opened) Handoff.Accepted else Handoff.Refused("iOS did not open $url")
+        if (opened) return Handoff.Accepted
+        val facts = objcCallback(linkLog, "openLink.afterRefusal") { done ->
+            urls.afterRefusal(target) { read -> objcBoundary(done) { read } }
+        }
+        return Handoff.Refused("iOS did not open $url", circumstancesOf(facts))
     }
 
     /**
@@ -132,3 +149,25 @@ class IosSystemUi internal constructor(
         urls.open(url) { opened -> if (!opened) settingsLog.unlabelled.w("iOS did not open this app's Settings page") }
     }
 }
+
+/**
+ * iOS's raw answers read as the port's facts. In front means `UIApplicationStateActive`. The scenes are named by
+ * `UISceneActivationState`, and an app with none connected says so rather than naming nothing.
+ */
+internal fun circumstancesOf(facts: RefusalFacts) = RefusalCircumstances.Read(
+    inFront = Observed.Seen(facts.applicationState == UIApplicationState.UIApplicationStateActive.value),
+    claimed = Observed.Seen(facts.canOpen),
+    scene = if (facts.sceneStates.isEmpty()) {
+        Observed.Unread("no scene is connected")
+    } else {
+        Observed.Seen(facts.sceneStates.joinToString(",") { SCENE_STATES[it] ?: "unknown($it)" })
+    },
+)
+
+/** `UISceneActivationState`'s declared values, by the names the log shows. */
+private val SCENE_STATES = mapOf(
+    -1L to "unattached",
+    0L to "foregroundActive",
+    1L to "foregroundInactive",
+    2L to "background",
+)

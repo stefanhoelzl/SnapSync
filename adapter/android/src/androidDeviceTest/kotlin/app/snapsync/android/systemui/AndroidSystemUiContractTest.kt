@@ -73,6 +73,8 @@ class AndroidSystemUiContractTest {
                     },
                 )
                 LinkOpenerState.UNCLAIMED -> Entered.Ready(systemUi().recorded(log))
+                LinkOpenerState.RESTRICTED ->
+                    Entered.Unreachable("a withheld browser is a person's setting; the emulator's run cannot set it")
             }
     }
 

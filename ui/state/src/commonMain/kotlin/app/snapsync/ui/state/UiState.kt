@@ -3,6 +3,7 @@ package app.snapsync.ui.state
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -59,6 +60,23 @@ data class BuildLine(val version: String, val buildNumber: String) {
 @Serializable
 enum class ReportNotice { SENT, SAVED, NOT_SENT }
 
+/**
+ * The brief word on a page the phone did not open: what it was, and where it can be
+ * found instead.
+ */
+@Serializable
+sealed interface LinkNotice {
+    /** A page of the app's own site, found at [address] — the site as a person types it. */
+    @Serializable
+    @SerialName("Site")
+    data class Site(val address: String) : LinkNotice
+
+    /** The app's page in the store named [store] — "App Store", "Google Play". */
+    @Serializable
+    @SerialName("Store")
+    data class Store(val store: String) : LinkNotice
+}
+
 /** Where the report sheet says a report goes: the developer, or this device. */
 @Serializable
 enum class ReportTarget { DEVELOPER, THIS_DEVICE }
@@ -113,6 +131,11 @@ data class Overlays(
     val menuOpen: Boolean = false,
     /** The brief word on the last confirmed report, until it clears or is tapped. */
     val reportNotice: ReportNotice? = null,
+    /**
+     * The brief word on a page the phone did not open, until it clears or is tapped. It and [reportNotice] share one
+     * place on the screen, so at most one of them is set: the newer replaces the older.
+     */
+    val linkNotice: LinkNotice? = null,
 )
 
 /**

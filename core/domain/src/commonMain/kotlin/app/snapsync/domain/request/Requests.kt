@@ -65,5 +65,14 @@ sealed interface AppLinkRequest {
 /** The pages of the app's own site a member opens from the app: its front page, and its privacy policy. */
 enum class OwnPage { WEBSITE, PRIVACY_POLICY }
 
+/** The member asked to open [link] outside the app: [id] is answered on the link status with what became of it. */
+class OpenLinkRequest(val id: RequestId, val link: AppLinkRequest)
+
+/**
+ * What became of a page the member asked to open: the platform [OPENED] it, or it did [NOT_OPENED] — and the member,
+ * still in the app with nothing to show for the tap, is told.
+ */
+enum class LinkOutcome { OPENED, NOT_OPENED }
+
 /** A bug report the member confirmed, [note] in their words, from [context]: [id] is answered on the report status. */
 class ReportRequest(val id: RequestId, val note: String, val context: ReportContext)

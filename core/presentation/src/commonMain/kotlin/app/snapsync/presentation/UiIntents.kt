@@ -60,6 +60,7 @@ object UiIntents {
             UiIntent.MenuReportBug -> surfaces.onMenuReportBug()
             is UiIntent.OpenLink -> surfaces.onOpenLink(intent.link)
             UiIntent.ReportNoticeDismiss -> surfaces.onReportNoticeDismiss()
+            UiIntent.LinkNoticeDismiss -> surfaces.onLinkNoticeDismiss()
             UiIntent.OpenReconfigure -> surfaces.onOpenReconfigure()
             UiIntent.CancelReconfigure -> surfaces.onCancelReconfigure()
             is UiIntent.RenameEvent -> onRenameEvent(intent.eventId, intent.name)

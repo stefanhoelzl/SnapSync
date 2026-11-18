@@ -1,6 +1,7 @@
 package app.snapsync.data.process
 
 import app.snapsync.domain.report.BuildLabel
+import app.snapsync.format.OwnPageText
 import app.snapsync.mock.BuildInfoMock
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,5 +16,6 @@ class BuildReadTest {
 
         assertEquals(BuildLabel(build.appVersion, "42"), read.label())
         assertNull(read.store(), "a build that names no store page")
+        assertEquals(OwnPageText.address(), read.siteAddress(), "the site the menu's pages are on")
     }
 }

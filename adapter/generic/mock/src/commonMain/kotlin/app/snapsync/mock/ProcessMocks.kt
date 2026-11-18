@@ -25,9 +25,11 @@ import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.Handoff
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.MetricNode
+import app.snapsync.ports.Observed
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.ProcessMetrics
+import app.snapsync.ports.RefusalCircumstances
 import app.snapsync.ports.SystemUi
 import app.snapsync.ports.ThreadLabel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -287,11 +289,22 @@ class SystemUiMock {
 
     fun port(): SystemUi = Face()
 
+    private companion object {
+        /** An unclaimed URL's refusal, as a device in front with no app for it answers. */
+        val UNCLAIMED = RefusalCircumstances.Read(
+            inFront = Observed.Seen(true),
+            claimed = Observed.Seen(false),
+            scene = Observed.Unread("a mock has no window scene"),
+        )
+    }
+
     /** The port face a process is handed. */
     internal inner class Face : SystemUi {
         override suspend fun share(text: String, title: String): Handoff {
-            if (noWindow) return Handoff.Refused("no window to present the share sheet from")
-            if (noSheet) return Handoff.Refused("no app presents the share sheet")
+            if (noWindow) {
+                return Handoff.Refused("no window to present the share sheet from", RefusalCircumstances.NotAsked)
+            }
+            if (noSheet) return Handoff.Refused("no app presents the share sheet", RefusalCircumstances.NotAsked)
             sharedCell.value = sharedCell.value + text
             sharedTitlesCell.value = sharedTitlesCell.value + title
             watcher.told(WorldEvent.Shared(text, title))
@@ -299,7 +312,7 @@ class SystemUiMock {
         }
 
         override suspend fun openUrl(url: String): Handoff {
-            if (url in unclaimed) return Handoff.Refused("no app claims $url")
+            if (url in unclaimed) return Handoff.Refused("no app claims $url", UNCLAIMED)
             openedCell.value = openedCell.value + url
             watcher.told(WorldEvent.UrlOpened(url))
             return Handoff.Accepted

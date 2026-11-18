@@ -67,7 +67,8 @@ import app.snapsync.domain.report.BuildLabel
 import app.snapsync.domain.report.ReportContext
 import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.report.ReportOutcome
-import app.snapsync.domain.request.AppLinkRequest
+import app.snapsync.domain.request.LinkOutcome
+import app.snapsync.domain.request.OpenLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.request.KeyRestoreRequest
@@ -148,6 +149,7 @@ import app.snapsync.ui.resources.rename_event
 import app.snapsync.ui.resources.report_placeholder
 import app.snapsync.ui.resources.report_problem
 import app.snapsync.ui.resources.report_send
+import app.snapsync.ui.resources.link_site_not_opened
 import app.snapsync.ui.resources.report_sent
 import app.snapsync.ui.resources.retry
 import app.snapsync.ui.resources.save
@@ -320,6 +322,7 @@ abstract class StatusScreenTour {
         private val statuses = MembershipStatuses()
 
         private val reports = RequestStatuses<ReportOutcome>()
+        private val links = RequestStatuses<LinkOutcome>()
 
         /**
          * Every create answered at once, as unminted: the form comes back with what was entered, and the tour goes on
@@ -381,6 +384,7 @@ abstract class StatusScreenTour {
                     rename = statuses.rename.status,
                     membershipRead = statuses.read.status,
                     report = reports.status,
+                    link = links.status,
                 ),
             ),
             scope = scope,
@@ -396,7 +400,8 @@ abstract class StatusScreenTour {
                     share = command { _: ShareRequest -> },
                     requestAccess = command { _: Unit -> },
                     openSettings = command { _: Unit -> },
-                    openLink = command { _: AppLinkRequest -> },
+                    // Refused, so the tour meets the word on a page that did not open, and taps it away.
+                    openLink = command { r: OpenLinkRequest -> answered(r.id, links, LinkOutcome.NOT_OPENED) },
                     choosePhotos = command { _: Unit -> },
                 ),
                 reconfigure = command { r: SettingsRequest -> answered(r.id, statuses.settings, SettingsResult.Saved) },
@@ -422,6 +427,7 @@ abstract class StatusScreenTour {
                 reportDestination = ReportDestination.DEVELOPER,
                 label = BuildLabel("unknown", "unknown"),
                 albumContents = AlbumContents.SharedAndReceived,
+                siteAddress = "snapsync.example",
             ),
             reduction = Dispatchers.Default,
         )
@@ -523,6 +529,10 @@ abstract class StatusScreenTour {
         openMenu()
         onNodeWithText(str(Res.string.menu_website)).performClick()
         awaitShown { !it.overlays.menuOpen }
+        // The page did not open: the word on it, tapped away.
+        awaitShown { it.overlays.linkNotice != null }
+        onNodeWithText(str(Res.string.link_site_not_opened, "snapsync.example")).performClick()
+        awaitShown { it.overlays.linkNotice == null }
         // The form: the name, every calendar gesture, every wheel — then Create.
         createForm()
         onNodeWithText(str(Res.string.create_button)).performClick()

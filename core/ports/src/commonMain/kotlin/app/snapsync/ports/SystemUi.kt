@@ -12,10 +12,12 @@ package app.snapsync.ports
  *   definition not in this app.
  * - [openSettings] opens this app's own Settings page — the `DENIED` affordance.
  *
- * **The two that answer, answer a [Handoff] that nothing acts on**: nothing in `UiState` depends on one. But a
- * hand-off that did NOT happen leaves the user who asked still here with nothing to show for the tap, so the answer
- * is returned and recorded rather than dropped (`docs/architecture.md`, "Absence is never silent"). They suspend
- * until the platform answers. [openSettings] answers nothing: the platform gives no answer to read.
+ * **The two that answer, answer a [Handoff].** A hand-off that did NOT happen leaves the user who asked still here
+ * with nothing to show for the tap, so the answer is returned and recorded rather than dropped (`docs/architecture.md`,
+ * "Absence is never silent"), and a refused [openUrl] is told to the member. A refusal
+ * carries what the adapter could read of the platform's state ([RefusalCircumstances]), because iOS does not say why
+ * it refused. They suspend until the platform answers. [openSettings] answers nothing: the platform gives no answer
+ * to read.
  *
  * **Runs on the main lane** (`AppPorts.uiLane`): presenting or leaving asserts the platform's UI thread. An
  * implementation names the lane itself anyway, so the adapter is correct for any caller.

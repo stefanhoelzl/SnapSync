@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.menu_close
 import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.link_site_not_opened
+import app.snapsync.ui.resources.link_store_not_opened
 import app.snapsync.ui.resources.menu_privacy
 import app.snapsync.ui.resources.menu_version
 import app.snapsync.ui.resources.menu_website
@@ -38,6 +40,7 @@ import app.snapsync.ui.state.BuildLine
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinStage
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.LinkNotice
 import app.snapsync.ui.state.MobileDataState
 import app.snapsync.ui.state.Overlays
 import app.snapsync.ui.state.ReportNotice
@@ -212,6 +215,28 @@ class AppMenuScreenTest {
             onNode(hasText(str(noticeOf(outcome)))).assertExists()
         }
         onNodeWithText(str(Res.string.report_not_sent)).performClick()
+        assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun `a page that did not open says where it is — and a tap puts it away`() = runComposeUiTest {
+        var state by androidx.compose.runtime.mutableStateOf(UiState(createLayer()))
+        var dismissed = 0
+        setContent {
+            TestStatusScreen(
+                state,
+                testActions(menu = testMenuActions(onLinkNoticeDismiss = { dismissed++ })),
+            )
+        }
+        state = UiState(createLayer(), Overlays(linkNotice = LinkNotice.Store("Google Play")))
+        waitForIdle()
+        onNode(hasText(str(Res.string.link_store_not_opened, "Google Play"))).assertExists()
+
+        state = UiState(createLayer(), Overlays(linkNotice = LinkNotice.Site("snapsync.example")))
+        waitForIdle()
+        val site = str(Res.string.link_site_not_opened, "snapsync.example")
+        assertTrue("snapsync.example" in site, "the notice names the address: $site")
+        onNodeWithText(site).performClick()
         assertEquals(1, dismissed)
     }
 }

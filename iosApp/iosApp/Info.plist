@@ -68,6 +68,14 @@
 	<true/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- After iOS refuses to open a page, the app asks whether any app could open it (canOpenURL), so the refusal's
+	     log line tells a restricted phone from one that is not. iOS answers that question only for a declared
+	     scheme (changes/refused-link-is-told, D4). -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>http</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIApplicationSceneManifest</key>

@@ -29,6 +29,7 @@ import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.report.ReportOutcome
+import app.snapsync.domain.request.LinkOutcome
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
@@ -192,6 +193,9 @@ class AppGraph(
     /** A bug report's status: what the member is told of the report they sent. */
     val reportStatus: RequestStatuses<ReportOutcome> = RequestStatuses()
 
+    /** A page opened outside the app: whether the platform opened it, so one it did not is told. */
+    val linkStatus: RequestStatuses<LinkOutcome> = RequestStatuses()
+
     /** The join-time load: the joined event's rows made its share set from the device's stored-file listing. */
     private val shareSetLoad: LoadShareSet =
         LoadShareSet(DeviceListing(backend.gateway, services.deviceIdentity, services.servedNames), uploader.reset)
@@ -260,6 +264,7 @@ class AppGraph(
         creationStatus,
         diagnostics,
         reportStatus,
+        linkStatus,
         openedInvites,
     )
 

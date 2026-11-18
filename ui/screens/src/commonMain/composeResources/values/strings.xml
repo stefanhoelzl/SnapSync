@@ -215,6 +215,8 @@
     <string name="report_sent">Thanks — your report was sent.</string>
     <string name="report_saved">Your report was saved on this device.</string>
     <string name="report_not_sent">Your report couldn't be sent. Please try again later.</string>
+    <string name="link_site_not_opened">Your phone didn't open the page. You'll find it at %1$s.</string>
+    <string name="link_store_not_opened">Your phone didn't open the store page (%1$s).</string>
     <string name="report_body_developer">Sent with the app's recent activity log, sync state and device state to the developer's error-tracking service.</string>
     <string name="report_body_device">Saved on this device with the app's recent activity log, sync state and device state. Nothing is sent.</string>
     <string name="report_send">Send</string>

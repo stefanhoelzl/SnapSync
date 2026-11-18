@@ -57,6 +57,7 @@ class UiIntentSerializationTest {
         UiIntent.MobileData(SwitchTo.ON),
         UiIntent.OpenLink(AppLink.entries.first()),
         UiIntent.ReportNoticeDismiss,
+        UiIntent.LinkNoticeDismiss,
         UiIntent.OpenReconfigure,
         UiIntent.CancelReconfigure,
         UiIntent.RenameEvent("x", "x"),

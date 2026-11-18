@@ -182,6 +182,11 @@ sealed interface UiIntent {
     @SerialName("ReportNoticeDismiss")
     data object ReportNoticeDismiss : UiIntent
 
+    /** The brief word on a page the phone did not open, tapped away before it cleared itself. */
+    @Serializable
+    @SerialName("LinkNoticeDismiss")
+    data object LinkNoticeDismiss : UiIntent
+
     @Serializable
     @SerialName("OpenReconfigure")
     data object OpenReconfigure : UiIntent

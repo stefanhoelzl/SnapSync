@@ -1,12 +1,12 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.invite.InviteLinkVerdict
-import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.request.KeyRestoreRequest
 import app.snapsync.domain.request.MembershipReadRequest
 import app.snapsync.domain.request.MobileDataRequest
+import app.snapsync.domain.request.OpenLinkRequest
 import app.snapsync.domain.request.RenameRequest
 import app.snapsync.domain.request.ReportRequest
 import app.snapsync.domain.request.RequestId
@@ -51,7 +51,7 @@ class UserCommands(
  */
 class PlatformCommands(
     val share: UserCommand<ShareRequest>,
-    val openLink: UserCommand<AppLinkRequest>,
+    val openLink: UserCommand<OpenLinkRequest>,
     val openSettings: UserCommand<Unit>,
     val requestAccess: UserCommand<Unit>,
     val choosePhotos: UserCommand<Unit>,
