@@ -200,7 +200,6 @@ The deployment declares the **names**. Values come from the environment of which
   - `api` publishes the Edge Script (below).
   - `site` builds `site/` and mirror-deploys it to the storage `site/` prefix (upload new files, delete
     stale ones, never clear first). It runs on every push and uses **only** `BUNNY_STORAGE_ACCESS_KEY`.
-  - `appstore-metadata-apply` (§6).
   - ⚠️ **No job in `deploy.yml` may ever be a required check**: it never runs on a PR, so a required check
     from it would block every merge. Nothing in it re-runs a gate. Merges are rebase-only, so the
     deployed commit is not the exact commit that was checked; what backs it is the strict ruleset plus
@@ -708,7 +707,8 @@ no Gradle, no signing, only the existing Admin ASC key and Play service account.
    `metadata/screenshots/<locale>.json`'s headlines (ImageMagick). Only an **editable** version is written to, and
    each set is **replaced**. The upload refuses a locale the version lacks, so each committed locale missing from
    the version is created first (`asc_lib.sh`'s `asc_ensure_localizations`). That only happens in a locale's first
-   release; its text comes from the metadata apply on the merge that added it. Apply the `whatsNew` to **every** localization: the same English notes, created for a
+   release. Then apply the committed listing text to every localization ("Listing metadata" below), which fills a
+   just-created locale too. Apply the `whatsNew` to **every** localization: the same English notes, created for a
    committed locale the version lacks. What's New stays English by decision (capability `localization`), and Apple
    refuses an update while any localization lacks it. Then apply the App Review details (notes from `metadata/review/notes.md`;
    contact details from secrets because the repo is public; "no demo account").
@@ -801,12 +801,17 @@ hardware in listing images only as a photograph of the real product.
   schema is closed. That is why the review notes and the
   screenshot headlines live in their own files: a new key in the canonical files would fail this gate
   and block merges.
-- **`appstore-metadata-apply`** (`deploy.yml`, `main` only, not required): resolves the **editable**
+- **The App Store apply, at promote** (`asc_metadata_apply.sh`, step 6 of §6): resolves the **editable**
   version (`PREPARE_FOR_SUBMISSION` / `DEVELOPER_REJECTED`) at run time, never through a stored id, and
   overwrites the fields that are present. The committed file wins over console edits. It never touches a
-  version in review, never creates one, and does nothing (green) when no version is editable. An
-  **omitted** field is never deleted. That is what keeps it from clearing the release's `whatsNew`, which
-  the committed files deliberately do not carry.
+  version in review and never creates one. An **omitted** field is never deleted. That is what keeps it from
+  clearing the release's `whatsNew`, which the committed files deliberately do not carry. It runs only at promote,
+  like the screenshots and Play's listing: a merged listing change waits for the next release. It once ran on every
+  push to `main` (`deploy.yml`), where it could act only while an editable version happened to exist, and nothing
+  re-ran it once it failed. 0.7's last merge-time apply did: Apple answered its create of the de-DE localization with
+  an error yet created it without the text, `asc`'s retry got "already exists" (2.8.2 does not fall back to an
+  update), and the version reached `asc review doctor` with an empty de-DE. At promote the apply runs after the
+  screenshot upload has created every missing locale, so it only ever updates, and a retried update cannot collide.
 - The `asc` CLI is pinned and SHA-256 verified (`.github/scripts/asc_fetch.sh`). No fastlane, no Ruby.
   App previews (video) are manual.
 

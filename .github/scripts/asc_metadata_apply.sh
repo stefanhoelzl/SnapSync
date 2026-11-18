@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Apply the committed App Store listing text to App Store Connect — main-only (capability
-# ios-appstore-metadata). Declarative: fields present in the files are enforced, omitted fields are a
+# Apply the committed App Store listing text to App Store Connect — called by promote.yml only, on the version it
+# just prepared (`docs/deployment.md`). Declarative: fields present in the files are enforced, omitted fields are a
 # no-op (never deleted — no --allow-deletes). Text only; screenshots are never touched.
 #
 # The safety gate is OURS, not the tool's: `asc` takes an explicit --version and its behaviour on an
