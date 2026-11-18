@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.request.LinkOutcome
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
@@ -12,9 +13,11 @@ import app.snapsync.presentation.Switches.mobileData
 import app.snapsync.query.membership.MembershipShown
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.LinkNotice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
 import org.orbitmvi.orbit.test.testWithInternalState
@@ -122,6 +125,18 @@ class VersionGateHostTest {
     }
 
     @Test
+    fun `a store page the phone did not open is told by the store's name, and the notice stays`() = runTest {
+        val host = gateHost(backgroundScope, MutableStateFlow(VersionRefusal("0.4")), link = LinkOutcome.NOT_OPENED)
+        assertIs<Layer.UpdateRequired>(host.screen.value.layer)
+
+        host.onOpenAppStore().join()
+
+        val told = host.screen.first { it.overlays.linkNotice != null }
+        assertEquals(LinkNotice.Store("App Store"), told.overlays.linkNotice)
+        assertIs<Layer.UpdateRequired>(told.layer, "the update notice stays as it was")
+    }
+
+    @Test
     fun `the store tap does nothing when this build carries no url`() = runTest {
         // The screen renders no button in this state, so the command should be unreachable — but the
         // container reads the URL off the state rather than trusting the caller, which is what makes
@@ -171,7 +186,8 @@ private fun gateHost(
     store: Store? = Store("App Store", STORE_URL),
     config: TestMembership? = null,
     openLink: (String) -> Unit = {},
-) = TestCommands(openLink = openLink).let { commands ->
+    link: LinkOutcome = LinkOutcome.OPENED,
+) = TestCommands(openLink = openLink).also { it.openLinkAnswer = { link } }.let { commands ->
     testHost(
         testQueries(
             sync = MutableStateFlow(SharingProgressRead.NotYetRead),

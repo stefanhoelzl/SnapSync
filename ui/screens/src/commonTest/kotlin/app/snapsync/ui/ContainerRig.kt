@@ -52,8 +52,10 @@ import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.LinkOutcome
 import app.snapsync.domain.request.MembershipReadRequest
 import app.snapsync.domain.request.MobileDataRequest
+import app.snapsync.domain.request.OpenLinkRequest
 import app.snapsync.domain.request.RenameRequest
 import app.snapsync.domain.request.ReportRequest
 import app.snapsync.domain.request.RequestId
@@ -125,6 +127,9 @@ import app.snapsync.ui.components.resources.Res as ComponentRes
 /** The store page every rig's build carries. */
 internal const val RIG_STORE_URL = "https://apps.apple.com/de/app/snapsync/id0000000000"
 
+/** The site every rig's build is on, as the link notice names it. */
+internal const val RIG_SITE_ADDRESS = "snapsync.example"
+
 /** A clock a test can move. */
 internal class TestClock(var instant: Instant = Instant.parse("2026-07-06T12:00:00Z"))
 
@@ -162,6 +167,10 @@ internal class ContainerRig(
     /** What the rig answers the membership's requests on — at once, as a core that settles every one does. */
     private val statuses = MembershipStatuses()
     private val reports = RequestStatuses<ReportOutcome>()
+    private val links = RequestStatuses<LinkOutcome>()
+
+    /** What the platform does with a page the rig is asked to open: opens it, unless a test says otherwise. */
+    var linkAnswer: LinkOutcome = LinkOutcome.OPENED
 
     private val mobileDataStatuses = MobileDataStatuses()
 
@@ -219,6 +228,7 @@ internal class ContainerRig(
                 rename = statuses.rename.status,
                 membershipRead = statuses.read.status,
                 report = reports.status,
+                link = links.status,
             ),
         ),
         scope = scope,
@@ -243,7 +253,10 @@ internal class ContainerRig(
                 share = command { r: ShareRequest -> record("share:${r.text.raw}") },
                 requestAccess = command { _: Unit -> record("requestAccess") },
                 openSettings = command { _: Unit -> record("openSettings") },
-                openLink = command { r: AppLinkRequest -> record("openLink:${r.opened()}") },
+                openLink = command { r: OpenLinkRequest ->
+                    record("openLink:${r.link.opened()}")
+                    answered(r.id, links, linkAnswer)
+                },
                 choosePhotos = command { _: Unit -> record("choosePhotos") },
             ),
             reconfigure = command { r: SettingsRequest ->
@@ -284,6 +297,7 @@ internal class ContainerRig(
             reportDestination = ReportDestination.DEVELOPER,
             label = BuildLabel("unknown", "unknown"),
             albumContents = AlbumContents.SharedAndReceived,
+            siteAddress = RIG_SITE_ADDRESS,
         ),
         reduction = Dispatchers.Default,
     )

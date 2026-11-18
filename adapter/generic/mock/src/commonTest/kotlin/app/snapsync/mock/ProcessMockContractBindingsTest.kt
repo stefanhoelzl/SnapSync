@@ -81,10 +81,15 @@ class ProcessMockContractBindingsTest {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val adapter = SystemUiMock.Face::class
-        override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
+        override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED, LinkOpenerState.RESTRICTED)
         override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> {
             val mock = SystemUiMock()
-            if (state == LinkOpenerState.UNCLAIMED) mock.unclaimed = setOf(LinkOpenerContract.UNCLAIMED_URL)
+            when (state) {
+                LinkOpenerState.CLAIMED -> Unit
+                LinkOpenerState.UNCLAIMED -> mock.unclaimed = setOf(LinkOpenerContract.UNCLAIMED_URL)
+                // A withheld browser, as the mock plays it: the page every browser claims is claimed by none.
+                LinkOpenerState.RESTRICTED -> mock.unclaimed = setOf(LinkOpenerContract.CLAIMED_URL)
+            }
             return Entered.Ready(mock.port().recorded(log))
         }
     }

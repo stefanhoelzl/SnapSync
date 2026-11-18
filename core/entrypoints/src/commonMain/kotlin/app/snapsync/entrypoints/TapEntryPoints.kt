@@ -9,13 +9,15 @@ import app.snapsync.data.system.SystemSurfaces
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.report.ReportOutcome
-import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
+import app.snapsync.domain.request.LinkOutcome
+import app.snapsync.domain.request.OpenLinkRequest
 import app.snapsync.domain.request.ReportRequest
 import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
+import app.snapsync.ports.Handoff
 import app.snapsync.query.RequestStatusSink
 import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Run
@@ -25,8 +27,9 @@ import app.snapsync.scheduling.Runtime
 //
 // Each is a command on the screen's door (presentation's `UserCommands`): fired, never awaited, its work running here
 // under the tap's own label. A hand-off to the platform — a sheet, a prompt, the Settings page — is the adapter's to
-// put on the main thread; nothing acts on its answer, but a refusal is logged, because the member then tapped and
-// nothing happened (`docs/architecture.md`, "Absence is never silent").
+// put on the main thread; a refusal is logged, because the member then tapped and nothing happened
+// (`docs/architecture.md`, "Absence is never silent"), and a page the platform did not open is answered on its status
+// so the member is told.
 
 /**
  * The member asked to create an event: minted, and answered on the creation status with its id and key — which the
@@ -56,12 +59,25 @@ class OnShareTapped(runtime: Runtime, private val surfaces: SystemSurfaces) :
     }
 }
 
-/** The member opened a page outside the app — the store's, the help page. */
-class OnOpenLinkTapped(runtime: Runtime, private val surfaces: SystemSurfaces) : BackgroundEntryPoint<AppLinkRequest>(
-    runtime,
-) {
-    override suspend fun run(arg: AppLinkRequest, on: Run) = on.steps {
-        required { surfaces.open(arg) }
+/**
+ * The member opened a page outside the app — the store's, a page of the app's site — answered on the link status with
+ * whether the platform opened it, so a page it did not open is told. A run that failed before the hand-off opened
+ * nothing, and is answered so.
+ */
+class OnOpenLinkTapped(
+    runtime: Runtime,
+    private val surfaces: SystemSurfaces,
+    private val statuses: RequestStatusSink<LinkOutcome>,
+) : BackgroundEntryPoint<OpenLinkRequest>(runtime) {
+    override suspend fun run(arg: OpenLinkRequest, on: Run) = on.steps {
+        statuses.begun(arg.id)
+        ensure("answer") { statuses.settle(arg.id, LinkOutcome.NOT_OPENED) }
+        val handoff = required { surfaces.open(arg.link) }
+        val outcome = when (handoff) {
+            Handoff.Accepted -> LinkOutcome.OPENED
+            is Handoff.Refused -> LinkOutcome.NOT_OPENED
+        }
+        required { statuses.done(arg.id, outcome) }
     }
 }
 

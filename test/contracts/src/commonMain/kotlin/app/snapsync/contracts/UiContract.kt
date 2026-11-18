@@ -80,6 +80,7 @@ object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
         UiIntent.MobileData::class,
         UiIntent.OpenLink::class,
         UiIntent.ReportNoticeDismiss::class,
+        UiIntent.LinkNoticeDismiss::class,
         UiIntent.OpenReconfigure::class,
         UiIntent.CancelReconfigure::class,
         UiIntent.RenameEvent::class,
@@ -147,6 +148,7 @@ object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.MobileData::class)
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.OpenLink::class)
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ReportNoticeDismiss::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.LinkNoticeDismiss::class)
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.OpenReconfigure::class)
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.CancelReconfigure::class)
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RenameEvent::class)

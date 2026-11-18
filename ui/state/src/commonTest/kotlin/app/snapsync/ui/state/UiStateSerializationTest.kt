@@ -47,6 +47,19 @@ class UiStateSerializationTest {
         assertEquals(state, json.decodeFromString(UiState.serializer(), encoded))
     }
 
+    /**
+     * A page's notice missing where the page is cannot be shown, so it is refused rather than shown with a guess (the
+     * deserializer's missing-field check, which the coverage gate counts).
+     */
+    @Test
+    fun a_link_notice_missing_where_the_page_is_is_refused() {
+        for (kind in listOf("Site", "Store")) {
+            assertFailsWith<SerializationException>(kind) {
+                json.decodeFromString(LinkNotice.serializer(), """{"type":"$kind"}""")
+            }
+        }
+    }
+
     // Identity — kept as its own step so a failure reads as "did not round-trip", not "was rebuilt".
     private fun encodedInput(state: UiState) = state
 
@@ -284,7 +297,9 @@ class UiStateSerializationTest {
         // One field off its default at a time: a state differing in only that field must still arrive whole, so
         // no field is dropped by an encoder that omits defaults.
         val overlays = listOf(Overlays(confirmingLeave = true), Overlays(renaming = true), Overlays(reportingBug = true)) +
-            Overlays(menuOpen = true) + ReportNotice.entries.map { Overlays(reportNotice = it) }
+            Overlays(menuOpen = true) + ReportNotice.entries.map { Overlays(reportNotice = it) } +
+            Overlays(linkNotice = LinkNotice.Site("snapsync.stho.net")) +
+            Overlays(linkNotice = LinkNotice.Store("App Store"))
         for (overlay in overlays) {
             roundTrip(UiState(Layer.CreateEvent(FRESH_CREATE_FORM), overlay))
         }

@@ -89,15 +89,19 @@ private fun statusActions(dispatch: (UiIntent) -> Unit, range: RangeGestures) = 
         onReceiveOn = { dispatch(UiIntent.ReceiveOn(switchTo(it))) },
         onSaveToAlbum = { dispatch(UiIntent.SaveToAlbum(switchTo(it))) },
     ),
-    menu = MenuActions(
-        onSendDiagnostics = { note, screen -> dispatch(UiIntent.SendDiagnostics(note, screen)) },
-        onMenuOpen = { dispatch(UiIntent.MenuOpen) },
-        onMenuDismiss = { dispatch(UiIntent.MenuDismiss) },
-        onReportBug = { dispatch(UiIntent.MenuReportBug) },
-        onOpenLink = { dispatch(UiIntent.OpenLink(it)) },
-        onReportNoticeDismiss = { dispatch(UiIntent.ReportNoticeDismiss) },
-        onMobileData = { dispatch(UiIntent.MobileData(switchTo(it))) },
-    ),
+    menu = menuActions(dispatch),
+)
+
+/** The app menu's taps, and the brief words that answer two of them. */
+private fun menuActions(dispatch: (UiIntent) -> Unit) = MenuActions(
+    onSendDiagnostics = { note, screen -> dispatch(UiIntent.SendDiagnostics(note, screen)) },
+    onMenuOpen = { dispatch(UiIntent.MenuOpen) },
+    onMenuDismiss = { dispatch(UiIntent.MenuDismiss) },
+    onReportBug = { dispatch(UiIntent.MenuReportBug) },
+    onOpenLink = { dispatch(UiIntent.OpenLink(it)) },
+    onReportNoticeDismiss = { dispatch(UiIntent.ReportNoticeDismiss) },
+    onLinkNoticeDismiss = { dispatch(UiIntent.LinkNoticeDismiss) },
+    onMobileData = { dispatch(UiIntent.MobileData(switchTo(it))) },
 )
 
 /** The overlays' opening and dismissal taps, each one intent. */

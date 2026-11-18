@@ -36,8 +36,10 @@ import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.LinkOutcome
 import app.snapsync.domain.request.MembershipReadRequest
 import app.snapsync.domain.request.MobileDataRequest
+import app.snapsync.domain.request.OpenLinkRequest
 import app.snapsync.domain.request.RenameRequest
 import app.snapsync.domain.request.ReportRequest
 import app.snapsync.domain.request.RequestId
@@ -143,6 +145,9 @@ internal class TestRequests {
 
     /** A create's answers. */
     val creation = RequestStatuses<CreateResult>()
+
+    /** A page's answers: whether the platform opened it. */
+    val links = RequestStatuses<LinkOutcome>()
     val flows = RequestStatusFlows(
         join = statuses.join.status,
         settings = statuses.settings.status,
@@ -150,6 +155,7 @@ internal class TestRequests {
         rename = statuses.rename.status,
         membershipRead = statuses.read.status,
         report = reports.status,
+        link = links.status,
     )
 
     /** The mobile-data choice's changes, answered as the live door's work answers them. */
@@ -193,6 +199,9 @@ internal class TestCommands(
     /** The menu's mobile-data switch saves; a test about it answers otherwise. */
     var setMobileData: suspend (MobileDataChoice) -> MobileDataOutcome? = { MobileDataOutcome.Saved(it) }
 
+    /** The platform opens every page; a test about a page it did not open answers otherwise. */
+    var openLinkAnswer: suspend (opened: String) -> LinkOutcome? = { LinkOutcome.OPENED }
+
     /** Restoring a lost key is answered nowhere the screen reads; a test about it answers otherwise. */
     var restoreKey: suspend (EventKey) -> RestoreAnswer? = { RestoreAnswer.NothingChanged }
 
@@ -221,7 +230,11 @@ internal class TestCommands(
             share = command { r: ShareRequest -> share(r.text.raw, r.title) },
             requestAccess = command { _: Unit -> requestAccess() },
             openSettings = command { _: Unit -> openSettings() },
-            openLink = command { r: AppLinkRequest -> openLink(r.named()) },
+            openLink = command { r: OpenLinkRequest ->
+                val opened = r.link.named()
+                openLink(opened)
+                requests.answer(r.id, requests.links, LinkOutcome.NOT_OPENED) { openLinkAnswer(opened) }
+            },
             // No presentation test is about the picker; its binding is the shells' and compose/'s.
             choosePhotos = command { _: Unit -> },
         ),

@@ -54,6 +54,7 @@ class UiIntentVocabularyTest {
         is UiIntent.MobileData -> "MobileData"
         is UiIntent.OpenLink -> "OpenLink"
         UiIntent.ReportNoticeDismiss -> "ReportNoticeDismiss"
+        UiIntent.LinkNoticeDismiss -> "LinkNoticeDismiss"
         UiIntent.OpenReconfigure -> "OpenReconfigure"
         UiIntent.CancelReconfigure -> "CancelReconfigure"
         is UiIntent.RenameEvent -> "RenameEvent"
@@ -115,6 +116,7 @@ class UiIntentVocabularyTest {
                 UiIntent.MobileData(to = SwitchTo.ON),
                 UiIntent.OpenLink(AppLink.WEBSITE),
                 UiIntent.ReportNoticeDismiss,
+                UiIntent.LinkNoticeDismiss,
                 UiIntent.OpenReconfigure,
                 UiIntent.CancelReconfigure,
                 UiIntent.RenameEvent("event", "Picnic"),

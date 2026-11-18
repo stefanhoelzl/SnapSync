@@ -143,6 +143,8 @@ class HostFacts(private val build: BuildRead, private val crash: CrashChannel, p
         label = build.label(),
         // What the event album holds on this phone — read from the photo library.
         albumContents = albums.contents,
+        // Where a page of the app's site that did not open can be found — the notice names it.
+        siteAddress = build.siteAddress(),
     )
 }
 

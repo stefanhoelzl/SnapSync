@@ -6,22 +6,26 @@ import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.Handoff
+import app.snapsync.ports.RefusalCircumstances
 import app.snapsync.ports.SystemUi
 
 /**
  * **What the member's taps hand to the platform** — the share sheet, a page outside the app, this app's Settings page.
- * Putting the platform's surface on the main thread is the adapter's; nothing here acts on its answer, but a refusal is
- * logged as an error, because the member then tapped and nothing happened (`docs/architecture.md`, "Absence is never
- * silent").
+ * Putting the platform's surface on the main thread is the adapter's. A refusal is logged as an error with what the
+ * platform said of itself, because the member then tapped and nothing happened (`docs/architecture.md`, "Absence is
+ * never silent"), and the platform may give no reason of its own (Bugsink SNAPSYNC-71). A page's answer is handed back:
+ * the member is told when it was not opened.
  */
 class SystemSurfaces(private val systemUi: SystemUi) {
     private val log = Log("SystemSurfaces")
 
     /** The share sheet, carrying [text], titled [title] where the platform shows one. */
-    suspend fun share(text: String, title: String) = recorded("share", systemUi.share(text, title))
+    suspend fun share(text: String, title: String) {
+        recorded("share", systemUi.share(text, title))
+    }
 
-    /** The page [link] names, opened outside this app. */
-    suspend fun open(link: AppLinkRequest) = recorded("link", systemUi.openUrl(urlOf(link)))
+    /** The page [link] names, opened outside this app, answering whether the platform opened it. */
+    suspend fun open(link: AppLinkRequest): Handoff = recorded("link", systemUi.openUrl(urlOf(link)))
 
     /** This app's own Settings page. */
     fun openSettings() = systemUi.openSettings()
@@ -31,9 +35,24 @@ class SystemSurfaces(private val systemUi: SystemUi) {
         is AppLinkRequest.SitePage -> OwnPageText.url(link.page)
     }
 
-    private suspend fun recorded(what: String, handoff: Handoff) = when (handoff) {
-        Handoff.Accepted -> Unit
-        is Handoff.Refused -> log.e("nothing was handed off", "what" of what, "reason" of handoff.reason)
+    private suspend fun recorded(what: String, handoff: Handoff): Handoff = handoff.also {
+        when (it) {
+            Handoff.Accepted -> Unit
+            is Handoff.Refused -> refused(what, it)
+        }
+    }
+
+    private suspend fun refused(what: String, refused: Handoff.Refused) = when (val read = refused.circumstances) {
+        RefusalCircumstances.NotAsked ->
+            log.e("nothing was handed off", "what" of what, "reason" of refused.reason)
+        is RefusalCircumstances.Read -> log.e(
+            "nothing was handed off",
+            "what" of what,
+            "reason" of refused.reason,
+            "in_front" of read.inFront,
+            "claimed" of read.claimed,
+            "scene" of read.scene,
+        )
     }
 }
 

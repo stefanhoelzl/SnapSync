@@ -50,6 +50,7 @@ class HostGraph(
             app.membershipStatuses.rename.status,
             app.membershipStatuses.read.status,
             app.reportStatus.status,
+            app.linkStatus.status,
         ),
         verification = DeviceVerification(app.attested, app.refusal, app.attestationFault, app.serviceFault),
         versionRefusal = app.versionRefusal,

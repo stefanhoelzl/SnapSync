@@ -31,7 +31,8 @@ internal class SurfaceCommands(
     /** The choice the menu's switch shows: read as the screen is built, then moved only by a change's answer. */
     private val mobileData: MutableStateFlow<Boolean>,
     private val settings: SettingsChanges,
-    private val report: ReportFlow,
+    private val notices: NoticeSlot,
+    private val links: LinkFlow,
 ) {
     private val local = cells.local
     private val runner = cells.runner
@@ -116,15 +117,18 @@ internal class SurfaceCommands(
 
     /**
      * One of the menu's links, opened outside the app. The menu closes first, so coming back finds the screen rather
-     * than the drawer; a refused hand-off is logged by the command.
+     * than the drawer — and a page the phone did not open is told there ([LinkFlow]).
      */
     fun onOpenLink(link: AppLink) = runner.intent {
         local.editOverlays { it.copy(menuOpen = false) }
-        commands.platform.openLink.fire(AppLinkRequest.SitePage(link.page))
+        links.open(AppLinkRequest.SitePage(link.page))
     }
 
     /** The report's brief word, tapped away before it cleared itself. */
-    fun onReportNoticeDismiss() = report.dismissNotice()
+    fun onReportNoticeDismiss() = notices.dismiss()
+
+    /** The word on a page that did not open, tapped away before it cleared itself. */
+    fun onLinkNoticeDismiss() = notices.dismiss()
 
     /** Open the event's settings, pre-filled from the membership held ([SettingsChanges.open]). */
     fun onOpenReconfigure() = settings.open()

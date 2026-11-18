@@ -220,6 +220,7 @@ class EntryMockContractBindingsTest {
             ),
             UiIntent.ReportBugDismiss, UiIntent.MenuOpen, UiIntent.MenuDismiss, UiIntent.MenuReportBug,
             UiIntent.MobileData(SwitchTo.ON), UiIntent.OpenLink(AppLink.entries.first()), UiIntent.ReportNoticeDismiss,
+            UiIntent.LinkNoticeDismiss,
             UiIntent.OpenReconfigure, UiIntent.CancelReconfigure, UiIntent.RenameEvent("event", "name"),
             UiIntent.RenameStatusConsumed, UiIntent.ConfirmStopSharing, UiIntent.KeepSharing,
             UiIntent.ShareOn(SwitchTo.ON), UiIntent.ReceiveOn(SwitchTo.ON), UiIntent.SaveToAlbum(SwitchTo.ON),

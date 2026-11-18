@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppFooterTextActions
@@ -16,7 +15,6 @@ import app.snapsync.ui.components.AppMenuHeader
 import app.snapsync.ui.components.AppMenuIcon
 import app.snapsync.ui.components.AppMenuItem
 import app.snapsync.ui.components.AppMenuSwitch
-import app.snapsync.ui.components.AppNotice
 import app.snapsync.ui.components.AppQrSheet
 import app.snapsync.ui.components.AppTextPromptSheet
 import app.snapsync.ui.components.AppTheme
@@ -50,11 +48,8 @@ import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.qr_sheet_title
 import app.snapsync.ui.resources.rename_body
 import app.snapsync.ui.resources.rename_event
-import app.snapsync.ui.resources.report_not_sent
 import app.snapsync.ui.resources.report_placeholder
 import app.snapsync.ui.resources.report_problem
-import app.snapsync.ui.resources.report_saved
-import app.snapsync.ui.resources.report_sent
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.share_invite
 import app.snapsync.ui.resources.show_qr
@@ -66,7 +61,6 @@ import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.MobileDataState
 import app.snapsync.ui.state.RenameState
-import app.snapsync.ui.state.ReportNotice
 import app.snapsync.ui.state.ReportTarget
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ShowsInvite
@@ -157,13 +151,7 @@ fun StatusScreen(
                 ) {
                     CurrentLayer(state = state, actions = actions)
                 }
-                state.overlays.reportNotice?.let { outcome ->
-                    AppNotice(
-                        text = reportNoticeText(outcome),
-                        onDismiss = actions.menu.onReportNoticeDismiss,
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                    )
-                }
+                BriefNotice(state.overlays, actions.menu)
             }
         }
         // The overlays sit ON TOP of whatever layer rendered above.
@@ -210,19 +198,6 @@ private fun ColumnScope.AppMenu(build: BuildLine, mobileData: MobileDataState, a
     )
     AppMenuFooter(stringResource(Res.string.menu_version, build.version, build.buildNumber))
 }
-
-/**
- * The word on a confirmed report: what became of it, and never more — "sent" is a
- * hand-off, so it claims no delivery, and the failure is told calmly.
- */
-@Composable
-internal fun reportNoticeText(outcome: ReportNotice): String = stringResource(
-    when (outcome) {
-        ReportNotice.SENT -> Res.string.report_sent
-        ReportNotice.SAVED -> Res.string.report_saved
-        ReportNotice.NOT_SENT -> Res.string.report_not_sent
-    },
-)
 
 /**
  * What the status screen's own chrome shows, derived once: whether the joined layer's heading, pen and docked

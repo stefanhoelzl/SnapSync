@@ -29,6 +29,7 @@ import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.link.RefusalFacts
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
 import app.snapsync.logging.documentsDirectory
@@ -63,6 +64,24 @@ import kotlin.concurrent.atomics.incrementAndFetch
 
 private fun call(url: NSURL): String = "openURL:options:completionHandler:(url=${url.absoluteString} options={})"
 
+private fun afterRefusalCall(url: NSURL): String =
+    "applicationState+canOpenURL+connectedScenes.activationState(url=${url.absoluteString})"
+
+/** How a recording spells iOS's answers after a refusal: `applicationState=0 canOpenURL=true scenes=0,2`. */
+private fun RefusalFacts.recorded(): String =
+    "applicationState=$applicationState canOpenURL=$canOpen scenes=${sceneStates.joinToString(",")}"
+
+/** The recorded spelling read back; a line in any other shape fails the replay naming it. */
+private fun refusalFactsOf(answer: String): RefusalFacts {
+    val parts = answer.split(" ").associate { it.substringBefore("=") to it.substringAfter("=") }
+    fun part(name: String) = parts[name] ?: error("'$answer' records no $name")
+    return RefusalFacts(
+        applicationState = part("applicationState").toLong(),
+        canOpen = part("canOpenURL").toBooleanStrict(),
+        sceneStates = part("scenes").split(",").filter { it.isNotEmpty() }.map { it.toLong() },
+    )
+}
+
 /** Passes every call to [real] and records it, with iOS's answer, in the clause block [recorder] has open. */
 internal class RecordingUrlOpenerApi(private val real: UrlOpenerApi, private val recorder: Recorder) : UrlOpenerApi {
     override fun open(url: NSURL, completion: (Boolean) -> Unit) =
@@ -70,12 +89,21 @@ internal class RecordingUrlOpenerApi(private val real: UrlOpenerApi, private val
             recorder.record(call(url), "$opened")
             completion(opened)
         }
+
+    override fun afterRefusal(url: NSURL, completion: (RefusalFacts) -> Unit) =
+        real.afterRefusal(url) { facts ->
+            recorder.record(afterRefusalCall(url), facts.recorded())
+            completion(facts)
+        }
 }
 
 /** Answers every call from one clause's recorded block, exactly and in order. */
 internal class ReplayingUrlOpenerApi(private val replayer: Replayer) : UrlOpenerApi {
     override fun open(url: NSURL, completion: (Boolean) -> Unit) =
         completion(replayer.answer(call(url)).toBooleanStrict())
+
+    override fun afterRefusal(url: NSURL, completion: (RefusalFacts) -> Unit) =
+        completion(refusalFactsOf(replayer.answer(afterRefusalCall(url))))
 }
 
 internal const val SIM_APP_UNREACHABLE_CLAIMED =
@@ -92,10 +120,49 @@ internal class DeviceLinkOpenerBinding(private val recorder: Recorder) : Binding
     override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
 
     override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> {
+        if (state !in reaches) return Entered.Unreachable("recorded with the browser allowed")
         recorder.open(clauseId)
         return Entered.Ready(IosSystemUi(RecordingUrlOpenerApi(SystemUrlOpenerApi, recorder)).recorded(log))
     }
 }
+
+/**
+ * The real [IosSystemUi] in the app on a device whose browser a person withheld (Screen Time → Content & Privacy →
+ * Allowed Apps → Safari off), recording the refused `openURL` and what iOS says of itself after it. Replayed on every
+ * CI build by `IosLinkOpenerReplayContractTest`.
+ */
+internal class DeviceLinkOpenerRestrictedBinding(private val recorder: Recorder) : Binding<LinkOpenerState, SystemUi> {
+    override val host = Host.IOS_DEVICE_APP
+    override val kind = BindingKind.Live
+    override val adapter = IosSystemUi::class
+    override val precondition = "BROWSER_RESTRICTED"
+    override val reaches = setOf(LinkOpenerState.RESTRICTED)
+
+    override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> {
+        if (state !in reaches) return Entered.Unreachable("recorded with the browser withheld")
+        recorder.open(clauseId)
+        return Entered.Ready(IosSystemUi(RecordingUrlOpenerApi(SystemUrlOpenerApi, recorder)).recorded(log))
+    }
+}
+
+/**
+ * The link opener, recorded under the browser condition the person running it states — no app can read whether Screen
+ * Time withholds the browser, so it is a precondition of the run (`docs/architecture.md`, "An authorization the process
+ * cannot give itself is a precondition of the run"): no `browser` parameter, or `allowed`, records the ordinary run;
+ * `restricted` the run with Safari withheld.
+ */
+private fun recordLinkOpener(params: Map<String, String>): String = when (params["browser"]) {
+    null, "allowed" -> recordAppOnDevice(LinkOpenerContract, null) { DeviceLinkOpenerBinding(it) }
+    "restricted" -> recordAppOnDevice(LinkOpenerContract, null, BROWSER_RESTRICTED) {
+        DeviceLinkOpenerRestrictedBinding(it)
+    }
+    else ->
+        CONTRACT_REFUSED +
+            "state the browser's condition: no ?browser, or ?browser=allowed (Safari allowed), or ?browser=restricted " +
+            "(Screen Time → Content & Privacy → Allowed Apps → Safari off).\n"
+}
+
+private const val BROWSER_RESTRICTED = "BROWSER_RESTRICTED"
 
 /** How a recording names the binding's reading of the screen: has the app left the front. */
 internal const val LEFT_THE_FRONT = "appLeftTheFront()"
@@ -120,11 +187,14 @@ internal class DeviceAppSettingsBinding(private val recorder: Recorder) : Bindin
         // iOS answers an open later; a read waits for it, so the recording holds the answer before the screen it led to,
         // as a replay — which answers at once — reads them.
         val unanswered = AtomicInt(0)
-        val opener = UrlOpenerApi { url, completion ->
-            unanswered.incrementAndFetch()
-            RecordingUrlOpenerApi(SystemUrlOpenerApi, recorder).open(url) { opened ->
-                unanswered.decrementAndFetch()
-                completion(opened)
+        val recording = RecordingUrlOpenerApi(SystemUrlOpenerApi, recorder)
+        val opener = object : UrlOpenerApi by recording {
+            override fun open(url: NSURL, completion: (Boolean) -> Unit) {
+                unanswered.incrementAndFetch()
+                recording.open(url) { opened ->
+                    unanswered.decrementAndFetch()
+                    completion(opened)
+                }
             }
         }
         return Entered.Ready(
@@ -155,9 +225,7 @@ internal class DeviceAppSettingsBinding(private val recorder: Recorder) : Bindin
  * refused while a membership could own one. It answers the reason, or `null` to proceed.
  */
 fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> = listOf(
-    InAppContract(LinkOpenerContract.name, Host.IOS_DEVICE_APP) {
-        recordAppOnDevice(LinkOpenerContract, null) { DeviceLinkOpenerBinding(it) }
-    },
+    InAppContract(LinkOpenerContract.name, Host.IOS_DEVICE_APP) { params -> recordLinkOpener(params) },
     InAppContract(WakeContract.name, Host.IOS_DEVICE_APP) { recordScheduler() },
     InAppContract(AppSettingsContract.name, Host.IOS_DEVICE_APP) {
         recordAppOnDevice(AppSettingsContract, null) { DeviceAppSettingsBinding(it) }
@@ -266,6 +334,8 @@ class SimAppLinkOpenerBinding : Binding<LinkOpenerState, SystemUi> {
     override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> = when (state) {
         LinkOpenerState.UNCLAIMED -> Entered.Ready(IosSystemUi().recorded(log))
         LinkOpenerState.CLAIMED -> Entered.Unreachable(SIM_APP_UNREACHABLE_CLAIMED)
+        LinkOpenerState.RESTRICTED ->
+            Entered.Unreachable("a withheld browser is a person's setting; it is recorded on a device")
     }
 }
 

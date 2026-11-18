@@ -1,0 +1,16 @@
+# contract: LinkOpener
+# host: IOS_DEVICE_APP
+# precondition: BROWSER_RESTRICTED
+# file: LinkOpener@IOS_DEVICE_APP.BROWSER_RESTRICTED.rec
+# device: iPhone12,8
+# os: Version 27.2.1 (Build 24B156)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-11-18T21:52:48Z
+# live UNCLAIMED_URL_IS_REFUSED: NotRunHere(recorded with the browser withheld)
+# live A_RESTRICTED_BROWSER_IS_REFUSED_AND_SAYS_SO: Passed
+# live CLAIMED_URL_IS_ACCEPTED: NotRunHere(recorded with the browser withheld)
+[A_RESTRICTED_BROWSER_IS_REFUSED_AND_SAYS_SO]
+openURL:options:completionHandler:(url=https://www.apple.com/ options={}) -> false
+applicationState+canOpenURL+connectedScenes.activationState(url=https://www.apple.com/) -> applicationState=0 canOpenURL=false scenes=0
+

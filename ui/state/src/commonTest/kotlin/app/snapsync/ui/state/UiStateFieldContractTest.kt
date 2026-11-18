@@ -81,6 +81,7 @@ class UiStateFieldContractTest {
                 reportSeed = ScreenMessage.DEVICE_UNVERIFIABLE,
                 menuOpen = true,
                 reportNotice = ReportNotice.SAVED,
+                linkNotice = LinkNotice.Site("snapsync.stho.net"),
             ),
             optional = setOf(
                 "confirmingLeave",
@@ -90,6 +91,7 @@ class UiStateFieldContractTest {
                 "reportSeed",
                 "menuOpen",
                 "reportNotice",
+                "linkNotice",
             ),
         )
     }

@@ -101,7 +101,11 @@ internal fun testFacts(
     reportDestination: ReportDestination = ReportDestination.DEVELOPER,
     build: BuildLabel = BuildLabel("unknown", "unknown"),
     albumContents: AlbumContents = AlbumContents.SharedAndReceived,
-): BuildFacts = BuildFacts(store, reportDestination, build, albumContents)
+    siteAddress: String = TEST_SITE_ADDRESS,
+): BuildFacts = BuildFacts(store, reportDestination, build, albumContents, siteAddress)
+
+/** The site a test's build is on, as the link notice names it. */
+internal const val TEST_SITE_ADDRESS = "snapsync.example"
 
 /** The screen over [queries], everything else a resting value unless the test is about it. */
 @Suppress("LongParameterList")

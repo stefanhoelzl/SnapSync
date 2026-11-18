@@ -47,6 +47,8 @@ class PortBundleTest {
         "EntryEvent" to "what the runtime tells of an entry point's work — a sealed value the EntryEvents port is handed",
         "BackgroundTimeHold" to "one hold on the process's background time, answered by the BackgroundTime port",
         "LibraryChangeToken" to "an opaque value the gallery answers and is later handed back — a value, not a seam",
+        "RefusalCircumstances" to "what the platform said of itself when it refused a hand-off — a value SystemUi answers",
+        "Observed" to "one fact a refusal's circumstances read, or why there is none — a value, not a seam",
         "DbOpen" to "the result of opening a database — a sealed answer the Databases port returns",
         "RegistrationAnswer" to "what a registration write came to — a sealed answer the ExtensionRegistry port returns",
         "OpenDatabase" to "a database the Databases port opened, which runs its statements — a handle, not a seam",

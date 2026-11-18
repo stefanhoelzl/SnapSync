@@ -97,6 +97,8 @@ class MenuActions(
     val onReportBug: () -> Unit,
     val onOpenLink: (AppLink) -> Unit,
     val onReportNoticeDismiss: () -> Unit,
+    /** The word on a page the phone did not open, tapped away. */
+    val onLinkNoticeDismiss: () -> Unit,
     /** The menu's mobile-data switch: the device's choice, applied as it is flipped. */
     val onMobileData: (Boolean) -> Unit,
 )
