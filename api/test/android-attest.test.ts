@@ -181,11 +181,13 @@ Deno.test("android: a chain ending at no pinned root is refused", async () => {
   await refused(verify(hardware(RKP_TEE, [SOFTWARE_ROOT]), RKP_TEE), "pinned attestation root");
 });
 
-Deno.test("android: a chain ending at AOSP's software root is refused, NAMED as one", async () => {
+// @Verifies(spec = "privacy-security", requirement = "A refused phone is told why", scenario = "A phone whose hardware gives only a software proof is told its system is modified")
+Deno.test("android: a chain ending at AOSP's software root is refused as MODIFIED, named as one", async () => {
+  // A known software-only proof, not an unrecognised one: told as modified, so the app offers no report.
   await refused(
     verify(hardware(SOFTWARE), SOFTWARE),
     "AOSP's software attestation root",
-    "device-unverifiable",
+    "device-modified",
     "software-root",
   );
 });
