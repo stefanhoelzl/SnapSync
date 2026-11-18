@@ -9,6 +9,10 @@
 //   * THE CHAIN, leaf first and root last: every certificate named by and signed by the next, and the root
 //     one of the deployment's pinned roots — matched by PUBLIC KEY, so a root re-issued over the same key
 //     (Google's RSA root has four certificates, and devices still present the older ones) needs no config.
+//     An unpinned root that is SOFTWARE-ONLY — AOSP's software attestation root, or an emulator's
+//     self-signed test root — is refused as `device-modified`, like a software key under a pinned root;
+//     any other unpinned root as the default `device-unverifiable`, whose report exists for a proof nobody
+//     recognised.
 //   * ITS SHAPE follows from how the device was provisioned, read off the certificate below the root: a
 //     remotely provisioned (RKP) chain is root → "Droid CA2" → RKP server → attestation → key; a factory one
 //     root → a serial-numbered intermediate → attestation → key; a software one root → attestation → key.
@@ -249,13 +253,18 @@ function softwareOnlyRoot(
   return emulator ? "emulator-root" : undefined;
 }
 
-/** A chain whose root `root` is not pinned: named for what it is, where it is a software-only root. */
+/**
+ * A chain whose root `root` is not pinned. A software-only root is refused as `device-modified`, the cause told for a
+ * key held only in software: its proof is known, not unrecognised, and no fix of ours could ever admit it — so it must
+ * not be offered the report that `device-unverifiable` offers, which exists for a proof nobody recognised. Every other
+ * unpinned root keeps the default reason, through the `certificate` refusal.
+ */
 function unpinnedRoot(root: x509.X509Certificate): Error {
   const known = softwareOnlyRoot(root);
   if (!known) return new Error("the chain does not end at a pinned attestation root");
   const whose = known === "software-root" ? "AOSP's software" : "an emulator's test";
   return new AttestationRejected(
-    "device-unverifiable",
+    "device-modified",
     `the chain ends at ${whose} attestation root, under which only a key held in software is attested`,
     known,
   );

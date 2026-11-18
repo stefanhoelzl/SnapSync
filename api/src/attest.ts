@@ -217,11 +217,12 @@ export class AttestationRejected extends Error {
 
 /**
  * Which kind of check refused, beyond the reason — diagnostics only, never told to the user. A `certificate` check
- * (the chain's root, shape, signatures or validity, or a revoked certificate) — or, narrower, a chain that ends at a
- * root only a key held in SOFTWARE is attested under: AOSP's software attestation root (`software-root`) or an
- * emulator's self-signed test root (`emulator-root`). Those two are what Play's automated testing presents, so naming
- * them keeps them apart from a root nobody recognised, which may be ours to fix. Which certificate problem a plain
- * `certificate` was is read off the chain summary the user's report carries.
+ * (the chain's root, shape, signatures or validity, or a revoked certificate), always with the default reason — or,
+ * narrower, a chain that ends at a root only a key held in SOFTWARE is attested under: AOSP's software attestation
+ * root (`software-root`) or an emulator's self-signed test root (`emulator-root`), refused as `device-modified`. Those
+ * two are what Play's automated testing presents; refusing them as modified keeps them apart from a root nobody
+ * recognised, which may be ours to fix. Which certificate problem a plain `certificate` was is read off the chain
+ * summary the user's report carries.
  */
 export type RefusalDetail = "certificate" | "software-root" | "emulator-root";
 
