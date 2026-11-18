@@ -20,7 +20,8 @@
 # the committed raws reach the version that actually ships. The former push-triggered uploader
 # (`appstore-screenshots.yml`) could not: it fired on its inputs changing while its ability to act depended
 # on a version state it never observed, so it ran green and did nothing. It was deleted, not kept alongside
-# — correcting an ALREADY-promoted version's screenshots is a manual console upload, by decision.
+# — correcting an ALREADY-promoted version's screenshots is a manual console upload, by decision. The listing TEXT
+# is applied here for the same reason (its push-triggered apply was deleted likewise).
 #
 # PLAY'S LISTING TRAVELS WITH THE RELEASE TOO. Play's listing (text, contact details, icon, feature graphic, phone
 # screenshots) is one per app, not per version, so nothing forces it here — but written on every merge, as it once
@@ -156,9 +157,15 @@ jobs:
           if command -v magick >/dev/null 2>&1; then magick --version; else convert --version; fi
           fc-list | grep -qiE "liberation|dejavu" || { echo "::error::no bold sans font installed"; exit 1; }
 
+      # BOTH stores' listing text, rendered from metadata/listing/ into build/metadata/ (`docs/deployment.md`, "Listing
+      # metadata"): the App Store's half is applied by "Apply the listing text" below, Play's is staged next. Before any
+      # store mutation, so a broken render costs a red run and nothing else.
+      - name: Render the store listings
+        run: python3 scripts/resolve-deployment.py prod --quiet
+
       # PLAY'S STORE LISTING (`docs/deployment.md`, "Google Play listing delivery"), staged for the Play preflight and
-      # release below, which compare each part with what Play holds and write only a difference. The text is rendered
-      # from metadata/listing/ and checked against Play's limits (as the `metadata` gate did), the icon and each
+      # release below, which compare each part with what Play holds and write only a difference. The text rendered
+      # above is checked against Play's limits (as the `metadata` gate did), the icon and each
       # language's feature graphic are the committed ones, and the phone screenshots are composited from
       # screenshots/android/ with each language's headlines — byte-stable, which is what the comparison relies on.
       # Every language the app speaks gets the lot (capability `localization`). Before any store mutation, so a broken
@@ -167,7 +174,6 @@ jobs:
         if: ${{ inputs.android }}
         run: |
           set -euo pipefail
-          python3 scripts/resolve-deployment.py prod --quiet
           python3 scripts/validate_play_listing.py build/metadata/play
           IMAGES="$RUNNER_TEMP/play-images"
           # Per language (capability `localization`; Play keeps every image per language): the one icon, that
@@ -329,6 +335,24 @@ jobs:
         env:
           ASC: ${{ runner.temp }}/asc
         run: bash .github/scripts/asc_screenshots_upload.sh
+
+      # The listing TEXT of every committed locale (name, subtitle, description, keywords, promotional text, URLs),
+      # applied to the version we just prepared — the ONLY writer of the App Store listing text, for the screenshots'
+      # reason above. Its former push-triggered apply (deploy.yml) acted only when an editable version happened to
+      # exist, and nothing re-ran it once it failed — which 0.7's last one did: Apple answered its create of the de-DE
+      # localization with an error yet created it WITHOUT the text, asc's retry then got "already exists" (asc 2.8.2
+      # does not fall back to an update), and the version reached review doctor with an empty de-DE. Declarative and
+      # diff-based: the committed file wins over console edits, and an omitted field is never deleted (so the release
+      # notes below are untouched).
+      #
+      # AFTER the screenshot upload, which creates every committed locale the version lacks (`asc_lib.sh`'s
+      # `asc_ensure_localizations`), so this only ever UPDATES a localization: a retried update cannot collide the way
+      # a retried create did.
+      - name: Apply the listing text
+        if: ${{ inputs.ios && steps.resolve.outputs.submitted != 'true' }}
+        env:
+          ASC: ${{ runner.temp }}/asc
+        run: bash .github/scripts/asc_metadata_apply.sh
 
       # The release notes derived above, written (in English) to every localization of the version. AFTER the attach
       # (the record must exist to be resolved) and BEFORE the submit — a submitted version must not carry the previous

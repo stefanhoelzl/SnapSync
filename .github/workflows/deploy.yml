@@ -3,14 +3,15 @@ name: deploy
 # EVERYTHING A MERGE TO `main` SHIPS, EXCEPT THE iOS BUILD — one workflow, `main` only. Every CHECK lives
 # in the one unfiltered gate workflow, ci.yml, whose aggregate `ci` is the required check; this file
 # holds only the deployers those gates have already cleared. Capabilities: backend-deployment,
-# deployment-configuration, web-site, ios-appstore-metadata. Decision record: the
+# deployment-configuration, web-site. Decision record: the
 # `unify-main-deploy-workflow` change under `openspec/changes/archive/`.
 #
 #   * changes                  — decides whether the backend changed since the commit that is LIVE
 #   * api                      — publishes the api bundle to bunny Edge Scripting (only when `changes` says so)
 #   * site                     — mirror-deploys the Astro site to the storage `site/` prefix (every push)
-#   * appstore-metadata-apply  — applies the committed listing text to the editable App Store version
-#                                (every push: the file wins over console edits, `docs/deployment.md`)
+#
+# THE STORE LISTINGS ARE NOT HERE EITHER: both stores' listing text and images are written by the release
+# (promote.yml), onto the version it prepares — never by a push (`docs/deployment.md` §6).
 #
 # ⚠️ NO JOB IN THIS FILE MAY EVER BE A REQUIRED STATUS CHECK. This workflow never runs on a pull request, so
 # its contexts are never posted there, and GitHub treats a required check that is never posted as
@@ -45,9 +46,9 @@ on:
 #     worse than none (`nightly-cleanup.yml` serializes for the same reason);
 #   ② a group holds ONE pending run, and a newer pending run CANCELS the older one even with
 #     cancel-in-progress: false. That displacement is harmless here ONLY because nothing a run would have
-#     done is lost by skipping it: `site` and `appstore-metadata-apply` run on every push, and `api` diffs
+#     done is lost by skipping it: `site` runs on every push, and `api` diffs
 #     against the live commit, so the next run still sees a displaced run's backend change.
-# Cost, accepted: a site mirror or metadata apply may wait a few minutes behind an api maintenance window.
+# Cost, accepted: a site mirror may wait a few minutes behind an api maintenance window.
 concurrency:
   group: deploy
   cancel-in-progress: false
@@ -663,45 +664,3 @@ jobs:
         env:
           BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
         run: npm run deploy
-
-  # ── The App Store listing text ─────────────────────────────────────────────────────────────────────
-  #
-  # Resolves the currently EDITABLE App Store version at run time and pushes the committed listing text to
-  # its localizations, declaratively (file wins; absent field = no-op). It never edits a version in review
-  # and never creates one; with no editable version it is a green no-op. Capability ios-appstore-metadata.
-  #
-  # EVERY PUSH, NO GATE: "file wins" means a console edit is overwritten by the next push to `main`, whatever
-  # that push touched. Its gate is ci.yml's `metadata` (the App Store listing validation), which has passed on
-  # this content — so no `needs:` (it could not reach another workflow's job anyway). Text only: the
-  # screenshots are uploaded by the release (promote.yml), never by a push.
-  #
-  # Reuses the EXISTING Admin ASC key (no new secret, no Xcode/keychain/cert). The metadata tool `asc` is a
-  # pinned, checksum-verified third-party binary (see asc_fetch.sh).
-  appstore-metadata-apply:
-    name: appstore-metadata-apply
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-    env:
-      # The same Admin key ios-build / ios-deliver use — asc reads its OWN var names.
-      # No new secret is introduced. (Design open question: a scoped key would be safer than Admin.)
-      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-      ASC_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
-      ASC_BYPASS_KEYCHAIN: "1"
-      DO_NOT_TRACK: "1"
-      ASC_APP_ID: "6781692480"
-    steps:
-      - uses: actions/checkout@v7.0.1
-      # The listing's domain-derived URLs (marketing, support, privacy policy) are RENDERED from the
-      # resolved deployment, so the store can never advertise a host the app and backend have moved off
-      # (`docs/deployment.md`). The committed source is metadata/listing/, shared with Google Play;
-      # renderings are generated, never committed.
-      - name: Resolve the deployment
-        run: python3 scripts/resolve-deployment.py prod
-      - name: Fetch pinned asc
-        run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
-      - name: Resolve editable version and apply the listing
-        env:
-          ASC: ${{ runner.temp }}/asc
-        run: bash .github/scripts/asc_metadata_apply.sh

@@ -7,8 +7,8 @@
 # per release. `.github/scripts/release_notes.py` renders them from the labelled PRs in the range
 # (`docs/deployment.md`) BEFORE any App Store Connect mutation; this script only publishes
 # the file it produced. The committed per-locale listing deliberately carries no `whatsNew` key, and
-# the main-only metadata apply never deletes an absent field (`docs/deployment.md`), so
-# a later merge cannot clear what this wrote.
+# the listing-text apply never deletes an absent field (`docs/deployment.md`), so
+# it cannot clear what this wrote.
 #
 # WHY `localizations update` AND NOT `metadata push`: `whatsNew` is inside the metadata tool's
 # version-localization scope, so a scratch `version/<v>/en-US.json` tree pushed the way

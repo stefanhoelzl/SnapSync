@@ -163,7 +163,7 @@ jobs:
         run: python3 metadata/graphic/check.py
       # The App Store listing (`docs/deployment.md`), validated OFFLINE: schema, character limits, URL format. It
       # validates what will be APPLIED — the files the resolver renders from the one listing source
-      # (metadata/listing/), placeholders filled — not the committed source. The apply half is deploy.yml's `appstore-metadata-apply` (main only). `asc` is a pinned,
+      # (metadata/listing/), placeholders filled — not the committed source. The apply half is promote.yml's "Apply the listing text". `asc` is a pinned,
       # checksum-verified binary (asc_fetch.sh).
       - name: Resolve the deployment
         run: python3 scripts/resolve-deployment.py prod

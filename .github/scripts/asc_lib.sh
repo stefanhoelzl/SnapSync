@@ -48,8 +48,8 @@ asc_require_version_id() {
 # locale it then holds, one per line. App Store Connect seeds a new version's localizations from the previous
 # version, so this creates nothing in practice — except in a locale's first release, where the screenshot upload
 # refuses a locale the version lacks ("no matching App Store version localizations found", measured on the first
-# de-DE dry run) and the release notes would fail on it. A created localization gets its text from the main-only
-# metadata apply, which runs on the merge that adds the locale, before any promote of it.
+# de-DE dry run) and the release notes would fail on it. A created localization gets its text from the same promote's
+# listing-text apply (asc_metadata_apply.sh), which runs after the screenshot upload that creates it.
 #
 # Usage: asc_ensure_localizations <version id> <version string>
 asc_ensure_localizations() {
