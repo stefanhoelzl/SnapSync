@@ -7,8 +7,9 @@ package app.snapsync.domain.upload
 annotation class MintsFullGrant
 
 /**
- * The member's photo grant is full right now — what registering the upload extension requires: iOS refuses either
- * registration write under a partial grant (3311), and the extension creates only under a full one. Minted per read,
- * never cached or stored: the grant changes at runtime.
+ * The member's photo grant is full right now. Both registering and deregistering the upload extension require it:
+ * iOS refuses either write under a partial grant (3311), refuses a disable with no grant at all with codes no SDK
+ * declares, and the extension creates only under a full grant. Minted per read, never cached or stored: the grant
+ * changes at runtime.
  */
 class FullGrant @MintsFullGrant constructor()

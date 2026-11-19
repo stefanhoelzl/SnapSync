@@ -107,7 +107,7 @@ class UploaderGraph(
     val reconcile: ReconcileUploader = ReconcileUploader(services.membership, osUploader, grant, registrar)
 
     /** What a leave and a deleted event stop of the uploads. */
-    val stop: StopUploads = StopUploads(registrar, wake.arming, ends)
+    val stop: StopUploads = StopUploads(registrar, grant, wake.arming, ends)
 
     /** The join's reset of the upload rows, and the rig's reset of them. */
     val reset: UploadRowsReset = UploadRowsReset(services.sharedDatabase)

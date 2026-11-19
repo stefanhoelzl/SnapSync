@@ -235,7 +235,7 @@ class OsUploaderIntegrationTest {
                 event<WorldEvent.ExtensionRegistered> { it.on }
                 settled { true }
             })
-            // iOS refuses to deregister under a partial grant, so the registration a full grant made survives.
+            // No deregistration under a partial grant (iOS refuses one): the registration a full grant made survives.
             step("narrowed to an empty selection", act = { library.permission(PhotoGrant.LIMITED) }, until = {
                 settled { true }
                 never<WorldEvent.ExtensionRegistered> { !it.on }
@@ -255,8 +255,9 @@ class OsUploaderIntegrationTest {
     }
 
     /**
-     * A leave made under a partial grant: iOS refuses to deregister its uploader there (`3311`), and the leave goes
-     * ahead all the same — the record a full grant made survives, and its own entry gate withholds without a full grant.
+     * A leave made under a partial grant: deregistering asks only under a full grant (iOS refuses it here, `3311`), and
+     * the leave goes ahead all the same — the record a full grant made survives, and its own entry gate withholds
+     * without a full grant.
      */
     @Test
     @Verifies(spec = "delivery", requirement = "Leaving or switching stops every transfer for the old event")
@@ -281,7 +282,7 @@ class OsUploaderIntegrationTest {
         var registered: Boolean? = null
         whenever { registered = extensionRegistry.registered() }
         then { settled { true } }
-        assertEquals(true, registered, "iOS refused the deregistration, so its record survives")
+        assertEquals(true, registered, "no deregistration under a partial grant, so its record survives")
     }
 
     /** The app in front once, then left for the background, and whatever both did done. */

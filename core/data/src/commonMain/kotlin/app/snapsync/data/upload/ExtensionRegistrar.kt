@@ -17,8 +17,11 @@ import app.snapsync.ports.RegistrationAnswer
  * carries no such mechanism it answers `Unsupported` and asks nothing. Each write is reported at what it did
  * ([RegistrationVerdict]): an `Error` here is what crash reporting carries onward as field telemetry.
  *
- * Registering requires a full grant, read at the moment of the write ([FullGrant]): iOS refuses either write under a
- * partial one. Deregistering requires evidence the membership's uploads ended ([EndsUploads]): the disable wipes every
+ * Both directions require a full grant, read at the moment of the write ([FullGrant]). iOS refuses either write under a
+ * partial grant (3311), and with no grant at all iOS 27 refuses a disable with codes no SDK declares:
+ * `NSCocoaErrorDomain` -1 and `PHPhotosErrorDomain` 5102 were both seen on 27.2.1, on two devices in the same state
+ * (SNAPSYNC-70).
+ * Deregistering also requires evidence the membership's uploads ended ([EndsUploads]), because the disable wipes every
  * in-flight OS job.
  */
 class ExtensionRegistrar(private val registry: ExtensionRegistry) {
@@ -37,11 +40,15 @@ class ExtensionRegistrar(private val registry: ExtensionRegistry) {
     }
 
     /** Deregister the extension — the disable alone — once [ending] says this membership's uploads end. */
-    suspend fun deregister(@Suppress("UNUSED_PARAMETER") ending: EndsUploads) = write(RegistrationWrite.DISABLE)
+    suspend fun deregister(
+        @Suppress("UNUSED_PARAMETER") ending: EndsUploads,
+        @Suppress("UNUSED_PARAMETER") grant: FullGrant,
+    ) = write(RegistrationWrite.DISABLE)
 
     /**
      * Follow the rig's [switch] (a rig build only — on every shipped build it is on): switched off, the extension is
-     * deregistered at once, since it cannot read the app's memory and so cannot see the switch itself.
+     * deregistered at once, since it cannot read the app's memory and so cannot see the switch itself. The operator's
+     * order, so asked under any grant: the answer is what the rig is there to see.
      */
     suspend fun followSwitch(switch: ExtensionSwitch) = when (switch) {
         ExtensionSwitch.OFF -> write(RegistrationWrite.DISABLE)

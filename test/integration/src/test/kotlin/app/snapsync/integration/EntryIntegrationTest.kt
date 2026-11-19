@@ -9,6 +9,7 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /**
  * The app's entry points, as the operating system delivers them (`docs/architecture.md`, "Events arrive through
@@ -327,6 +328,35 @@ class EntryIntegrationTest {
             never<WorldEvent.UiChanged>() // and the start built no screen
             settled { it.state.inFlight?.sessionTransfers == listOf(primaryKey("A")) }
         }
+    }
+
+    /**
+     * The rig's switch turned the extension off under a partial grant. It is the operator's order, so it asks under
+     * any grant, unlike a leave: iOS refuses (`3311`), the record a full grant made survives, and the refusal is
+     * reported as the grant's, not as a failure.
+     */
+    @Test
+    fun the_rigs_switch_off_under_limited_access_is_refused_and_the_record_survives() = behaviour {
+        given {
+            iosUploaderCarried()
+            createdEvent()
+            step("joined with full access", act = { confirmJoin() }, until = {
+                event<WorldEvent.ExtensionRegistered> { it.on }
+                settled { true }
+            })
+            step("narrowed to an empty selection", act = { library.permission(PhotoGrant.LIMITED) }, until = {
+                settled { true }
+            })
+        }
+        whenever { devControls.pin(app = true, extension = false) }
+        then {
+            never<WorldEvent.ExtensionRegistered> { !it.on }
+            settled { true }
+        }
+        var registered: Boolean? = null
+        whenever { registered = extensionRegistry.registered() }
+        then { settled { true } }
+        assertEquals(true, registered, "iOS refused the switch's deregistration, so its record survives")
     }
 
     @Test

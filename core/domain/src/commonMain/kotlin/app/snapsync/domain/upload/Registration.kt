@@ -28,7 +28,11 @@ sealed interface RegistrationVerdict {
     /** A disable that found no configuration record — expected on a clean device (measured twice, SE2, iOS 26.6). */
     data object NothingToDisable : RegistrationVerdict
 
-    /** A disable refused under a partial grant: the record survives, and the extension's entry gate withholds. */
+    /**
+     * A disable refused under a partial grant: the record survives, and the extension's entry gate withholds. Only the
+     * rig's switch, or a grant that narrowed between its read and the write, reaches it, since a deregistration asks
+     * only under a full grant.
+     */
     data object DisableRefusedByGrant : RegistrationVerdict
 
     /** An enable refused under a partial grant: the OS will never launch the extension. */
