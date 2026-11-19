@@ -620,12 +620,35 @@ class UploadUseCasesTest {
         val registry = Registry()
         val wake = RecordingWake()
 
-        StopUploads(ExtensionRegistrar(registry), WakeArming(wake), world.ends)(ConfirmedNotJoined())
+        stopUploads(registry, wake, LibraryGrant.GRANTED)(ConfirmedNotJoined())
 
         assertEquals(listOf(false), registry.writes)
         assertEquals<List<WakeId>>(WakeId.entries.toList(), wake.cancelled)
         assertEquals(world.session.live, world.session.cancelled)
     }
+
+    /** SNAPSYNC-70: iOS 27 refuses a disable with no grant with codes no SDK declares, so it is not asked. */
+    @Test
+    fun `without a full grant uploads end with the OS never asked, the wakes and the transfers cancelled`() = runTest {
+        world.joined()
+        world.tier.create(world.event, world.discovered(), SessionWorld.From)
+        world.session.live = listOf(Transfer(app.snapsync.data.upload.RecordingSession.Handle, world.tag()))
+        val registry = Registry()
+        val wake = RecordingWake()
+
+        stopUploads(registry, wake, LibraryGrant.NOT_DETERMINED)(ConfirmedNotJoined())
+
+        assertEquals(emptyList(), registry.writes, "no disable is asked without a full grant")
+        assertEquals<List<WakeId>>(WakeId.entries.toList(), wake.cancelled)
+        assertEquals(world.session.live, world.session.cancelled)
+    }
+
+    private fun stopUploads(registry: Registry, wake: RecordingWake, grant: LibraryGrant) = StopUploads(
+        ExtensionRegistrar(registry),
+        GrantRead(MutableStateFlow(grant)),
+        WakeArming(wake),
+        world.ends,
+    )
 
     @Test
     fun `a contribution is derived with the photos this device received suppressed`() = runTest {

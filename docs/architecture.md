@@ -2209,7 +2209,8 @@ extension through `ExtensionRegistrar.register` (the disable â†’ enable ritual â
 a `FullGrant` read then), and answers what `UploaderArm` does to the app's uploader (arm; disarm, the wakes only;
 or nothing, `UNCHANGED`, when a change needing the membership cannot read it). Stopping is `StopUploads` alone, and
 it takes **evidence** the membership's uploads end (`EndsUploads`: a committed leave, no membership after a leave
-that did not finish, a deleted event): the extension deregistered, the wakes cancelled, the live session
+that did not finish, a deleted event): the extension deregistered (only with a `FullGrant` read then, as it is
+registered: without one iOS refuses the disable, on iOS 27 with codes no SDK declares), the wakes cancelled, the live session
 transfers cancelled with their staged files (`AfterJoin`, `AfterSettings`, `Leaving`, `SweepLeftovers`,
 `DeletedTransfers` in `MembershipEntryPoints.kt`). **None of them clears the upload rows**: only a join resets
 them (`LoadShareSet` over `UploadRowsReset`: the joined event's seeded from a confirmed listing, every other

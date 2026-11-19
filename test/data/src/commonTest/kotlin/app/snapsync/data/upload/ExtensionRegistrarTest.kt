@@ -23,7 +23,8 @@ import kotlin.test.assertIs
 
 /**
  * The upload extension's registration: registered only with a full grant in hand, by the disable → enable toggle that
- * repairs a stale record; deregistered only once a membership's uploads end; every write reported at what it did.
+ * repairs a stale record; deregistered only once a membership's uploads end, with a full grant in hand too; every
+ * write reported at what it did.
  */
 @OptIn(MintsFullGrant::class, MintsLeftMembership::class, MintsConfirmedNotJoined::class)
 class ExtensionRegistrarTest {
@@ -66,9 +67,9 @@ class ExtensionRegistrarTest {
 
     @Test
     fun `a deregister is the disable alone, for each way a membership's uploads end`() = runTest {
-        registrar.deregister(LeftMembership(active().event.id))
-        registrar.deregister(ConfirmedNotJoined())
-        registrar.deregister(Membership.Deleted(active().event, active().share))
+        registrar.deregister(LeftMembership(active().event.id), FullGrant())
+        registrar.deregister(ConfirmedNotJoined(), FullGrant())
+        registrar.deregister(Membership.Deleted(active().event, active().share), FullGrant())
 
         assertEquals(listOf(false, false, false), registry.writes)
     }
@@ -81,13 +82,13 @@ class ExtensionRegistrarTest {
 
         registrar.register(FullGrant())
         registrar.register(FullGrant())
-        registrar.deregister(ConfirmedNotJoined())
+        registrar.deregister(ConfirmedNotJoined(), FullGrant())
 
         assertEquals(listOf(false, true, false, true, false), registry.writes)
     }
 
     @Test
-    fun `only a full grant mints the evidence a register requires`() {
+    fun `only a full grant mints the evidence a register and a deregister require`() {
         val grant = MutableStateFlow(LibraryGrant.GRANTED)
         val read = GrantRead(grant)
         assertIs<FullGrantRead.Full>(read.full())

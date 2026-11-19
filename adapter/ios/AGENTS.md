@@ -35,7 +35,11 @@ membership's own-photo scope. Three measured platform facts shape the implementa
    in *both* directions with `PHPhotosErrorAccessUserDenied` 3311 (measured, SE2/26.6; the older "registration
    succeeds and lies" reading is contradicted by measurement). Under a partial grant the app's uploader does the
    uploading: it creates under any usable grant, and the extension is not registrable (`OsUploaderAdmission`).
-   ⚠️ A registration made under a FULL grant **survives** a downgrade (the deregistration is refused too), and **the
+   With **no** grant (`NOT_DETERMINED`), iOS 27.2.1 refuses a disable with codes no klib declares: `NSCocoaErrorDomain`
+   -1 on the SE2 (a device that had held a record) and `PHPhotosErrorDomain` 5102 on a never-installed App Store
+   device (SNAPSYNC-70, 2026-11-18/19). So the app deregisters only under a full grant (`StopUploads`), and never
+   classifies these codes. What the disable answers under a full or limited grant on iOS 27 is still unmeasured.
+   ⚠️ A registration made under a FULL grant **survives** a downgrade (iOS refuses the deregistration too, so the app does not ask), and **the
    OS still invokes it** under `.limited`: measured SE2/26.6, 2026-09-21, `process()` ran 4 s after a new photo
    joined the selection. The extension's own entry gate is what stops it (it withholds without `GRANTED`). Never
    rely on "the OS does not invoke it".

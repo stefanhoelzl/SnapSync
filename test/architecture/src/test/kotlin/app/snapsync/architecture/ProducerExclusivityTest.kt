@@ -2,6 +2,7 @@ package app.snapsync.architecture
 
 import app.snapsync.application.EntryPointCall
 import app.snapsync.application.upload.ReconcileUploader
+import app.snapsync.data.gallery.FullGrantRead
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.gallery.PhotoGrants
 import app.snapsync.data.legacy.LegacyRecords
@@ -132,7 +133,7 @@ class ProducerExclusivityTest {
         }
 
         val registry = PlatformRegistry(grantCell.value, registered, supported = osSupported)
-        private val grantRead = GrantRead(grantCell)
+        val grantRead = GrantRead(grantCell)
         val registrar = ExtensionRegistrar(registry)
         val reconcile = ReconcileUploader(
             membership,
@@ -174,7 +175,11 @@ class ProducerExclusivityTest {
             Step.Leave -> {
                 joined = false
                 membership.leave()
-                registrar.deregister(LeftMembership(MEMBERSHIP.eventId))
+                // As `StopUploads` deregisters: only with a full grant read now.
+                when (val full = grantRead.full()) {
+                    is FullGrantRead.Full -> registrar.deregister(LeftMembership(MEMBERSHIP.eventId), full.grant)
+                    FullGrantRead.NotFull -> Unit
+                }
             }
             is Step.Permission -> {
                 grant = step.grant
