@@ -115,7 +115,7 @@ if [ "${CONCEPT_FRAME:-on}" = "on" ]; then
   [ "$GOT" = "${CANVAS_W}x${CANVAS_H}" ] || { echo "::error::$OUT is $GOT, expected ${CANVAS_W}x${CANVAS_H}"; exit 1; }
   echo "composed $OUT  (the use-case graphic)"
 fi
-for STATE in create joining in_sync; do
+for STATE in in_sync create joining; do  # the payoff first, right after the graphic
   i=$((i + 1))
   RAW="$RAW_DIR/${STATE}-light.png"   # the listing takes the light set; dark is for the landing page
   [ -f "$RAW" ] || { echo "::error::missing $RAW"; exit 1; }
